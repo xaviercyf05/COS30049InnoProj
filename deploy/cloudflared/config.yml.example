@@ -1,0 +1,12 @@
+tunnel: your-tunnel-uuid
+credentials-file: /etc/cloudflared/your-tunnel-uuid.json
+
+ingress:
+  - hostname: innopappserver.xyz
+    service: http://localhost:80
+
+  # Optional dedicated API subdomain.
+  - hostname: api.innopappserver.xyz
+    service: http://localhost:80
+
+  - service: http_status:404

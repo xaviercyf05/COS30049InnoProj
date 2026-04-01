@@ -4,16 +4,16 @@ This is an Expo-based React Native client for the Innopapp backend API.
 
 ## 1. Configure API base URL
 
-Create .env in this folder:
+Create .env in this folder with:
 
-```bash
-copy .env.example .env
+```text
+EXPO_PUBLIC_API_BASE_URL=https://api.innopappserver.xyz
 ```
 
-Set:
-- EXPO_PUBLIC_API_BASE_URL=https://innopappserver.xyz
+Set EXPO_PUBLIC_API_BASE_URL to your public API URL.
 
-If you decide to expose API on api.innopappserver.xyz later, use that URL instead.
+Example:
+- EXPO_PUBLIC_API_BASE_URL=https://api.innopappserver.xyz
 
 ## 2. Install and run
 

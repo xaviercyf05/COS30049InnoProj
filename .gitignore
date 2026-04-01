@@ -1,2 +1,13 @@
 node_modules/
 npm-debug.log*
+
+# Environment files (keep local only)
+.env
+.env.*
+!.env.example
+mobile/.env
+mobile/.env.*
+!mobile/.env.example
+
+# Expo local machine cache
+mobile/.expo/

@@ -34,8 +34,6 @@ It includes:
 - database/schema.sql: roles, users, and posts tables
 - database/create_database.sql: create database + load schema
 - scripts/seedAdmin.js: create/update first admin account
-- deploy/apache2/innopapp.conf: Apache2 reverse proxy example
-- deploy/cloudflared/config.yml.example: cloudflared ingress example
 
 ## Quick Start
 
@@ -47,9 +45,7 @@ npm install
 
 2. Create environment file:
 
-~~~powershell
-copy .env.example .env
-~~~
+Create a file named .env in the project root.
 
 3. Update .env values:
 
@@ -161,11 +157,16 @@ This repository now includes an Expo-based React Native client at mobile/.
 
 ~~~bash
 cd mobile
-copy .env.example .env
+~~~
+
+Create a file named .env in mobile/ with:
+
+~~~text
+EXPO_PUBLIC_API_BASE_URL=https://api.innopappserver.xyz
 ~~~
 
 2. Set API base URL in mobile/.env:
-- EXPO_PUBLIC_API_BASE_URL=https://innopappserver.xyz
+- EXPO_PUBLIC_API_BASE_URL=https://api.innopappserver.xyz
 
 3. Install and run mobile app:
 
@@ -242,10 +243,22 @@ Enable needed modules:
 sudo a2enmod proxy proxy_http headers rewrite
 ~~~
 
-Use the example file in deploy/apache2/innopapp.conf and copy it into Apache sites:
+Create Apache site config:
 
 ~~~bash
-sudo cp deploy/apache2/innopapp.conf /etc/apache2/sites-available/innopapp.conf
+sudo tee /etc/apache2/sites-available/innopapp.conf >/dev/null <<'EOF'
+<VirtualHost *:80>
+    ServerName api.innopappserver.xyz
+
+    ProxyPreserveHost On
+    ProxyPass / http://127.0.0.1:3000/
+    ProxyPassReverse / http://127.0.0.1:3000/
+
+    RequestHeader set X-Forwarded-Proto "https"
+    RequestHeader set X-Forwarded-Port "443"
+</VirtualHost>
+EOF
+
 sudo a2ensite innopapp.conf
 sudo systemctl reload apache2
 ~~~
@@ -272,7 +285,21 @@ cloudflared tunnel route dns innopapp-tunnel innopappserver.xyz
 cloudflared tunnel route dns innopapp-tunnel api.innopappserver.xyz
 ~~~
 
-4. Use deploy/cloudflared/config.yml.example as template and place your final config at /etc/cloudflared/config.yml.
+4. Create /etc/cloudflared/config.yml:
+
+~~~bash
+sudo tee /etc/cloudflared/config.yml >/dev/null <<'EOF'
+tunnel: your-tunnel-uuid
+credentials-file: /etc/cloudflared/your-tunnel-uuid.json
+
+ingress:
+  - hostname: innopappserver.xyz
+    service: http://localhost:80
+  - hostname: api.innopappserver.xyz
+    service: http://localhost:80
+  - service: http_status:404
+EOF
+~~~
 
 5. Install tunnel as service:
 

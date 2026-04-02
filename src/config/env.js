@@ -7,15 +7,59 @@ function parsePort(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function isLocalOrIpHost(hostname) {
+  const normalizedHost = String(hostname || "").toLowerCase();
+  return (
+    normalizedHost === "localhost" ||
+    normalizedHost === "127.0.0.1" ||
+    normalizedHost === "::1" ||
+    normalizedHost === "[::1]" ||
+    /^(\d{1,3}\.){3}\d{1,3}$/.test(normalizedHost)
+  );
+}
+
+function appendWwwAlias(origins) {
+  const expanded = new Set(origins);
+
+  for (const origin of origins) {
+    try {
+      const parsed = new URL(origin);
+      const hostname = parsed.hostname.toLowerCase();
+
+      if (isLocalOrIpHost(hostname)) {
+        continue;
+      }
+
+      const hostParts = hostname.split(".").filter(Boolean);
+      const shouldAliasApex = hostParts.length === 2;
+      const shouldAliasWww = hostParts.length === 3 && hostParts[0] === "www";
+
+      if (!shouldAliasApex && !shouldAliasWww) {
+        continue;
+      }
+
+      const aliasHost = hostname.startsWith("www.") ? hostname.slice(4) : `www.${hostname}`;
+      const aliasOrigin = `${parsed.protocol}//${aliasHost}${parsed.port ? `:${parsed.port}` : ""}`;
+      expanded.add(aliasOrigin);
+    } catch {
+      // Ignore invalid origins and keep explicit values only.
+    }
+  }
+
+  return Array.from(expanded);
+}
+
 function parseCorsOrigins(value) {
   if (!value || value.trim() === "*") {
     return "*";
   }
 
-  return value
+  const configuredOrigins = value
     .split(",")
     .map((origin) => origin.trim())
     .filter(Boolean);
+
+  return appendWwwAlias(configuredOrigins);
 }
 
 function parseBoolean(value, fallback = false) {

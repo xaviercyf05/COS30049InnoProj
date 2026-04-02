@@ -24,6 +24,51 @@ const adminUserUsernameInput = document.getElementById("admin-user-username");
 const adminUserPasswordInput = document.getElementById("admin-user-password");
 const adminUsersList = document.getElementById("admin-users");
 
+const CANONICAL_WEB_HOST = "innopappserver.xyz";
+
+function redirectFromWwwToCanonicalHost() {
+  if (window.location.hostname !== `www.${CANONICAL_WEB_HOST}`) {
+    return false;
+  }
+
+  const targetUrl = `${window.location.protocol}//${CANONICAL_WEB_HOST}${window.location.pathname}${window.location.search}${window.location.hash}`;
+  window.location.replace(targetUrl);
+  return true;
+}
+
+const isRedirectingToCanonicalHost = redirectFromWwwToCanonicalHost();
+
+const DEFAULT_REMOTE_API_BASE_URL = "https://api.innopappserver.xyz";
+
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl || "").trim().replace(/\/+$/, "");
+}
+
+function resolveApiBaseUrl() {
+  const manualOverride = normalizeBaseUrl(window.__INNOPAPP_API_BASE_URL);
+  if (manualOverride) {
+    return manualOverride;
+  }
+
+  const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
+  if (isLocalHost) {
+    return "http://localhost:3000";
+  }
+
+  return DEFAULT_REMOTE_API_BASE_URL;
+}
+
+const API_BASE_URL = resolveApiBaseUrl();
+
+function buildApiUrl(path) {
+  if (/^https?:\/\//i.test(path)) {
+    return path;
+  }
+
+  const normalizedPath = String(path || "").startsWith("/") ? path : `/${path}`;
+  return `${API_BASE_URL}${normalizedPath}`;
+}
+
 function escapeHtml(text) {
   return String(text)
     .replace(/&/g, "&amp;")
@@ -52,7 +97,7 @@ function getAuthHeaders() {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(url, options);
+  const response = await fetch(buildApiUrl(url), options);
 
   if (response.status === 204) {
     return null;
@@ -346,6 +391,10 @@ function logout() {
 }
 
 async function initialize() {
+  if (isRedirectingToCanonicalHost) {
+    return;
+  }
+
   refreshPublicButton.addEventListener("click", () => {
     loadPublicPosts().catch((error) => {
       setAdminMessage(error.message || "Failed loading posts.");

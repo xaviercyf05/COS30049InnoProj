@@ -35,4 +35,3 @@ CREATE TABLE IF NOT EXISTS posts (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX idx_posts_published_updated ON posts (is_published, updated_at);
-

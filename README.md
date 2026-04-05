@@ -326,7 +326,7 @@ With Cloudflare Tunnel, DNS can point through the tunnel route and does not requ
 - Keep projdb.innopappserver.xyz private to DB access only. Do not expose MariaDB publicly unless firewall-restricted.
 - Keep JWT_SECRET long and random.
 - Use strong admin passwords.
-- Restrict MariaDB user permissions to only the innopapp database.
+- Restrict MariaDB user permissions to only the appdb database.
 - Restrict Apache to local reverse proxy use only; do not expose MariaDB ports through tunnel ingress.
 - In Cloudflare SSL/TLS settings, use Full (strict) when you later add an origin certificate.
 

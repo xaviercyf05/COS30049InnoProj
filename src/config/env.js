@@ -43,7 +43,7 @@ const env = {
     port: parsePort(process.env.DB_PORT, 3306),
     user: process.env.DB_USER || "root",
     password: process.env.DB_PASSWORD || "",
-    database: process.env.DB_NAME || "innopapp",
+    database: process.env.DB_NAME || "appdb",
   },
   jwtSecret: process.env.JWT_SECRET || "change-this-in-production",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "12h",

@@ -1,67 +1,16 @@
+// Load environment variables from .env file
 const dotenv = require("dotenv");
 
+// dotenv.config() will read the .env file and set process.env variables accordingly
 dotenv.config();
 
+// Read and parse PORT from .env
 function parsePort(value, fallback) {
   const parsed = Number(value);
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
-function isLocalOrIpHost(hostname) {
-  const normalizedHost = String(hostname || "").toLowerCase();
-  return (
-    normalizedHost === "localhost" ||
-    normalizedHost === "127.0.0.1" ||
-    normalizedHost === "::1" ||
-    normalizedHost === "[::1]" ||
-    /^(\d{1,3}\.){3}\d{1,3}$/.test(normalizedHost)
-  );
-}
-
-function appendWwwAlias(origins) {
-  const expanded = new Set(origins);
-
-  for (const origin of origins) {
-    try {
-      const parsed = new URL(origin);
-      const hostname = parsed.hostname.toLowerCase();
-
-      if (isLocalOrIpHost(hostname)) {
-        continue;
-      }
-
-      const hostParts = hostname.split(".").filter(Boolean);
-      const shouldAliasApex = hostParts.length === 2;
-      const shouldAliasWww = hostParts.length === 3 && hostParts[0] === "www";
-
-      if (!shouldAliasApex && !shouldAliasWww) {
-        continue;
-      }
-
-      const aliasHost = hostname.startsWith("www.") ? hostname.slice(4) : `www.${hostname}`;
-      const aliasOrigin = `${parsed.protocol}//${aliasHost}${parsed.port ? `:${parsed.port}` : ""}`;
-      expanded.add(aliasOrigin);
-    } catch {
-      // Ignore invalid origins and keep explicit values only.
-    }
-  }
-
-  return Array.from(expanded);
-}
-
-function parseCorsOrigins(value) {
-  if (!value || value.trim() === "*") {
-    return "*";
-  }
-
-  const configuredOrigins = value
-    .split(",")
-    .map((origin) => origin.trim())
-    .filter(Boolean);
-
-  return appendWwwAlias(configuredOrigins);
-}
-
+// Read and parse boolean values from .env
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") {
     return fallback;
@@ -70,6 +19,19 @@ function parseBoolean(value, fallback = false) {
   return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
 }
 
+// Read and parse CORS origins from .env
+function parseCorsOrigins(value, fallback = []) {
+  if (!value) {
+    return fallback;
+  }
+
+  return value
+    .split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+}
+
+// Define environment variables with defaults and parsing
 const env = {
   nodeEnv: process.env.NODE_ENV || "development",
   port: parsePort(process.env.PORT, 3000),

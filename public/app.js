@@ -26,6 +26,16 @@ const adminUsersList = document.getElementById("admin-users");
 
 const CANONICAL_WEB_HOST = "innopappserver.xyz";
 
+function redirectFromLocalFileToHostedClient() {
+  if (window.location.protocol !== "file:") {
+    return false;
+  }
+
+  const targetUrl = `https://${CANONICAL_WEB_HOST}/`;
+  window.location.replace(targetUrl);
+  return true;
+}
+
 function redirectFromWwwToCanonicalHost() {
   if (window.location.hostname !== `www.${CANONICAL_WEB_HOST}`) {
     return false;
@@ -36,7 +46,8 @@ function redirectFromWwwToCanonicalHost() {
   return true;
 }
 
-const isRedirectingToCanonicalHost = redirectFromWwwToCanonicalHost();
+const isRedirectingToCanonicalHost =
+  redirectFromLocalFileToHostedClient() || redirectFromWwwToCanonicalHost();
 
 const DEFAULT_REMOTE_API_BASE_URL = "https://api.innopappserver.xyz";
 
@@ -48,11 +59,6 @@ function resolveApiBaseUrl() {
   const manualOverride = normalizeBaseUrl(window.__INNOPAPP_API_BASE_URL);
   if (manualOverride) {
     return manualOverride;
-  }
-
-  const isLocalHost = ["localhost", "127.0.0.1"].includes(window.location.hostname);
-  if (isLocalHost) {
-    return "http://localhost:3000";
   }
 
   return DEFAULT_REMOTE_API_BASE_URL;
@@ -97,7 +103,17 @@ function getAuthHeaders() {
 }
 
 async function fetchJson(url, options = {}) {
-  const response = await fetch(buildApiUrl(url), options);
+  let response;
+
+  try {
+    response = await fetch(buildApiUrl(url), options);
+  } catch (error) {
+    if (window.location.protocol === "file:" || window.location.origin === "null") {
+      throw new Error("Open this app from https://innopappserver.xyz instead of opening index.html as a file.");
+    }
+
+    throw error;
+  }
 
   if (response.status === 204) {
     return null;

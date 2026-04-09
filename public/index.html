@@ -18,18 +18,18 @@
 
     <main class="shell">
       <header class="hero">
-        <p class="eyebrow">Mobile-ready API demo</p>
-        <h1>Innopapp Content Gateway</h1>
+        <p class="eyebrow">Digital Park Guide Training Platform</p>
+        <h1>Innopapp Training Dashboard</h1>
         <p class="lead">
-          Public users can read published posts. Admins can sign in and manage content from desktop
-          or mobile devices.
+          Browse public qualifications and use admin tools to manage users, announcements, and
+          qualification setup.
         </p>
         <p id="health-badge" class="badge">Checking API health...</p>
       </header>
 
       <section class="panel">
         <div class="panel-head">
-          <h2>Published Posts</h2>
+          <h2>Available Qualifications</h2>
           <button id="refresh-public" class="btn btn-secondary" type="button">Refresh</button>
         </div>
         <div id="public-posts" class="post-grid"></div>
@@ -62,49 +62,53 @@
         <p id="admin-message" class="admin-message"></p>
 
         <div id="admin-workspace" class="admin-workspace hidden">
-          <h3>Create or Edit Post</h3>
+          <h3>Create Qualification</h3>
           <form id="post-form" class="stack-form">
             <input id="post-id" type="hidden" />
             <label>
-              Title
+              Qualification Name
               <input id="post-title" type="text" maxlength="160" required />
             </label>
             <label>
-              Content
-              <textarea id="post-content" rows="5" required></textarea>
-            </label>
-            <label>
-              Visibility
+              Status
               <select id="post-published">
-                <option value="true">Published</option>
-                <option value="false">Draft</option>
+                <option value="Active">Active</option>
+                <option value="Inactive">Inactive</option>
               </select>
             </label>
             <div class="actions">
-              <button class="btn" type="submit">Save Post</button>
-              <button id="cancel-edit" class="btn btn-secondary" type="button">Cancel Edit</button>
+              <button class="btn" type="submit">Create Qualification</button>
+              <button id="cancel-edit" class="btn btn-secondary" type="button">Clear Form</button>
             </div>
           </form>
 
-          <h3>All Posts</h3>
+          <h3>All Users</h3>
           <ul id="admin-posts" class="admin-list"></ul>
 
           <hr class="panel-divider" />
 
-          <h3>Register New Admin</h3>
+          <h3>Create Announcement</h3>
           <form id="admin-user-form" class="stack-form">
             <label>
-              Username
-              <input id="admin-user-username" type="text" maxlength="100" required />
+              Title
+              <input id="admin-user-username" type="text" maxlength="160" required />
             </label>
             <label>
-              Password
-              <input id="admin-user-password" type="password" minlength="8" required />
+              Content
+              <textarea id="admin-user-password" rows="4" required></textarea>
             </label>
-            <button class="btn" type="submit">Create Admin Account</button>
+            <label>
+              Target Role
+              <select id="announcement-target-role">
+                <option value="User">User</option>
+                <option value="Admin">Admin</option>
+                <option value="All">All</option>
+              </select>
+            </label>
+            <button class="btn" type="submit">Create Announcement</button>
           </form>
 
-          <h3>Registered Admin Accounts</h3>
+          <h3>Selected User Enrollment Details</h3>
           <ul id="admin-users" class="admin-list"></ul>
         </div>
       </section>

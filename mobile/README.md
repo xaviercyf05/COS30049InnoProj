@@ -30,10 +30,12 @@ npm run mobile:start
 
 ## 3. What this app supports
 
-- Public feed read from /api/posts
-- Admin login via /api/admin/login
-- Admin post create/update/delete
-- Admin account create and list
+- Health check via /health
+- Public qualification list via /api/v1/qualifications
+- Admin login via /api/v1/auth/login
+- Admin qualification creation via /api/v1/admin/qualifications
+- Admin announcement creation via /api/v1/admin/announcements
+- Admin user list and status updates via /api/v1/admin/users and /api/v1/admin/users/:id/status
 
 ## 4. Important notes
 

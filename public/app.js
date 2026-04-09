@@ -1,8 +1,8 @@
 const state = {
-  token: localStorage.getItem("innopapp_admin_token") || "",
-  editingPostId: null,
-  adminPosts: [],
-  adminUsers: [],
+  token: localStorage.getItem("innopapp_auth_token") || "",
+  user: null,
+  qualifications: [],
+  users: [],
 };
 
 const healthBadge = document.getElementById("health-badge");
@@ -12,19 +12,23 @@ const loginForm = document.getElementById("login-form");
 const adminMessage = document.getElementById("admin-message");
 const adminWorkspace = document.getElementById("admin-workspace");
 const logoutButton = document.getElementById("logout-btn");
-const postForm = document.getElementById("post-form");
-const postIdInput = document.getElementById("post-id");
-const postTitleInput = document.getElementById("post-title");
-const postContentInput = document.getElementById("post-content");
-const postPublishedInput = document.getElementById("post-published");
-const cancelEditButton = document.getElementById("cancel-edit");
-const adminPostsList = document.getElementById("admin-posts");
-const adminUserForm = document.getElementById("admin-user-form");
-const adminUserUsernameInput = document.getElementById("admin-user-username");
-const adminUserPasswordInput = document.getElementById("admin-user-password");
-const adminUsersList = document.getElementById("admin-users");
+
+const qualificationForm = document.getElementById("post-form");
+const qualificationNameInput = document.getElementById("post-title");
+const qualificationStatusInput = document.getElementById("post-published");
+const clearQualificationButton = document.getElementById("cancel-edit");
+
+const usersList = document.getElementById("admin-posts");
+
+const announcementForm = document.getElementById("admin-user-form");
+const announcementTitleInput = document.getElementById("admin-user-username");
+const announcementContentInput = document.getElementById("admin-user-password");
+const announcementTargetRoleInput = document.getElementById("announcement-target-role");
+
+const enrollmentDetailsList = document.getElementById("admin-users");
 
 const CANONICAL_WEB_HOST = "innopappserver.xyz";
+const DEFAULT_REMOTE_API_BASE_URL = "https://api.innopappserver.xyz";
 
 function redirectFromLocalFileToHostedClient() {
   if (window.location.protocol !== "file:") {
@@ -48,8 +52,6 @@ function redirectFromWwwToCanonicalHost() {
 
 const isRedirectingToCanonicalHost =
   redirectFromLocalFileToHostedClient() || redirectFromWwwToCanonicalHost();
-
-const DEFAULT_REMOTE_API_BASE_URL = "https://api.innopappserver.xyz";
 
 function normalizeBaseUrl(baseUrl) {
   return String(baseUrl || "").trim().replace(/\/+$/, "");
@@ -102,6 +104,18 @@ function getAuthHeaders() {
   };
 }
 
+function unwrapApiPayload(payload) {
+  if (payload && typeof payload === "object" && "success" in payload) {
+    if (!payload.success) {
+      throw new Error(payload.message || "Request failed.");
+    }
+
+    return payload.data;
+  }
+
+  return payload;
+}
+
 async function fetchJson(url, options = {}) {
   let response;
 
@@ -109,7 +123,9 @@ async function fetchJson(url, options = {}) {
     response = await fetch(buildApiUrl(url), options);
   } catch (error) {
     if (window.location.protocol === "file:" || window.location.origin === "null") {
-      throw new Error("Open this app from https://innopappserver.xyz instead of opening index.html as a file.");
+      throw new Error(
+        "Open this app from https://innopappserver.xyz instead of opening index.html as a file."
+      );
     }
 
     throw error;
@@ -126,7 +142,7 @@ async function fetchJson(url, options = {}) {
     throw new Error(payload?.message || `Request failed: ${response.status}`);
   }
 
-  return payload;
+  return unwrapApiPayload(payload);
 }
 
 function setHealthStatus(isOk, text) {
@@ -139,109 +155,106 @@ function setAdminMessage(message, isOk = false) {
   adminMessage.classList.toggle("ok", Boolean(isOk));
 }
 
-function resetPostForm() {
-  state.editingPostId = null;
-  postForm.reset();
-  postIdInput.value = "";
-  postPublishedInput.value = "true";
+function resetQualificationForm() {
+  qualificationForm.reset();
+  qualificationStatusInput.value = "Active";
 }
 
-function renderPublicPosts(posts) {
-  if (!posts.length) {
-    publicPostsContainer.innerHTML = "<p>No published posts yet.</p>";
+function renderQualifications(qualifications) {
+  if (!qualifications.length) {
+    publicPostsContainer.innerHTML = "<p>No qualifications available.</p>";
     return;
   }
 
-  publicPostsContainer.innerHTML = posts
+  publicPostsContainer.innerHTML = qualifications
     .map(
-      (post) => `
+      (qualification) => `
         <article class="post-card">
-          <h3>${escapeHtml(post.title)}</h3>
-          <p>${escapeHtml(post.content)}</p>
-          <div class="post-meta">Updated: ${escapeHtml(formatDate(post.updatedAt))}</div>
+          <h3>${escapeHtml(qualification.name)}</h3>
+          <div class="post-meta">ID: ${escapeHtml(qualification.qualificationId)}</div>
+          <div class="post-meta">Status: ${escapeHtml(qualification.status)}</div>
         </article>
       `
     )
     .join("");
 }
 
-function renderAdminPosts(posts) {
-  if (!posts.length) {
-    adminPostsList.innerHTML = "<li class=\"admin-item\">No posts available.</li>";
-    return;
-  }
-
-  adminPostsList.innerHTML = posts
-    .map(
-      (post) => `
-        <li class="admin-item">
-          <div class="admin-item-head">
-            <strong>${escapeHtml(post.title)}</strong>
-            <span class="status-pill ${post.isPublished ? "published" : "draft"}">
-              ${post.isPublished ? "Published" : "Draft"}
-            </span>
-          </div>
-          <p>${escapeHtml(post.content)}</p>
-          <div class="post-meta">Updated: ${escapeHtml(formatDate(post.updatedAt))}</div>
-          <div class="admin-item-actions">
-            <button class="btn btn-secondary" data-action="edit" data-id="${post.id}" type="button">Edit</button>
-            <button class="btn btn-danger" data-action="delete" data-id="${post.id}" type="button">Delete</button>
-          </div>
-        </li>
-      `
-    )
-    .join("");
-}
-
-function renderAdminUsers(users) {
+function renderUsers(users) {
   if (!users.length) {
-    adminUsersList.innerHTML = "<li class=\"admin-item\">No admin accounts available.</li>";
+    usersList.innerHTML = '<li class="admin-item">No users found.</li>';
     return;
   }
 
-  adminUsersList.innerHTML = users
+  usersList.innerHTML = users
     .map(
       (user) => `
-        <li class="admin-item">
-          <div class="admin-item-head">
-            <strong>${escapeHtml(user.username)}</strong>
-            <span class="status-pill ${user.isActive ? "published" : "draft"}">
-              ${user.isActive ? "Active" : "Disabled"}
-            </span>
-          </div>
-          <div class="post-meta">Role: ${escapeHtml(user.role)}</div>
-          <div class="post-meta">Created: ${escapeHtml(formatDate(user.createdAt))}</div>
-        </li>
-      `
+      <li class="admin-item">
+        <div class="admin-item-head">
+          <strong>${escapeHtml(user.username)}</strong>
+          <span class="status-pill ${user.isActive ? "published" : "draft"}">${escapeHtml(
+            user.status
+          )}</span>
+        </div>
+        <div class="post-meta">Role: ${escapeHtml(user.role)}</div>
+        <div class="post-meta">Email: ${escapeHtml(user.email || "-")}</div>
+        <div class="post-meta">Created: ${escapeHtml(formatDate(user.createdAt))}</div>
+        <div class="admin-item-actions">
+          <button class="btn btn-secondary" data-action="set-status" data-id="${user.userId}" data-status="Active" type="button">Set Active</button>
+          <button class="btn btn-secondary" data-action="set-status" data-id="${user.userId}" data-status="Inactive" type="button">Set Inactive</button>
+          <button class="btn btn-danger" data-action="set-status" data-id="${user.userId}" data-status="Suspended" type="button">Suspend</button>
+          <button class="btn btn-secondary" data-action="enrollments" data-id="${user.userId}" type="button">View Enrollments</button>
+        </div>
+      </li>
+    `
     )
     .join("");
 }
 
-async function loadPublicPosts() {
-  const posts = await fetchJson("/api/posts");
-  renderPublicPosts(posts);
+function renderEnrollmentDetails(data) {
+  if (!data) {
+    enrollmentDetailsList.innerHTML = '<li class="admin-item">No details loaded.</li>';
+    return;
+  }
+
+  const enrollments = Array.isArray(data.enrollments) ? data.enrollments : [];
+
+  enrollmentDetailsList.innerHTML = `
+    <li class="admin-item">
+      <div class="admin-item-head">
+        <strong>${escapeHtml(data.username || "Unknown User")}</strong>
+      </div>
+      <div class="post-meta">Full Name: ${escapeHtml(data.fullName || "-")}</div>
+      <div class="post-meta">Email: ${escapeHtml(data.email || "-")}</div>
+      <div class="post-meta">Enrollments: ${escapeHtml(enrollments.length)}</div>
+      ${
+        enrollments.length
+          ? `<div class="post-meta">${enrollments
+              .map(
+                (item) =>
+                  `${escapeHtml(item.qualificationName)} (${escapeHtml(item.status)})`
+              )
+              .join("<br />")}</div>`
+          : '<div class="post-meta">No enrollments.</div>'
+      }
+    </li>
+  `;
 }
 
-async function loadAdminPosts() {
-  const posts = await fetchJson("/api/admin/posts", {
-    headers: {
-      ...getAuthHeaders(),
-    },
-  });
-
-  state.adminPosts = posts;
-  renderAdminPosts(posts);
+async function loadQualifications() {
+  const qualifications = await fetchJson("/api/v1/qualifications");
+  state.qualifications = Array.isArray(qualifications) ? qualifications : [];
+  renderQualifications(state.qualifications);
 }
 
 async function loadAdminUsers() {
-  const users = await fetchJson("/api/admin/users", {
+  const users = await fetchJson("/api/v1/admin/users", {
     headers: {
       ...getAuthHeaders(),
     },
   });
 
-  state.adminUsers = users;
-  renderAdminUsers(users);
+  state.users = Array.isArray(users) ? users : [];
+  renderUsers(state.users);
 }
 
 function updateAdminVisibility() {
@@ -262,7 +275,7 @@ async function handleLogin(event) {
   };
 
   try {
-    const result = await fetchJson("/api/admin/login", {
+    const result = await fetchJson("/api/v1/auth/login", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -270,10 +283,19 @@ async function handleLogin(event) {
       body: JSON.stringify(payload),
     });
 
+    if (!result?.token || !result?.user) {
+      throw new Error("Unexpected login response.");
+    }
+
+    if (result.user.role !== "Admin") {
+      throw new Error("Only Admin users can access this dashboard.");
+    }
+
     state.token = result.token;
-    localStorage.setItem("innopapp_admin_token", state.token);
+    state.user = result.user;
+    localStorage.setItem("innopapp_auth_token", state.token);
     updateAdminVisibility();
-    await Promise.all([loadAdminPosts(), loadAdminUsers()]);
+    await loadAdminUsers();
     setAdminMessage("Signed in successfully.", true);
     loginForm.reset();
   } catch (error) {
@@ -281,127 +303,131 @@ async function handleLogin(event) {
   }
 }
 
-async function handleSavePost(event) {
+async function handleCreateQualification(event) {
   event.preventDefault();
 
-  const payload = {
-    title: postTitleInput.value.trim(),
-    content: postContentInput.value.trim(),
-    isPublished: postPublishedInput.value === "true",
-  };
+  const name = qualificationNameInput.value.trim();
+  const status = qualificationStatusInput.value;
 
-  const isEditing = Boolean(state.editingPostId);
-  const method = isEditing ? "PUT" : "POST";
-  const url = isEditing ? `/api/admin/posts/${state.editingPostId}` : "/api/admin/posts";
-
-  try {
-    await fetchJson(url, {
-      method,
-      headers: {
-        "Content-Type": "application/json",
-        ...getAuthHeaders(),
-      },
-      body: JSON.stringify(payload),
-    });
-
-    setAdminMessage(isEditing ? "Post updated." : "Post created.", true);
-    resetPostForm();
-    await Promise.all([loadAdminPosts(), loadPublicPosts()]);
-  } catch (error) {
-    setAdminMessage(error.message || "Could not save post.");
+  if (!name) {
+    setAdminMessage("Qualification name is required.");
+    return;
   }
-}
-
-async function handleCreateAdminUser(event) {
-  event.preventDefault();
-
-  const payload = {
-    username: adminUserUsernameInput.value.trim(),
-    password: adminUserPasswordInput.value,
-    role: "admin",
-  };
 
   try {
-    await fetchJson("/api/admin/users", {
+    await fetchJson("/api/v1/admin/qualifications", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...getAuthHeaders(),
       },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ name, status }),
     });
 
-    setAdminMessage("Admin account created.", true);
-    adminUserForm.reset();
-    await loadAdminUsers();
+    setAdminMessage("Qualification created.", true);
+    resetQualificationForm();
+    await loadQualifications();
   } catch (error) {
-    setAdminMessage(error.message || "Could not create admin account.");
+    setAdminMessage(error.message || "Could not create qualification.");
   }
 }
 
-function beginEdit(postId) {
-  const post = state.adminPosts.find((item) => Number(item.id) === Number(postId));
-  if (!post) {
-    return;
-  }
+async function handleCreateAnnouncement(event) {
+  event.preventDefault();
 
-  state.editingPostId = post.id;
-  postIdInput.value = String(post.id);
-  postTitleInput.value = post.title;
-  postContentInput.value = post.content;
-  postPublishedInput.value = post.isPublished ? "true" : "false";
-  setAdminMessage(`Editing post #${post.id}`);
-  window.scrollTo({ top: document.body.scrollHeight, behavior: "smooth" });
-}
+  const title = announcementTitleInput.value.trim();
+  const content = announcementContentInput.value.trim();
+  const targetRole = announcementTargetRoleInput.value;
 
-async function handleDelete(postId) {
-  const confirmed = window.confirm("Delete this post?");
-  if (!confirmed) {
+  if (!title || !content) {
+    setAdminMessage("Announcement title and content are required.");
     return;
   }
 
   try {
-    await fetchJson(`/api/admin/posts/${postId}`, {
-      method: "DELETE",
+    await fetchJson("/api/v1/admin/announcements", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ title, content, targetRole }),
+    });
+
+    setAdminMessage("Announcement created.", true);
+    announcementForm.reset();
+    announcementTargetRoleInput.value = "User";
+  } catch (error) {
+    setAdminMessage(error.message || "Could not create announcement.");
+  }
+}
+
+async function handleSetUserStatus(userId, status) {
+  try {
+    await fetchJson(`/api/v1/admin/users/${userId}/status`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+        ...getAuthHeaders(),
+      },
+      body: JSON.stringify({ targetUserId: userId, status }),
+    });
+
+    setAdminMessage(`User ${userId} status set to ${status}.`, true);
+    await loadAdminUsers();
+  } catch (error) {
+    setAdminMessage(error.message || "Could not update user status.");
+  }
+}
+
+async function handleLoadEnrollments(userId) {
+  try {
+    const data = await fetchJson(`/api/v1/admin/users/${userId}/enrollments`, {
       headers: {
         ...getAuthHeaders(),
       },
     });
 
-    setAdminMessage("Post deleted.", true);
-    await Promise.all([loadAdminPosts(), loadPublicPosts()]);
+    renderEnrollmentDetails(data);
+    setAdminMessage(`Loaded enrollments for user ${userId}.`, true);
   } catch (error) {
-    setAdminMessage(error.message || "Could not delete post.");
+    setAdminMessage(error.message || "Could not load enrollment details.");
   }
 }
 
-function handleAdminListClick(event) {
+function handleUsersListClick(event) {
   const button = event.target.closest("button[data-action]");
   if (!button) {
     return;
   }
 
   const action = button.dataset.action;
-  const postId = Number(button.dataset.id);
+  const userId = Number(button.dataset.id);
 
-  if (action === "edit") {
-    beginEdit(postId);
+  if (!userId) {
+    return;
   }
 
-  if (action === "delete") {
-    handleDelete(postId);
+  if (action === "set-status") {
+    handleSetUserStatus(userId, button.dataset.status);
+    return;
+  }
+
+  if (action === "enrollments") {
+    handleLoadEnrollments(userId);
   }
 }
 
 function logout() {
   state.token = "";
-  localStorage.removeItem("innopapp_admin_token");
-  state.adminPosts = [];
-  state.adminUsers = [];
-  adminPostsList.innerHTML = "";
-  adminUsersList.innerHTML = "";
-  resetPostForm();
-  adminUserForm.reset();
+  state.user = null;
+  state.users = [];
+  localStorage.removeItem("innopapp_auth_token");
+  usersList.innerHTML = "";
+  enrollmentDetailsList.innerHTML = "";
+  resetQualificationForm();
+  announcementForm.reset();
+  announcementTargetRoleInput.value = "User";
   updateAdminVisibility();
   setAdminMessage("Signed out.", true);
 }
@@ -412,31 +438,33 @@ async function initialize() {
   }
 
   refreshPublicButton.addEventListener("click", () => {
-    loadPublicPosts().catch((error) => {
-      setAdminMessage(error.message || "Failed loading posts.");
+    loadQualifications().catch((error) => {
+      setAdminMessage(error.message || "Failed loading qualifications.");
     });
   });
 
   loginForm.addEventListener("submit", handleLogin);
-  postForm.addEventListener("submit", handleSavePost);
-  adminUserForm.addEventListener("submit", handleCreateAdminUser);
-  cancelEditButton.addEventListener("click", resetPostForm);
-  adminPostsList.addEventListener("click", handleAdminListClick);
+  qualificationForm.addEventListener("submit", handleCreateQualification);
+  announcementForm.addEventListener("submit", handleCreateAnnouncement);
+  clearQualificationButton.addEventListener("click", resetQualificationForm);
+  usersList.addEventListener("click", handleUsersListClick);
   logoutButton.addEventListener("click", logout);
 
   updateAdminVisibility();
 
   try {
-    await fetchJson("/api/health");
+    await fetchJson("/health");
     setHealthStatus(true, "API online and database reachable");
   } catch (error) {
     setHealthStatus(false, "API not reachable");
   }
 
   try {
-    await loadPublicPosts();
+    await loadQualifications();
   } catch (error) {
-    publicPostsContainer.innerHTML = `<p>${escapeHtml(error.message || "Failed to load posts.")}</p>`;
+    publicPostsContainer.innerHTML = `<p>${escapeHtml(
+      error.message || "Failed to load qualifications."
+    )}</p>`;
   }
 
   if (!state.token) {
@@ -444,7 +472,7 @@ async function initialize() {
   }
 
   try {
-    await Promise.all([loadAdminPosts(), loadAdminUsers()]);
+    await loadAdminUsers();
     setAdminMessage("Admin session restored.", true);
     updateAdminVisibility();
   } catch (error) {

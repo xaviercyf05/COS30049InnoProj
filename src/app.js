@@ -1,4 +1,5 @@
 const express = require("express");
+const path = require("path");
 const helmet = require("helmet");
 const cors = require("cors");
 const morgan = require("morgan");
@@ -16,6 +17,7 @@ const notificationRoutes = require("./routes/v1/notificationRoutes");
 const adminRoutes = require("./routes/v1/adminRoutes");
 
 const app = express();
+const publicDir = path.join(__dirname, "..", "public");
 
 /**
  * Security and middleware setup
@@ -26,11 +28,16 @@ app.use(cors({ origin: env.corsOrigin || "*" }));
 app.use(morgan("combined"));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ limit: "10kb", extended: true }));
+app.use(express.static(publicDir));
+
+app.get("/", (req, res) => {
+  return res.sendFile(path.join(publicDir, "index.html"));
+});
 
 /**
  * Health check endpoint
  */
-app.get("/health", async (req, res) => {
+async function healthHandler(req, res) {
   try {
     await ping();
     return res.json({
@@ -43,7 +50,10 @@ app.get("/health", async (req, res) => {
       message: "Database connection failed.",
     });
   }
-});
+}
+
+app.get("/health", healthHandler);
+app.get("/api/health", healthHandler);
 
 /**
  * API Routes - v1

@@ -4,4 +4,4 @@ CREATE DATABASE IF NOT EXISTS appdb
 
 USE appdb;
 
-SOURCE schema.sql;
+SOURCE database/schema.sql;

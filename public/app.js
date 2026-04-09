@@ -4,7 +4,7 @@ const state = {
   qualifications: [],
   users: [],
 };
-
+ 
 const healthBadge = document.getElementById("health-badge");
 const publicPostsContainer = document.getElementById("public-posts");
 const refreshPublicButton = document.getElementById("refresh-public");

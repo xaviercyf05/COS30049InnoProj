@@ -2,7 +2,7 @@ const bcrypt = require("bcryptjs");
 const { query, pool } = require("../src/config/db");
 
 const ADMIN_ID = 1;
-const USER_ID = 2
+const USER_ID = 2;
 const ADMIN_ROLE = "Admin";
 const USER_ROLE = "User";
 
@@ -81,8 +81,8 @@ async function run() {
   }
 
   // Create roles if they don't exist
-  await createRoleIfNotExists(ADMIN_ROLE, "Administrator with read and write access");
-  await createRoleIfNotExists(USER_ROLE, "Normal user with limited access");
+  await createRoleIfNotExists(ADMIN_ID, ADMIN_ROLE, "Administrator with read and write access");
+  await createRoleIfNotExists(USER_ID, USER_ROLE, "Normal user with limited access");
 
   // Create admin user
   await createUser(adminUsername, adminPassword, adminFullName, adminEmail, ADMIN_ROLE);

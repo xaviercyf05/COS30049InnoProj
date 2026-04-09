@@ -1,10 +1,12 @@
 const bcrypt = require("bcryptjs");
 const { query, pool } = require("../src/config/db");
 
+const ADMIN_ID = 1;
+const USER_ID = 2
 const ADMIN_ROLE = "Admin";
 const USER_ROLE = "User";
 
-async function createRoleIfNotExists(roleTitle, description) {
+async function createRoleIfNotExists(roleID, roleTitle, description) {
   const [existingRoles] = await query(
     "SELECT RoleId FROM Roles WHERE RoleTitle = ? LIMIT 1",
     [roleTitle]
@@ -12,8 +14,8 @@ async function createRoleIfNotExists(roleTitle, description) {
 
   if (existingRoles.length === 0) {
     await query(
-      "INSERT INTO Roles (RoleTitle, Description) VALUES (?, ?)",
-      [roleTitle, description]
+      "INSERT INTO Roles (RoleID, RoleTitle, Description) VALUES (?, ?, ?)",
+      [roleID, roleTitle, description]
     );
   }
 }

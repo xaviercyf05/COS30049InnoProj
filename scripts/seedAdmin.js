@@ -39,17 +39,16 @@ async function createUser(username, password, fullName, email, roleTitle) {
   const roleId = roleRows[0].RoleId;
 
   await query(
-    `INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleId, Role, IsActive, Status, Progress, Password)
-     VALUES (?, ?, ?, ?, ?, ?, 1, 'Active', 0, ?)
+    `INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleId, Role, IsActive, Status, Progress)
+     VALUES (?, ?, ?, ?, ?, ?, 1, 'Active', 0)
      ON DUPLICATE KEY UPDATE
        PasswordHash = VALUES(PasswordHash),
        FullName = VALUES(FullName),
        Email = VALUES(Email),
        RoleId = VALUES(RoleId),
        Role = VALUES(Role),
-       IsActive = 1,
-       Password = VALUES(Password)`,
-    [username, passwordHash, fullName, email, roleId, roleTitle, password]
+       IsActive = 1`,
+    [username, passwordHash, fullName, email, roleId, roleTitle]
   );
 
   console.log(`User account upserted for username: ${username} (Role: ${roleTitle})`);

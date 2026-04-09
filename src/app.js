@@ -29,6 +29,7 @@ app.use(morgan("combined"));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ limit: "10kb", extended: true }));
 app.use(express.static(publicDir));
+app.use("/public", express.static(publicDir));
 
 app.get("/", (req, res) => {
   return res.sendFile(path.join(publicDir, "index.html"));

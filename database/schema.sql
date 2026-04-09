@@ -1,4 +1,26 @@
-DROP TABLE IF EXISTS posts;
+SET FOREIGN_KEY_CHECKS = 0;
+
+DROP TABLE IF EXISTS
+  Notifications,
+  Announcements,
+  Schedules,
+  Certificates,
+  MaterialProgress,
+  LearningMaterials,
+  AssessmentAttempts,
+  AssessmentOptions,
+  AssessmentQuestions,
+  Assessments,
+  Subtitles,
+  Modules,
+  Users,
+  Qualifications,
+  Roles,
+  posts,
+  users,
+  roles;
+
+SET FOREIGN_KEY_CHECKS = 1;
 
 CREATE TABLE IF NOT EXISTS Roles (
   RoleId TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

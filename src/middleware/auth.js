@@ -11,7 +11,7 @@ function authenticateAdmin(req, res, next) {
 
   try {
     const payload = jwt.verify(token, env.jwtSecret);
-    if (payload.role !== "admin") {
+    if (payload.role !== "Admin") {
       return res.status(403).json({ message: "Admin access required." });
     }
 

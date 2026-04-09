@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS Roles (
 CREATE TABLE IF NOT EXISTS Qualifications (
   QualificationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   QualificationName VARCHAR(150) NOT NULL UNIQUE,
-  Status VARCHAR(50) NOT NULL DEFAULT 'Active'
+  Status VARCHAR(50) NOT NULL DEFAULT 'Active',
+  CONSTRAINT chk_qualifications_status CHECK (Status IN ('Active', 'Inactive'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Users (
@@ -41,16 +42,16 @@ CREATE TABLE IF NOT EXISTS Users (
   PasswordHash VARCHAR(255) NOT NULL,
   IsActive TINYINT(1) NOT NULL DEFAULT 1,
   QualificationID INT UNSIGNED NULL,
-  UserQualificationID INT UNSIGNED NULL,
   FullName VARCHAR(150) NOT NULL,
   Email VARCHAR(150) NOT NULL UNIQUE,
   Progress INT UNSIGNED NOT NULL DEFAULT 0,
   Status VARCHAR(50) NOT NULL DEFAULT 'Active',
   RoleID TINYINT UNSIGNED NOT NULL,
-  Role VARCHAR(50) NOT NULL,
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_users_role FOREIGN KEY (RoleID) REFERENCES Roles (RoleID),
-  CONSTRAINT fk_users_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID)
+  CONSTRAINT fk_users_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID),
+  CONSTRAINT chk_users_status CHECK (Status IN ('Active', 'Inactive', 'Suspended')),
+  CONSTRAINT chk_users_is_active CHECK (IsActive IN (0, 1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
@@ -104,7 +105,8 @@ CREATE TABLE IF NOT EXISTS AssessmentAttempts (
   Status VARCHAR(50) NOT NULL DEFAULT 'Pending',
   SubmittedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_assessment_attempts_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
-  CONSTRAINT fk_assessment_attempts_assessment FOREIGN KEY (AssessmentID) REFERENCES Assessments (AssessmentID) ON DELETE CASCADE
+  CONSTRAINT fk_assessment_attempts_assessment FOREIGN KEY (AssessmentID) REFERENCES Assessments (AssessmentID) ON DELETE CASCADE,
+  CONSTRAINT chk_assessment_attempts_status CHECK (Status IN ('Pending', 'Submitted', 'Passed', 'Failed'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS LearningMaterials (
@@ -135,7 +137,8 @@ CREATE TABLE IF NOT EXISTS Certificates (
   Status VARCHAR(50) NOT NULL DEFAULT 'Pending',
   UNIQUE KEY uq_certificates_user_qualification (UserID, QualificationID),
   CONSTRAINT fk_certificates_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
-  CONSTRAINT fk_certificates_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE
+  CONSTRAINT fk_certificates_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE,
+  CONSTRAINT chk_certificates_status CHECK (Status IN ('Pending', 'Issued', 'Revoked'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Schedules (
@@ -158,7 +161,8 @@ CREATE TABLE IF NOT EXISTS Announcements (
   TargetRole VARCHAR(50) NOT NULL,
   ExpiryDate DATE NULL,
   CreatedBy INT UNSIGNED NULL,
-  CONSTRAINT fk_announcements_created_by FOREIGN KEY (CreatedBy) REFERENCES Users (UserID) ON DELETE SET NULL
+  CONSTRAINT fk_announcements_created_by FOREIGN KEY (CreatedBy) REFERENCES Users (UserID) ON DELETE SET NULL,
+  CONSTRAINT chk_announcements_target_role CHECK (TargetRole IN ('Admin', 'User', 'All'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Notifications (

@@ -1,21 +1,19 @@
 const bcrypt = require("bcryptjs");
 const { query, pool } = require("../src/config/db");
 
-const ADMIN_ID = 1;
-const USER_ID = 2;
 const ADMIN_ROLE = "Admin";
 const USER_ROLE = "User";
 
-async function createRoleIfNotExists(roleID, roleTitle, description) {
+async function createRoleIfNotExists(roleTitle, description) {
   const [existingRoles] = await query(
-    "SELECT RoleId FROM Roles WHERE RoleTitle = ? LIMIT 1",
+    "SELECT RoleID FROM Roles WHERE RoleTitle = ? LIMIT 1",
     [roleTitle]
   );
 
   if (existingRoles.length === 0) {
     await query(
-      "INSERT INTO Roles (RoleID, RoleTitle, Description) VALUES (?, ?, ?)",
-      [roleID, roleTitle, description]
+      "INSERT INTO Roles (RoleTitle, Description) VALUES (?, ?)",
+      [roleTitle, description]
     );
   }
 }
@@ -28,7 +26,7 @@ async function createUser(username, password, fullName, email, roleTitle) {
   const passwordHash = await bcrypt.hash(password, 12);
 
   const [roleRows] = await query(
-    "SELECT RoleId FROM Roles WHERE RoleTitle = ? LIMIT 1",
+    "SELECT RoleID FROM Roles WHERE RoleTitle = ? LIMIT 1",
     [roleTitle]
   );
 
@@ -36,19 +34,18 @@ async function createUser(username, password, fullName, email, roleTitle) {
     throw new Error(`Role "${roleTitle}" does not exist.`);
   }
 
-  const roleId = roleRows[0].RoleId;
+  const roleId = roleRows[0].RoleID;
 
   await query(
-    `INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleId, Role, IsActive, Status, Progress)
-     VALUES (?, ?, ?, ?, ?, ?, 1, 'Active', 0)
+    `INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID, IsActive, Status, Progress)
+     VALUES (?, ?, ?, ?, ?, 1, 'Active', 0)
      ON DUPLICATE KEY UPDATE
        PasswordHash = VALUES(PasswordHash),
        FullName = VALUES(FullName),
        Email = VALUES(Email),
-       RoleId = VALUES(RoleId),
-       Role = VALUES(Role),
+       RoleID = VALUES(RoleID),
        IsActive = 1`,
-    [username, passwordHash, fullName, email, roleId, roleTitle]
+    [username, passwordHash, fullName, email, roleId]
   );
 
   console.log(`User account upserted for username: ${username} (Role: ${roleTitle})`);
@@ -80,8 +77,8 @@ async function run() {
   }
 
   // Create roles if they don't exist
-  await createRoleIfNotExists(ADMIN_ID, ADMIN_ROLE, "Administrator with read and write access");
-  await createRoleIfNotExists(USER_ID, USER_ROLE, "Normal user with limited access");
+  await createRoleIfNotExists(ADMIN_ROLE, "Administrator with read and write access");
+  await createRoleIfNotExists(USER_ROLE, "Normal user with limited access");
 
   // Create admin user
   await createUser(adminUsername, adminPassword, adminFullName, adminEmail, ADMIN_ROLE);

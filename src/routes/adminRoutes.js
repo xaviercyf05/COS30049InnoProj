@@ -49,8 +49,18 @@ router.post(
     body("role")
       .optional()
       .trim()
-      .isIn(["admin"])
+      .isIn(["admin", "Admin"])
       .withMessage("Only the admin role is currently supported."),
+    body("fullName")
+      .optional()
+      .trim()
+      .isLength({ min: 2, max: 150 })
+      .withMessage("fullName must be between 2 and 150 characters."),
+    body("email")
+      .optional()
+      .trim()
+      .isEmail()
+      .withMessage("email must be a valid email address."),
   ],
   validate,
   asyncHandler(createAdminUser)

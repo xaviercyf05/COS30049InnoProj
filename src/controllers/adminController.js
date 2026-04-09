@@ -3,7 +3,7 @@ const jwt = require("jsonwebtoken");
 const { query } = require("../config/db");
 const env = require("../config/env");
 
-const ADMIN_ROLE = "admin";
+const ADMIN_ROLE = "Admin";
 
 function toPublishedFlag(value, fallback = 1) {
   if (value === undefined || value === null) {
@@ -25,15 +25,15 @@ async function loginAdmin(req, res) {
   const { username, password } = req.body;
 
   const [rows] = await query(
-    `SELECT u.id,
-            u.username,
-            u.password_hash AS passwordHash,
-            r.role_name AS role
-     FROM users u
-     INNER JOIN roles r ON r.id = u.role_id
-     WHERE u.username = ?
-       AND u.is_active = 1
-       AND r.role_name = ?
+    `SELECT u.UserID AS id,
+            u.Username AS username,
+            u.PasswordHash AS passwordHash,
+            r.RoleTitle AS role
+     FROM Users u
+     INNER JOIN Roles r ON r.RoleID = u.RoleID
+     WHERE u.Username = ?
+       AND u.IsActive = 1
+       AND r.RoleTitle = ?
      LIMIT 1`,
     [username, ADMIN_ROLE]
   );
@@ -156,15 +156,15 @@ async function deletePost(req, res) {
 
 async function listAdminUsers(req, res) {
   const [rows] = await query(
-    `SELECT u.id,
-            u.username,
-            r.role_name AS role,
-            u.is_active AS isActive,
-            u.created_at AS createdAt
-     FROM users u
-     INNER JOIN roles r ON r.id = u.role_id
-     WHERE r.role_name = ?
-     ORDER BY u.created_at DESC`,
+    `SELECT u.UserID AS id,
+            u.Username AS username,
+            r.RoleTitle AS role,
+            u.IsActive AS isActive,
+            u.CreatedAt AS createdAt
+     FROM Users u
+     INNER JOIN Roles r ON r.RoleID = u.RoleID
+     WHERE r.RoleTitle = ?
+     ORDER BY u.CreatedAt DESC`,
     [ADMIN_ROLE]
   );
 
@@ -172,36 +172,39 @@ async function listAdminUsers(req, res) {
 }
 
 async function createAdminUser(req, res) {
-  const { username, password, role = ADMIN_ROLE } = req.body;
+  const { username, password, fullName, email, role = ADMIN_ROLE } = req.body;
+  const normalizedRole = String(role || "").trim().toLowerCase() === "admin" ? ADMIN_ROLE : role;
 
-  if (role !== ADMIN_ROLE) {
+  if (normalizedRole !== ADMIN_ROLE) {
     return res.status(400).json({ message: "Only the admin role is currently supported." });
   }
 
-  const [roleRows] = await query("SELECT id FROM roles WHERE role_name = ? LIMIT 1", [role]);
+  const [roleRows] = await query("SELECT RoleID FROM Roles WHERE RoleTitle = ? LIMIT 1", [normalizedRole]);
 
   if (roleRows.length === 0) {
     return res.status(400).json({ message: "Role not found." });
   }
 
-  const roleId = roleRows[0].id;
+  const roleId = roleRows[0].RoleID;
   const passwordHash = await bcrypt.hash(password, 12);
+  const resolvedFullName = String(fullName || username).trim();
+  const resolvedEmail = String(email || `${username}@local.invalid`).trim().toLowerCase();
 
   try {
     const [result] = await query(
-      "INSERT INTO users (username, password_hash, role_id) VALUES (?, ?, ?)",
-      [username, passwordHash, roleId]
+      "INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID, IsActive, Status, Progress) VALUES (?, ?, ?, ?, ?, 1, 'Active', 0)",
+      [username, passwordHash, resolvedFullName, resolvedEmail, roleId]
     );
 
     const [rows] = await query(
-      `SELECT u.id,
-              u.username,
-              r.role_name AS role,
-              u.is_active AS isActive,
-              u.created_at AS createdAt
-       FROM users u
-       INNER JOIN roles r ON r.id = u.role_id
-       WHERE u.id = ?
+      `SELECT u.UserID AS id,
+              u.Username AS username,
+              r.RoleTitle AS role,
+              u.IsActive AS isActive,
+              u.CreatedAt AS createdAt
+       FROM Users u
+       INNER JOIN Roles r ON r.RoleID = u.RoleID
+       WHERE u.UserID = ?
        LIMIT 1`,
       [result.insertId]
     );

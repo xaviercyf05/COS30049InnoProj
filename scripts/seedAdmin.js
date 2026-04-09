@@ -1,55 +1,97 @@
 const bcrypt = require("bcryptjs");
 const { query, pool } = require("../src/config/db");
 
-const ADMIN_ROLE = "admin";
+const ADMIN_ROLE = "Admin";
+const USER_ROLE = "User";
 
-async function run() {
-  const username = process.argv[2] || process.env.ADMIN_USERNAME;
-  const password = process.argv[3] || process.env.ADMIN_PASSWORD;
+async function createRoleIfNotExists(roleTitle, description) {
+  const [existingRoles] = await query(
+    "SELECT RoleId FROM Roles WHERE RoleTitle = ? LIMIT 1",
+    [roleTitle]
+  );
 
-  if (!username || !password) {
-    throw new Error(
-      "Missing credentials. Usage: npm run seed:admin -- <username> <password>"
+  if (existingRoles.length === 0) {
+    await query(
+      "INSERT INTO Roles (RoleTitle, Description) VALUES (?, ?)",
+      [roleTitle, description]
     );
   }
+}
 
+async function createUser(username, password, fullName, email, roleTitle) {
   if (password.length < 8) {
-    throw new Error("Admin password must be at least 8 characters.");
+    throw new Error(`Password for ${username} must be at least 8 characters.`);
   }
 
   const passwordHash = await bcrypt.hash(password, 12);
 
-  await query(
-    `INSERT INTO roles (role_name, description)
-     VALUES (?, ?)
-     ON DUPLICATE KEY UPDATE description = VALUES(description)`,
-    [ADMIN_ROLE, "Administrator with read and write access"]
+  const [roleRows] = await query(
+    "SELECT RoleId FROM Roles WHERE RoleTitle = ? LIMIT 1",
+    [roleTitle]
   );
-
-  const [roleRows] = await query("SELECT id FROM roles WHERE role_name = ? LIMIT 1", [ADMIN_ROLE]);
 
   if (roleRows.length === 0) {
-    throw new Error("Admin role does not exist and could not be created.");
+    throw new Error(`Role "${roleTitle}" does not exist.`);
   }
 
-  const roleId = roleRows[0].id;
+  const roleId = roleRows[0].RoleId;
 
   await query(
-    `INSERT INTO users (username, password_hash, role_id, is_active)
-     VALUES (?, ?, ?, 1)
+    `INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleId, Role, IsActive, Status, Progress, Password)
+     VALUES (?, ?, ?, ?, ?, ?, 1, 'Active', 0, ?)
      ON DUPLICATE KEY UPDATE
-       password_hash = VALUES(password_hash),
-       role_id = VALUES(role_id),
-       is_active = 1`,
-    [username, passwordHash, roleId]
+       PasswordHash = VALUES(PasswordHash),
+       FullName = VALUES(FullName),
+       Email = VALUES(Email),
+       RoleId = VALUES(RoleId),
+       Role = VALUES(Role),
+       IsActive = 1,
+       Password = VALUES(Password)`,
+    [username, passwordHash, fullName, email, roleId, roleTitle, password]
   );
 
-  console.log(`Admin account upserted for username: ${username}`);
+  console.log(`User account upserted for username: ${username} (Role: ${roleTitle})`);
+}
+
+async function run() {
+  const adminUsername = process.env.ADMIN_USERNAME;
+  const adminPassword = process.env.ADMIN_PASSWORD;
+  const adminFullName = process.env.ADMIN_FULLNAME;
+  const adminEmail = process.env.ADMIN_EMAIL;
+
+  const userUsername = process.env.USER_USERNAME;
+  const userPassword = process.env.USER_PASSWORD;
+  const userFullName = process.env.USER_FULLNAME;
+  const userEmail = process.env.USER_EMAIL;
+
+  // Validate admin credentials
+  if (!adminUsername || !adminPassword || !adminFullName || !adminEmail) {
+    throw new Error(
+      "Missing admin credentials. Please set: ADMIN_USERNAME, ADMIN_PASSWORD, ADMIN_FULLNAME, ADMIN_EMAIL"
+    );
+  }
+
+  // Validate user credentials
+  if (!userUsername || !userPassword || !userFullName || !userEmail) {
+    throw new Error(
+      "Missing user credentials. Please set: USER_USERNAME, USER_PASSWORD, USER_FULLNAME, USER_EMAIL"
+    );
+  }
+
+  // Create roles if they don't exist
+  await createRoleIfNotExists(ADMIN_ROLE, "Administrator with read and write access");
+  await createRoleIfNotExists(USER_ROLE, "Normal user with limited access");
+
+  // Create admin user
+  await createUser(adminUsername, adminPassword, adminFullName, adminEmail, ADMIN_ROLE);
+
+  // Create normal user
+  await createUser(userUsername, userPassword, userFullName, userEmail, USER_ROLE);
 }
 
 run()
   .catch((error) => {
-    console.error(error.message);
+    console.error("Error:", error.message);
     process.exitCode = 1;
   })
   .finally(async () => {

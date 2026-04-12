@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FBFCF8', 
   },
 
-  /* Header - Premium Minimalist */
+  /* Header */
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -225,7 +225,7 @@ const styles = StyleSheet.create({
     borderColor: '#E8E8E0',
   },
 
-  /* Dropdown - Soft Glassmorphism */
+  /* Dropdown */
   dropdown: {
     position: 'absolute',
     top: 50,
@@ -289,28 +289,24 @@ const styles = StyleSheet.create({
     marginTop: 30,
     marginBottom: 10,
   },
-cardContainer: {
+  
+  cardContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
     paddingHorizontal: 10,
-    justifyContent: 'flex-start',
     zIndex: 1,
   },
 
   cardWrapper: {
-    /* flexBasis is the 'ideal' width. 
-       - At ~30%, you get 3 cards per row.
-       - As the screen narrows, if 30% hits the 'minWidth', 
-         the cards will wrap to 2 per row, then 1.
-    */
-    flexBasis: '31%', 
-    flexGrow: 1,       // Allows cards to expand to fill the row beautifully
-    minWidth: 160,     // The 'breaking point' - if a card is thinner than 160px, it wraps
-    margin: 8,         // Consistent soft spacing
+    flexBasis: '30%',
+    flexGrow: 1,
+    minWidth: 250,
+
+    margin: 8,
+
     borderRadius: 22,
     backgroundColor: '#FFF',
-    
-    // Premium Soft Shadow
+
     shadowColor: '#3A4D39',
     shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.1,
@@ -319,7 +315,7 @@ cardContainer: {
   },
 
   card: {
-    height: 180,       // Slightly taller for a more "magazine" premium feel
+    height: 180,
     justifyContent: 'flex-end',
     padding: 16,
     overflow: 'hidden',
@@ -327,7 +323,6 @@ cardContainer: {
 
   overlay: {
     ...StyleSheet.absoluteFillObject,
-    // Soft gradient-like overlay (top is lighter, bottom is darker for text)
     backgroundColor: 'rgba(0,0,0,0.2)', 
     borderRadius: 22,
   },
@@ -340,7 +335,6 @@ cardContainer: {
     letterSpacing: 0.5,
   },
 
-  /* Elegant Minimalist Progress Bar */
   progressBar: {
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.25)',

@@ -6,6 +6,9 @@ import EditGuideProfileScreen from './EditGuideProfile';
 import GuideAssessmentScreen from './GuideAssessment';
 import SubmittedPageScreen from './SubmittedPage';
 import HomeScreen from './HomeScreen';
+import AdminAssessmentScreen from './AdminAssessment';
+import Grade2AdminAssessmentScreen from './Grade2AdminAssessment';
+import Grade3AdminAssessmentScreen from './Grade3AdminAssessment';
 import AdminProfileScreen from './AdminProfile';
 import EditAdminProfileScreen from './EditAdminProfile';
 
@@ -13,13 +16,16 @@ const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => (
   <NavigationContainer>
-    <Stack.Navigator initialRouteName="GuideAssessment" screenOptions={{ headerShown: false }}>
+    <Stack.Navigator initialRouteName="AdminAssessment" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="GuideAssessment" component={GuideAssessmentScreen} />
       <Stack.Screen name="SubmittedPage" component={SubmittedPageScreen} />
       <Stack.Screen name="HomeScreen" component={HomeScreen} />
       <Stack.Screen name="GuideProfile" component={GuideProfileScreen} />
       <Stack.Screen name="EditGuideProfile" component={EditGuideProfileScreen} />
       <Stack.Screen name="AdminProfile" component={AdminProfileScreen} />
+      <Stack.Screen name="AdminAssessment" component={AdminAssessmentScreen} />
+      <Stack.Screen name="Grade2AdminAssessment" component={Grade2AdminAssessmentScreen} />
+      <Stack.Screen name="Grade3AdminAssessment" component={Grade3AdminAssessmentScreen} />
       <Stack.Screen name="EditAdminProfile" component={EditAdminProfileScreen} />
     </Stack.Navigator>
   </NavigationContainer>

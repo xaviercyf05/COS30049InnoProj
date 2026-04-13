@@ -10,6 +10,11 @@ function parsePort(value, fallback) {
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
 }
 
+function parsePositiveInt(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 // Read and parse boolean values from .env
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") {
@@ -47,6 +52,8 @@ const env = {
   },
   jwtSecret: process.env.JWT_SECRET || "change-this-in-production",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "12h",
+  richContentStorageDir: process.env.RICH_CONTENT_STORAGE_DIR || "",
+  richContentMaxFileSizeMb: parsePositiveInt(process.env.RICH_CONTENT_MAX_FILE_SIZE_MB, 10),
 };
 
 if (env.nodeEnv === "production" && env.jwtSecret === "change-this-in-production") {

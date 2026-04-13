@@ -15,9 +15,18 @@ const moduleRoutes = require("./routes/v1/moduleRoutes");
 const assessmentRoutes = require("./routes/v1/assessmentRoutes");
 const notificationRoutes = require("./routes/v1/notificationRoutes");
 const adminRoutes = require("./routes/v1/adminRoutes");
+const richContentModule = require("../feature_modules/rich-content/backend");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
+const richContentStorageDir = richContentModule.initRichContentStorage();
+const richContentDemoDir = path.join(
+  __dirname,
+  "..",
+  "feature_modules",
+  "rich-content",
+  "frontend"
+);
 
 /**
  * Security and middleware setup
@@ -30,6 +39,8 @@ app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ limit: "10kb", extended: true }));
 app.use(express.static(publicDir));
 app.use("/public", express.static(publicDir));
+app.use("/storage", express.static(richContentStorageDir));
+app.use("/rich-content-demo", express.static(richContentDemoDir));
 
 app.get("/", (req, res) => {
   return res.sendFile(path.join(publicDir, "index.html"));
@@ -81,6 +92,9 @@ apiV1.use("/notifications", notificationRoutes);
 
 // Admin management routes (admin only)
 apiV1.use("/admin", adminRoutes);
+
+// Rich content + attachments routes (protected)
+apiV1.use("/rich-content", richContentModule.router);
 
 // Register v1 routes
 app.use("/api/v1", apiV1);

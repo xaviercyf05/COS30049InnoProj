@@ -29,6 +29,10 @@ CREATE TABLE IF NOT EXISTS Roles (
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+INSERT INTO Roles (RoleTitle, Description) VALUES
+  ('Admin', 'Administrator with full access to the system'),
+  ('User', 'Regular user with limited access');
+
 CREATE TABLE IF NOT EXISTS Qualifications (
   QualificationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   QualificationName VARCHAR(150) NOT NULL UNIQUE,
@@ -53,6 +57,11 @@ CREATE TABLE IF NOT EXISTS Users (
   CONSTRAINT chk_users_status CHECK (Status IN ('Active', 'Inactive', 'Suspended')),
   CONSTRAINT chk_users_is_active CHECK (IsActive IN (0, 1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE Users AUTO_INCREMENT = 10000000;
+
+INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID) VALUES
+  ('admin', '$2a$12$XTAmB//Mq3sWPbx5e43MQeCL8KZRnuQRFhzwxysI9nL3hVMViS3UW', 'Default Admin', 'admin@default.com', 1);
 
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
 

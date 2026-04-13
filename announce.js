@@ -1,4 +1,3 @@
-// announce.js
 import React from "react";
 import {
   ScrollView,

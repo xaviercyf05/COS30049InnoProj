@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "ProfilePage",
-    "slug": "ProfilePage",
+    "name": "Training App",
+    "slug": "TrainingApp",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

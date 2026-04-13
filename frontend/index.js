@@ -1,13 +1,22 @@
+// Import React Native and Expo stuff
 import { AppRegistry } from 'react-native';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import GuideProfileScreen from './GuideProfile';
+import { registerRootComponent } from 'expo';
+
+// Import Login Page
+import LoginPage from './Login/LoginPage';
+
+/*import GuideProfileScreen from './GuideProfile';
 import EditGuideProfileScreen from './EditGuideProfile';
 import AdminProfileScreen from './AdminProfile';
 import EditAdminProfileScreen from './EditAdminProfile';
+*/
 import { name as appName } from './app.json'; // App name from app.json
 
-const Stack = createNativeStackNavigator();
+registerRootComponent(LoginPage); // Register LoginPage as the main component
+
+/*const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => (
   <NavigationContainer>
@@ -38,3 +47,4 @@ AppRegistry.registerComponent(appName, () => AppNavigator);
 AppRegistry.runApplication(appName, {
   rootTag: document.getElementById('root'),
 });
+*/

@@ -1,0 +1,128 @@
+// SFCStyles.js
+import { StyleSheet, Platform } from 'react-native';
+
+export const styles = StyleSheet.create({
+  mainContainer: {
+    flex: 1,
+    backgroundColor: '#071407',
+  },
+  smoothTree: {
+    position: 'absolute',
+    bottom: -50,
+    width: '140%',
+    height: '100%',
+    alignSelf: 'center',
+    zIndex: 0,
+    opacity: 0.8,
+    transform: [{ perspective: 1000 }],
+  },
+  vignetteOverlay: {
+    ...StyleSheet.absoluteFill,
+    backgroundColor: 'rgba(12, 95, 12, 0.4)',
+    zIndex: 1,
+  },
+  container: {
+    flex: 1,
+    padding: 30,
+    justifyContent: 'center',
+    zIndex: 2,
+  },
+  header: {
+    alignItems: 'center',
+    marginBottom: 40,
+  },
+  logoCircle: {
+    width: 110,
+    height: 110,
+    borderRadius: 55,
+    backgroundColor: '#2D5A27',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 20,
+    borderWidth: 3,
+    borderColor: '#FFD700',
+    elevation: 8,
+    shadowColor: '#FFD700',
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+  },
+  title: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: '#FFFFFF',
+    textAlign: 'center',
+    letterSpacing: 0.8,
+  },
+  subtitle: {
+    fontSize: 14,
+    color: '#BDC3C7',
+    marginTop: 5,
+  },
+  card: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 20,
+    padding: 25,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.2,
+    shadowRadius: 15,
+    elevation: 10,
+  },
+  loginLabel: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2D5A27',
+    marginBottom: 20,
+    textAlign: 'center',
+  },
+  inputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#EAEAEA',
+    borderRadius: 12,
+    marginBottom: 15,
+    paddingHorizontal: 15,
+    height: 55,
+    backgroundColor: '#F9F9F9',
+  },
+  icon: {
+    marginRight: 10,
+  },
+  input: {
+    flex: 1,
+    color: '#333',
+    fontSize: 16,
+  },
+  loginButton: {
+    backgroundColor: '#2D5A27',
+    height: 55,
+    borderRadius: 12,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  loginButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: 'bold',
+    letterSpacing: 1,
+  },
+  footer: {
+    marginTop: 40,
+    alignItems: 'center',
+  },
+  securityBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  footerText: {
+    color: '#FFF',
+    fontSize: 12,
+    marginLeft: 6,
+  }
+});

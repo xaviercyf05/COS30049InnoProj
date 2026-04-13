@@ -5,6 +5,15 @@
 http://localhost:3000/api/v1
 ```
 
+Production base URL:
+```
+https://api.innopappserver.xyz/api/v1
+```
+
+Important:
+- `/auth/login` is a `POST` endpoint only.
+- Opening `https://api.innopappserver.xyz/api/v1/auth/login` in a browser sends a `GET` request and will return `{"success":false,"message":"Endpoint not found."}`.
+
 ## Authentication
 Most endpoints require a Bearer token obtained from login. Include token in headers:
 ```
@@ -17,6 +26,11 @@ Authorization: Bearer <token>
 
 ### POST `/auth/login`
 Login a user (park guide or admin).
+
+Full production endpoint:
+```
+POST https://api.innopappserver.xyz/api/v1/auth/login
+```
 
 **Request Body:**
 ```json

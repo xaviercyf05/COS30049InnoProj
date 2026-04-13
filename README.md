@@ -131,17 +131,16 @@ https://innopappserver.xyz/api/health
 
 Public:
 - GET /api/health
-- GET /api/posts
-- GET /api/posts/:id
+- GET /api/v1/qualifications
 
 Admin:
-- POST /api/admin/login
-- GET /api/admin/posts
-- POST /api/admin/posts
-- PUT /api/admin/posts/:id
-- DELETE /api/admin/posts/:id
-- GET /api/admin/users
-- POST /api/admin/users
+- POST /api/v1/auth/login (combined login for both User and Admin)
+- GET /api/v1/admin/users
+- POST /api/v1/admin/qualifications
+- POST /api/v1/admin/announcements
+- POST /api/v1/admin/schedules
+- PUT /api/v1/admin/users/:userId/status
+- GET /api/v1/admin/users/:userId/enrollments
 
 Admin endpoints (except login) require Authorization header:
 

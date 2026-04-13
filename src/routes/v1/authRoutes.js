@@ -6,6 +6,13 @@ const userController = require("../../controllers/userController");
 
 const router = express.Router();
 
+router.get("/login", (req, res) => {
+  return res.status(405).json({
+    success: false,
+    message: "Method not allowed. Use POST /api/v1/auth/login.",
+  });
+});
+
 /**
  * POST /auth/login - Login user (park guide or admin)
  * Body: { username, password }

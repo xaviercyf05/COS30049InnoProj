@@ -11,11 +11,13 @@ CAMERA_SOURCE = 0
 CONFIDENCE_THRESHOLD = 0.6
 SAVE_FOLDER = "evidence"
 
-# Only abnormal classes
 TARGET_CLASSES = ["Animal", "Plant"]
 
 SAVE_COOLDOWN_SECONDS = 5
-ALERT_DISPLAY_SECONDS = 2.0   # keep alert text visible for 2 seconds
+ALERT_DISPLAY_SECONDS = 2.0
+
+RECORD_DURATION_SECONDS = 6   # how long each clip lasts
+FPS = 20
 
 # =========================
 # PREPARE
@@ -36,6 +38,11 @@ if not cap.isOpened():
 last_save_time = 0
 alert_until_time = 0
 current_alert_text = ""
+
+# Recording variables
+recording = False
+video_writer = None
+record_end_time = 0
 
 # =========================
 # MAIN LOOP
@@ -61,31 +68,50 @@ while True:
             detected_target = True
 
             if cls_name == "Plant":
-                detected_labels.append(
-                    f"Prohibited Plant Interaction ({conf:.2f})")
+                detected_labels.append(f"Prohibited Plant Interaction ({conf:.2f})")
             elif cls_name == "Animal":
-                detected_labels.append(
-                    f"Prohibited Animal Interaction ({conf:.2f})")
+                detected_labels.append(f"Prohibited Animal Interaction ({conf:.2f})")
 
     current_time = time.time()
 
-    # Save evidence with cooldown
-    if detected_target and (current_time - last_save_time > SAVE_COOLDOWN_SECONDS):
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        filename = os.path.join(SAVE_FOLDER, f"evidence_{timestamp}.jpg")
+    # =========================
+    # START RECORDING
+    # =========================
+    if detected_target and not recording and (current_time - last_save_time > SAVE_COOLDOWN_SECONDS):
 
-        cv2.imwrite(filename, annotated_frame)
+        timestamp = time.strftime("%Y%m%d_%H%M%S")
+        filename = os.path.join(SAVE_FOLDER, f"evidence_{timestamp}.mp4")
+
+        fourcc = cv2.VideoWriter_fourcc(*"mp4v")
+        height, width, _ = frame.shape
+        video_writer = cv2.VideoWriter(filename, fourcc, FPS, (width, height))
+
+        recording = True
+        record_end_time = current_time + RECORD_DURATION_SECONDS
         last_save_time = current_time
 
-        print("[ALERT] Prohibited activity detected!")
+        print("[ALERT] Recording started!")
         print("[INFO] Detected:", ", ".join(detected_labels))
-        print(f"[INFO] Evidence saved: {filename}")
+        print(f"[INFO] Saving video: {filename}")
 
-        # Keep alert text visible for a few seconds
-        current_alert_text = "ALERT: Prohibited Activity Detected!"
+        current_alert_text = "ALERT: Recording Evidence!"
         alert_until_time = current_time + ALERT_DISPLAY_SECONDS
 
-    # Show alert text as long as timer has not expired
+    # =========================
+    # RECORD FRAMES
+    # =========================
+    if recording:
+        video_writer.write(annotated_frame)
+
+        if current_time >= record_end_time:
+            recording = False
+            video_writer.release()
+            video_writer = None
+            print("[INFO] Recording finished.")
+
+    # =========================
+    # DISPLAY ALERT TEXT
+    # =========================
     if current_time < alert_until_time:
         cv2.putText(
             annotated_frame,
@@ -101,6 +127,12 @@ while True:
 
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
+
+# =========================
+# CLEANUP
+# =========================
+if video_writer is not None:
+    video_writer.release()
 
 cap.release()
 cv2.destroyAllWindows()

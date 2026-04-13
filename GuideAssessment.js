@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
 	Alert,
 	ScrollView,
@@ -222,9 +222,21 @@ const fillBlankQuestions = [
 ];
 
 const questions = [...mcqQuestions, ...fillBlankQuestions];
+const DEFAULT_DURATION_SECONDS = 2 * 60 * 60;
 
-const GuideAssessment = () => {
+const formatDuration = (seconds) => {
+	const safeSeconds = Math.max(0, seconds);
+	const hours = String(Math.floor(safeSeconds / 3600)).padStart(2, '0');
+	const minutes = String(Math.floor((safeSeconds % 3600) / 60)).padStart(2, '0');
+	const remainingSeconds = String(safeSeconds % 60).padStart(2, '0');
+	return `${hours}:${minutes}:${remainingSeconds}`;
+};
+
+const GuideAssessment = ({ navigation }) => {
 	const [answers, setAnswers] = useState({});
+	const [timeLeft, setTimeLeft] = useState(DEFAULT_DURATION_SECONDS);
+	const [timeUpNotified, setTimeUpNotified] = useState(false);
+	const [warningMessage, setWarningMessage] = useState('');
 
 	const answeredCount = useMemo(
 		() =>
@@ -238,25 +250,80 @@ const GuideAssessment = () => {
 		[answers]
 	);
 
+	const formattedTime = useMemo(() => {
+		const hours = String(Math.floor(timeLeft / 3600)).padStart(2, '0');
+		const minutes = String(Math.floor((timeLeft % 3600) / 60)).padStart(2, '0');
+		const seconds = String(timeLeft % 60).padStart(2, '0');
+		return `${hours}:${minutes}:${seconds}`;
+	}, [timeLeft]);
+
+	useEffect(() => {
+		if (timeLeft <= 0) {
+			return;
+		}
+
+		const timer = setInterval(() => {
+			setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+		}, 1000);
+
+		return () => clearInterval(timer);
+	}, [timeLeft]);
+
+	useEffect(() => {
+		if (timeLeft === 0 && !timeUpNotified) {
+			Alert.alert('Time is up', 'The assessment timer has ended. Please submit your answers.');
+			setTimeUpNotified(true);
+		}
+	}, [timeLeft, timeUpNotified]);
+
 	const onSelectOption = (questionId, option) => {
+		setWarningMessage('');
 		setAnswers((prev) => ({ ...prev, [questionId]: option }));
 	};
 
 	const onFillAnswer = (questionId, value) => {
+		setWarningMessage('');
 		setAnswers((prev) => ({ ...prev, [questionId]: value }));
 	};
 
 	const onSubmit = () => {
-		Alert.alert('Assessment Submitted', `You answered ${answeredCount} out of ${questions.length} questions.`);
+		const unansweredCount = questions.length - answeredCount;
+		if (unansweredCount > 0) {
+			setWarningMessage(
+				`You still have ${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''}. Please answer all questions before submitting.`
+			);
+			Alert.alert(
+				'Incomplete Assessment',
+				`You still have ${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''}. Please answer all questions before submitting.`
+			);
+			return;
+		}
+
+		setWarningMessage('');
+
+		const timeUsed = formatDuration(DEFAULT_DURATION_SECONDS - timeLeft);
+		navigation.navigate('SubmittedPage', {
+			timeUsed,
+			answeredCount,
+			totalQuestions: questions.length,
+		});
 	};
 
 	return (
 		<SafeAreaView style={styles.container}>
-			<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-				<View style={styles.headerCard}>
-					<Text style={styles.headerTitle}>Assessment</Text>
-					<Text style={styles.headerSubtitle}>30 Questions: 25 MCQ and 5 Fill in the Blank</Text>
-					<Text style={styles.progressText}>Answered: {answeredCount}/30</Text>
+			<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
+				<View style={styles.stickyHeaderWrap}>
+					<View style={styles.headerCard}>
+						<View style={styles.gradeBadge}>
+							<Text style={styles.gradeBadgeText}>Grade 1</Text>
+						</View>
+						<Text style={styles.headerTitle}>Assessment</Text>
+						<Text style={styles.headerSubtitle}>30 Questions: 25 MCQ and 5 Fill in the Blank</Text>
+                        <Text style={styles.headerSubtitle}>You are required to answer all questions within the time limit.</Text>
+                        <Text style={styles.headerSubtitle}>Click the Submit button after you have completed the assessment.</Text>
+						<Text style={styles.progressText}>Answered: {answeredCount}/30</Text>
+						<Text style={styles.timerText}>Time Left: {formattedTime}</Text>
+					</View>
 				</View>
 
 				{questions.map((item, index) => (
@@ -295,10 +362,14 @@ const GuideAssessment = () => {
 					</View>
 				))}
 
+			</ScrollView>
+
+			<View style={styles.footerBar}>
+				{warningMessage ? <Text style={styles.warningText}>{warningMessage}</Text> : null}
 				<TouchableOpacity style={styles.submitButton} onPress={onSubmit} activeOpacity={0.9}>
 					<Text style={styles.submitButtonText}>Submit</Text>
 				</TouchableOpacity>
-			</ScrollView>
+			</View>
 		</SafeAreaView>
 	);
 };
@@ -309,14 +380,35 @@ const styles = StyleSheet.create({
 		backgroundColor: '#F6F8F2',
 	},
 	content: {
-		padding: 16,
-		paddingBottom: 28,
+		paddingTop: 16,
+		paddingBottom: 110,
+	},
+	stickyHeaderWrap: {
+		backgroundColor: '#F6F8F2',
+		paddingBottom: 12,
+		zIndex: 10,
 	},
 	headerCard: {
 		backgroundColor: '#414833',
 		borderRadius: 18,
 		padding: 18,
-		marginBottom: 14,
+		marginHorizontal: 30,
+		position: 'relative',
+	},
+	gradeBadge: {
+		position: 'absolute',
+		top: 12,
+		right: 12,
+		backgroundColor: '#A4AC86',
+		paddingHorizontal: 10,
+		paddingVertical: 6,
+		borderRadius: 999,
+	},
+	gradeBadgeText: {
+		color: '#243018',
+		fontSize: 13,
+		fontWeight: '800',
+		letterSpacing: 0.2,
 	},
 	headerTitle: {
 		color: '#F5F8F0',
@@ -335,12 +427,19 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		fontWeight: '700',
 	},
+	timerText: {
+		marginTop: 8,
+		color: '#F1E8A3',
+		fontSize: 14,
+		fontWeight: '800',
+	},
 	questionCard: {
 		backgroundColor: '#FFFFFF',
 		borderRadius: 14,
 		borderWidth: 1,
 		borderColor: '#E0E6D8',
 		padding: 14,
+		marginHorizontal: 70,
 		marginBottom: 12,
 	},
 	questionTopRow: {
@@ -350,7 +449,7 @@ const styles = StyleSheet.create({
 		marginBottom: 8,
 	},
 	questionNumber: {
-		fontSize: 13,
+		fontSize: 14,
 		fontWeight: '800',
 		color: '#4A513B',
 	},
@@ -382,8 +481,8 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 12,
 	},
 	optionButtonSelected: {
-		borderColor: '#656D4A',
-		backgroundColor: '#E6EED8',
+		borderColor: '#4F772D',
+		backgroundColor: '#4F772D',
 	},
 	optionText: {
 		color: '#364225',
@@ -391,8 +490,26 @@ const styles = StyleSheet.create({
 		fontWeight: '500',
 	},
 	optionTextSelected: {
-		color: '#2B331E',
+		color: '#FFFFFF',
 		fontWeight: '700',
+	},
+	footerBar: {
+		position: 'absolute',
+		left: 0,
+		right: 0,
+		bottom: 0,
+		backgroundColor: '#F6F8F2',
+		paddingTop: 10,
+		paddingBottom: 16,
+		paddingHorizontal: 24,
+	},
+	warningText: {
+		alignSelf: 'center',
+		marginBottom: 8,
+		color: '#A52323',
+		fontSize: 13,
+		fontWeight: '700',
+		textAlign: 'center',
 	},
 	fillInput: {
 		marginTop: 10,
@@ -406,13 +523,14 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 	},
 	submitButton: {
-		marginTop: 6,
-		marginBottom: 20,
+		alignSelf: 'center',
 		backgroundColor: '#656D4A',
 		borderRadius: 12,
 		alignItems: 'center',
 		justifyContent: 'center',
-		paddingVertical: 14,
+		paddingVertical: 11,
+		paddingHorizontal: 28,
+		minWidth: 140,
 	},
 	submitButtonText: {
 		color: '#F5F8F0',

@@ -4,6 +4,8 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import GuideProfileScreen from './GuideProfile';
 import EditGuideProfileScreen from './EditGuideProfile';
 import GuideAssessmentScreen from './GuideAssessment';
+import SubmittedPageScreen from './SubmittedPage';
+import HomeScreen from './HomeScreen';
 import AdminProfileScreen from './AdminProfile';
 import EditAdminProfileScreen from './EditAdminProfile';
 
@@ -13,6 +15,8 @@ const AppNavigator = () => (
   <NavigationContainer>
     <Stack.Navigator initialRouteName="GuideAssessment" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="GuideAssessment" component={GuideAssessmentScreen} />
+      <Stack.Screen name="SubmittedPage" component={SubmittedPageScreen} />
+      <Stack.Screen name="HomeScreen" component={HomeScreen} />
       <Stack.Screen name="GuideProfile" component={GuideProfileScreen} />
       <Stack.Screen name="EditGuideProfile" component={EditGuideProfileScreen} />
       <Stack.Screen name="AdminProfile" component={AdminProfileScreen} />

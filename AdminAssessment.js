@@ -293,10 +293,38 @@ const AdminAssessment = () => {
         }
 
         if (field === 'type') {
+          if (value === question.type) {
+            return question;
+          }
+
+          const defaultMcqOptions = ['Option 1', 'Option 2', 'Option 3', 'Option 4'];
+
+          if (value === 'fill') {
+            const mcqOptionsBackup = question.options.length
+              ? [...question.options]
+              : question.mcqOptionsBackup?.length
+                ? [...question.mcqOptionsBackup]
+                : defaultMcqOptions;
+
+            return {
+              ...question,
+              type: value,
+              options: [],
+              mcqOptionsBackup,
+              correctAnswer: '',
+            };
+          }
+
+          const restoredOptions = question.mcqOptionsBackup?.length
+            ? [...question.mcqOptionsBackup]
+            : question.options.length
+              ? [...question.options]
+              : defaultMcqOptions;
+
           return {
             ...question,
             type: value,
-            options: value === 'mcq' ? ['Option 1', 'Option 2', 'Option 3', 'Option 4'] : [],
+            options: restoredOptions,
             correctAnswer: '',
             correctAnswers: '',
           };

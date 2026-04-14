@@ -7,10 +7,13 @@ import {
   ScrollView,
   StatusBar,
   StyleSheet,
+  useWindowDimensions,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 const GuideProfile = ({ navigation }) => {
+  const { width } = useWindowDimensions();
+  const isPhone = width < 900;
 
   const guide = {
     fullName: 'John Doe',
@@ -74,8 +77,8 @@ const GuideProfile = ({ navigation }) => {
           </TouchableOpacity>
         </View>
 
-        <View style={styles.infoGrid}>
-          <View style={styles.formCard}>
+        <View style={[styles.infoGrid, !isPhone && styles.infoGridDesktop]}>
+          <View style={[styles.formCard, !isPhone && styles.infoCardDesktop]}>
             <Text style={styles.sectionTitle}>Guide Information</Text>
 
             <View style={styles.fieldRow}>
@@ -109,7 +112,7 @@ const GuideProfile = ({ navigation }) => {
             </View>
           </View>
 
-          <View style={styles.progressCard}>
+          <View style={[styles.progressCard, !isPhone && styles.infoCardDesktop, !isPhone && styles.progressCardDesktop]}>
             <Text style={styles.sectionTitle}>Progress & Status</Text>
 
             <View style={styles.fieldRow}>
@@ -308,6 +311,13 @@ const styles = StyleSheet.create({
     gap: 0,
     marginTop: 6,
     marginHorizontal: 30,
+    alignItems: 'stretch',
+  },
+  infoGridDesktop: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'flex-start',
+    gap: 16,
   },
   formCard: {
     backgroundColor: '#C2C5AA',
@@ -338,6 +348,12 @@ const styles = StyleSheet.create({
     width: '100%',
     marginTop: 20,
     marginHorizontal: 0,
+  },
+  infoCardDesktop: {
+    flex: 1,
+  },
+  progressCardDesktop: {
+    marginTop: 25,
   },
   sectionTitle: {
     color: '#333D29',

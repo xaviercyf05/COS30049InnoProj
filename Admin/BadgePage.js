@@ -226,6 +226,8 @@ const styles = StyleSheet.create({
         padding: 5,
         elevation: 5,
         zIndex: 20,
+        borderWidth: 1,
+        borderColor: '#ddd',
     },
 
     menuText: {

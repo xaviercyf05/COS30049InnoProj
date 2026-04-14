@@ -311,14 +311,6 @@ const styles = StyleSheet.create({
   },
 
   /* Content */
-  pageTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1A2421',
-    marginHorizontal: 24,
-    marginTop: 30,
-    marginBottom: 10,
-  },
 
   cardContainer: {
     flexDirection: 'row',

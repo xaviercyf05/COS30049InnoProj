@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import { View, Text, StyleSheet, Image, TouchableOpacity, Modal } from 'react-native';
 
 export default function BadgeScreen({ navigation }) {
 
@@ -19,6 +19,7 @@ export default function BadgeScreen({ navigation }) {
     const isAdmin = true;
 
     const openDeleteModal = (id) => {
+        setActiveMenu(null);
         setSelectedId(id);
         setDeleteModalVisible(true);
     };
@@ -108,7 +109,13 @@ export default function BadgeScreen({ navigation }) {
             </View>
 
             {/* DELETE MODAL */}
-            {deleteModalVisible && (
+            <Modal
+                visible={deleteModalVisible}
+                transparent
+                animationType="fade"
+                statusBarTranslucent
+                onRequestClose={() => setDeleteModalVisible(false)}
+            >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalBox}>
 
@@ -135,7 +142,7 @@ export default function BadgeScreen({ navigation }) {
 
                     </View>
                 </View>
-            )}
+            </Modal>
 
         </View>
     );
@@ -221,13 +228,13 @@ const styles = StyleSheet.create({
         top: 30,
         right: 5,
         backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#ddd',
         width: 100,
         borderRadius: 8,
         padding: 5,
         elevation: 5,
         zIndex: 20,
-        borderWidth: 1,
-        borderColor: '#ddd',
     },
 
     menuText: {
@@ -237,15 +244,10 @@ const styles = StyleSheet.create({
 
     /* MODAL */
     modalOverlay: {
-        position: 'absolute',
-        top: 0,
-        left: 0,
-        right: 0,
-        bottom: 0,
+        flex: 1,
         backgroundColor: 'rgba(0,0,0,0.5)',
         justifyContent: 'center',
         alignItems: 'center',
-        zIndex: 999,
     },
 
     modalBox: {

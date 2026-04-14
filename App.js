@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FBFCF8', 
   },
 
-  /* Header */
+  /* Header - Premium Minimalist */
   header: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -200,23 +200,27 @@ const styles = StyleSheet.create({
     borderBottomColor: '#F0F0E8',
     zIndex: 100,
   },
+
   headerTitle: {
     fontSize: 22,
     fontWeight: '700',
     color: '#3A4D39', // Dark Sage
     letterSpacing: -0.5,
   },
+
   headerRight: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 18,
   },
+
   icon: {
     width: 24,
     height: 24,
     tintColor: '#3A4D39',
     opacity: 0.7,
   },
+
   userImage: {
     width: 40,
     height: 40,
@@ -225,7 +229,7 @@ const styles = StyleSheet.create({
     borderColor: '#E8E8E0',
   },
 
-  /* Dropdown */
+  /* Dropdown - Soft Glassmorphism */
   dropdown: {
     position: 'absolute',
     top: 50,
@@ -241,33 +245,40 @@ const styles = StyleSheet.create({
     elevation: 10,
     zIndex: 9999,
   },
+
   userSection: {
     alignItems: 'center',
     marginBottom: 15,
   },
+  
   dropdownImage: {
     width: 60,
     height: 60,
     borderRadius: 30,
     marginBottom: 10,
   },
+
   username: {
     fontWeight: '600',
     fontSize: 16,
     color: '#3A4D39',
   },
+
   menuSection: {
     marginVertical: 10,
   },
+
   dropdownItem: {
     paddingVertical: 12,
     borderBottomWidth: 1,
     borderBottomColor: '#F5F5F0',
   },
+
   dropdownText: {
     color: '#555',
     fontSize: 15,
   },
+
   logoutButton: {
     marginTop: 15,
     paddingVertical: 12,
@@ -275,6 +286,7 @@ const styles = StyleSheet.create({
     backgroundColor: '#FDF0F0', // Soft pastel red
     alignItems: 'center',
   },
+
   logoutText: {
     color: '#CD5C5C',
     fontWeight: '600',
@@ -282,14 +294,13 @@ const styles = StyleSheet.create({
 
   /* Content */
   pageTitle: {
-    fontSize: 28,
-    fontWeight: '800',
-    color: '#1A2421',
-    marginHorizontal: 24,
-    marginTop: 30,
-    marginBottom: 10,
+    fontSize: 24,
+    fontWeight: 'bold',
+    marginBottom: 20,
+    marginHorizontal: 20,
+    marginTop: 20,
   },
-  
+
   cardContainer: {
     flexDirection: 'row',
     flexWrap: 'wrap',
@@ -323,6 +334,7 @@ const styles = StyleSheet.create({
 
   overlay: {
     ...StyleSheet.absoluteFillObject,
+    // Soft gradient-like overlay (top is lighter, bottom is darker for text)
     backgroundColor: 'rgba(0,0,0,0.2)', 
     borderRadius: 22,
   },
@@ -335,6 +347,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.5,
   },
 
+  /* Elegant Minimalist Progress Bar */
   progressBar: {
     height: 4,
     backgroundColor: 'rgba(255,255,255,0.25)',

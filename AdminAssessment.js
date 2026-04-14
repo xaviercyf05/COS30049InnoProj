@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   ScrollView,
@@ -6,6 +6,7 @@ import {
   Text,
   TextInput,
   TouchableOpacity,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -148,25 +149,48 @@ const buildGrade1Questions = () =>
     id: `q-${index + 1}`,
     type: item.type,
     question: item.question,
+    topic: 'Conservation',
     options: item.type === 'mcq' ? [...item.options] : [],
     correctAnswer: '',
     correctAnswers: '',
   }));
 
+const questionTopicOptions = ['Conservation', 'Biodiversity', 'Eco-tourism', 'Legislation', 'Safety'];
+
 const createBlankQuestion = (nextIndex) => ({
   id: `new-${Date.now()}-${nextIndex}`,
   type: 'mcq',
   question: '',
+  topic: 'Conservation',
   options: ['Option 1', 'Option 2', 'Option 3', 'Option 4'],
   correctAnswer: '',
   correctAnswers: '',
 });
 
-const AdminAssessment = ({ navigation }) => {
-  const [countdownMinutes, setCountdownMinutes] = useState('120');
-  const [questions, setQuestions] = useState(buildGrade1Questions());
-  const [selectedQuestionId, setSelectedQuestionId] = useState('q-1');
+const gradeMetadata = {
+  grade1: { label: 'Grade 1', editorTitle: 'Edit Grade 1 Assessment' },
+  grade2: { label: 'Grade 2', editorTitle: 'Edit Grade 2 Assessment' },
+  grade3: { label: 'Grade 3', editorTitle: 'Edit Grade 3 Assessment' },
+};
+
+const buildInitialAssessments = () => ({
+  grade1: { countdownMinutes: '120', questions: buildGrade1Questions() },
+  grade2: { countdownMinutes: '120', questions: buildGrade1Questions() },
+  grade3: { countdownMinutes: '120', questions: buildGrade1Questions() },
+});
+
+const AdminAssessment = () => {
+  const { width } = useWindowDimensions();
+  const isPhone = width < 500;
+  const [selectedGradeKey, setSelectedGradeKey] = useState('grade1');
+  const [assessmentsByGrade, setAssessmentsByGrade] = useState(buildInitialAssessments);
+  const [selectedQuestionByGrade, setSelectedQuestionByGrade] = useState({
+    grade1: 'q-1',
+    grade2: 'q-1',
+    grade3: 'q-1',
+  });
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isTopicDropdownOpen, setIsTopicDropdownOpen] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [statusType, setStatusType] = useState('');
 
@@ -175,21 +199,65 @@ const AdminAssessment = ({ navigation }) => {
     setStatusType('');
   };
 
-  const selectedGradeLabel = 'Grade 1 Assessment';
-
+  const selectedGradeLabel = `${gradeMetadata[selectedGradeKey].label} Assessment`;
+  const activeAssessment = assessmentsByGrade[selectedGradeKey];
+  const countdownMinutes = activeAssessment.countdownMinutes;
+  const questions = activeAssessment.questions;
+  const selectedQuestionId = selectedQuestionByGrade[selectedGradeKey] || questions[0]?.id;
   const selectedQuestion = questions.find((question) => question.id === selectedQuestionId) || questions[0];
+
+  const updateActiveAssessment = (updater) => {
+    setAssessmentsByGrade((prev) => ({
+      ...prev,
+      [selectedGradeKey]: updater(prev[selectedGradeKey]),
+    }));
+  };
+
+  const updateSelectedQuestionForCurrentGrade = (nextQuestionId) => {
+    setSelectedQuestionByGrade((prev) => ({
+      ...prev,
+      [selectedGradeKey]: nextQuestionId,
+    }));
+  };
 
   const answeredQuestionCount = useMemo(
     () => questions.filter((question) => question.question.trim().length > 0).length,
     [questions]
   );
 
+  const expandedPlaceholderCount = (10 - (questions.length % 10)) % 10;
+  const expandedGridItems = [
+    ...questions.map((question, index) => ({
+      id: question.id,
+      index,
+      isPlaceholder: false,
+      question,
+    })),
+    ...Array.from({ length: expandedPlaceholderCount }, (_, index) => ({
+      id: `placeholder-${index}`,
+      index: questions.length + index,
+      isPlaceholder: true,
+      question: null,
+    })),
+  ];
+  const expandedColumnCount = isPhone ? 5 : 10;
+  const expandedTileStyle = isPhone
+    ? styles.questionTileExpandedPhone
+    : styles.questionTileExpanded;
+
+  useEffect(() => {
+    setIsTopicDropdownOpen(false);
+  }, [selectedGradeKey, selectedQuestionId]);
+
   const addQuestion = () => {
     clearStatus();
-    setQuestions((prev) => {
-      const nextQuestion = createBlankQuestion(prev.length + 1);
-      setSelectedQuestionId(nextQuestion.id);
-      return [...prev, nextQuestion];
+    updateActiveAssessment((prev) => {
+      const nextQuestion = createBlankQuestion(prev.questions.length + 1);
+      updateSelectedQuestionForCurrentGrade(nextQuestion.id);
+      return {
+        ...prev,
+        questions: [...prev.questions, nextQuestion],
+      };
     });
   };
 
@@ -206,16 +274,20 @@ const AdminAssessment = ({ navigation }) => {
     const nextQuestions = questions.filter((question) => question.id !== selectedQuestionId);
     const nextSelectedQuestion = nextQuestions[selectedIndex] || nextQuestions[selectedIndex - 1] || nextQuestions[0];
 
-    setQuestions(nextQuestions);
-    setSelectedQuestionId(nextSelectedQuestion.id);
+    updateActiveAssessment((prev) => ({
+      ...prev,
+      questions: nextQuestions,
+    }));
+    updateSelectedQuestionForCurrentGrade(nextSelectedQuestion.id);
     setStatusType('success');
     setStatusMessage(`Question ${selectedIndex + 1} deleted successfully.`);
   };
 
   const updateQuestion = (questionId, field, value) => {
     clearStatus();
-    setQuestions((prev) =>
-      prev.map((question) => {
+    updateActiveAssessment((prev) => ({
+      ...prev,
+      questions: prev.questions.map((question) => {
         if (question.id !== questionId) {
           return question;
         }
@@ -234,14 +306,15 @@ const AdminAssessment = ({ navigation }) => {
           ...question,
           [field]: value,
         };
-      })
-    );
+      }),
+    }));
   };
 
   const updateQuestionOption = (questionId, optionIndex, value) => {
     clearStatus();
-    setQuestions((prev) =>
-      prev.map((question) => {
+    updateActiveAssessment((prev) => ({
+      ...prev,
+      questions: prev.questions.map((question) => {
         if (question.id !== questionId) {
           return question;
         }
@@ -258,8 +331,8 @@ const AdminAssessment = ({ navigation }) => {
               ? value
               : question.correctAnswer,
         };
-      })
-    );
+      }),
+    }));
   };
 
   const onUpdateAssessment = () => {
@@ -329,12 +402,18 @@ const AdminAssessment = ({ navigation }) => {
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Countdown Timer</Text>
-          <Text style={styles.label}>Countdown Timer (minutes)</Text>
+          <Text style={styles.sectionTitle}>Countdown Timer ({gradeMetadata[selectedGradeKey].label})</Text>
+          <Text style={styles.label}>Edit Countdown Timer for {gradeMetadata[selectedGradeKey].label} (minutes)</Text>
           <TextInput
             style={styles.input}
             value={countdownMinutes}
-            onChangeText={setCountdownMinutes}
+            onChangeText={(value) => {
+              clearStatus();
+              updateActiveAssessment((prev) => ({
+                ...prev,
+                countdownMinutes: value,
+              }));
+            }}
             keyboardType="numeric"
             placeholder="e.g. 120"
             placeholderTextColor="#8A8A8A"
@@ -344,20 +423,29 @@ const AdminAssessment = ({ navigation }) => {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Choose Assessment to Edit</Text>
           <View style={styles.gradeRow}>
-            <View style={[styles.gradeButton, styles.gradeButtonSelected]}>
-              <Text style={styles.gradeButtonTextSelected}>Grade 1</Text>
-            </View>
-            <TouchableOpacity style={styles.gradeButton} onPress={() => navigation.navigate('Grade2AdminAssessment')} activeOpacity={0.9}>
-              <Text style={styles.gradeButtonText}>Grade 2</Text>
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.gradeButton} onPress={() => navigation.navigate('Grade3AdminAssessment')} activeOpacity={0.9}>
-              <Text style={styles.gradeButtonText}>Grade 3</Text>
-            </TouchableOpacity>
+            {Object.entries(gradeMetadata).map(([gradeKey, grade]) => {
+              const isSelected = gradeKey === selectedGradeKey;
+              return (
+                <TouchableOpacity
+                  key={gradeKey}
+                  style={[styles.gradeButton, isSelected && styles.gradeButtonSelected]}
+                  onPress={() => {
+                    clearStatus();
+                    setSelectedGradeKey(gradeKey);
+                  }}
+                  activeOpacity={0.9}
+                >
+                  <Text style={isSelected ? styles.gradeButtonTextSelected : styles.gradeButtonText}>
+                    {grade.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
         <View style={styles.card}>
-          <Text style={styles.sectionTitle}>Edit Grade 1 Assessment</Text>
+          <Text style={styles.sectionTitle}>{gradeMetadata[selectedGradeKey].editorTitle}</Text>
           <Text style={styles.smallText}>Questions: {answeredQuestionCount} / {questions.length}</Text>
 
           <TouchableOpacity style={styles.addButtonCompact} onPress={addQuestion} activeOpacity={0.9}>
@@ -382,19 +470,23 @@ const AdminAssessment = ({ navigation }) => {
 
           {isExpanded ? (
             <View style={styles.questionGridExpanded}>
-              {questions.map((question, index) => {
-                const selected = question.id === selectedQuestionId;
+              {expandedGridItems.map((item) => {
+                if (item.isPlaceholder) {
+                  return <View key={item.id} style={[styles.questionTile, expandedTileStyle, styles.questionTilePlaceholder]} />;
+                }
+
+                const selected = item.question.id === selectedQuestionId;
                 return (
                   <TouchableOpacity
-                    key={question.id}
-                    style={[styles.questionTile, styles.questionTileExpanded, selected && styles.questionTileSelected]}
+                    key={item.id}
+                    style={[styles.questionTile, expandedTileStyle, selected && styles.questionTileSelected]}
                     onPress={() => {
                       clearStatus();
-                      setSelectedQuestionId(question.id);
+                      updateSelectedQuestionForCurrentGrade(item.question.id);
                     }}
                     activeOpacity={0.9}
                   >
-                    <Text style={[styles.questionTileNumber, selected && styles.questionTileNumberSelected]}>Q{index + 1}</Text>
+                    <Text style={[styles.questionTileNumber, isPhone && styles.questionTileNumberPhone, selected && styles.questionTileNumberSelected]}>Q{item.index + 1}</Text>
                   </TouchableOpacity>
                 );
               })}
@@ -409,7 +501,7 @@ const AdminAssessment = ({ navigation }) => {
                     style={[styles.questionTile, selected && styles.questionTileSelected]}
                     onPress={() => {
                       clearStatus();
-                      setSelectedQuestionId(question.id);
+                      updateSelectedQuestionForCurrentGrade(question.id);
                     }}
                     activeOpacity={0.9}
                   >
@@ -450,6 +542,42 @@ const AdminAssessment = ({ navigation }) => {
                 >
                   <Text style={[styles.typeButtonText, selectedQuestion.type === 'fill' && styles.typeButtonTextSelected]}>Fill in the Blank</Text>
                 </TouchableOpacity>
+              </View>
+
+              <Text style={styles.label}>Question Topic</Text>
+              <View style={styles.dropdownWrapper}>
+                <TouchableOpacity
+                  style={styles.dropdownButton}
+                  onPress={() => {
+                    clearStatus();
+                    setIsTopicDropdownOpen((prev) => !prev);
+                  }}
+                  activeOpacity={0.9}
+                >
+                  <Text style={styles.dropdownButtonText}>{selectedQuestion.topic || 'Select topic'}</Text>
+                  <Text style={styles.dropdownArrow}>{isTopicDropdownOpen ? 'v' : '>'}</Text>
+                </TouchableOpacity>
+
+                {isTopicDropdownOpen ? (
+                  <View style={styles.dropdownMenu}>
+                    {questionTopicOptions.map((topic) => {
+                      const isSelected = selectedQuestion.topic === topic;
+                      return (
+                        <TouchableOpacity
+                          key={topic}
+                          style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
+                          onPress={() => {
+                            updateQuestion(selectedQuestion.id, 'topic', topic);
+                            setIsTopicDropdownOpen(false);
+                          }}
+                          activeOpacity={0.9}
+                        >
+                          <Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextSelected]}>{topic}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
+                ) : null}
               </View>
 
               <Text style={styles.label}>Question</Text>
@@ -543,9 +671,10 @@ const styles = StyleSheet.create({
   },
   heroCard: {
     backgroundColor: '#582F0E',
-    borderRadius: 20,
+    borderRadius: 0,
     padding: 18,
-    marginHorizontal: 30,
+    marginHorizontal: -20,
+    marginTop: -20,
     marginBottom: 14,
   },
   heroTopRow: {
@@ -695,6 +824,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     flexWrap: 'wrap',
     justifyContent: 'space-between',
+    width: '100%',
     paddingBottom: 8,
   },
   questionTile: {
@@ -708,8 +838,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   questionTileExpanded: {
-    width: '11.5%',
+    width: '9.2%',
     marginBottom: 10,
+  },
+  questionTileExpandedPhone: {
+    width: '18%',
+    marginBottom: 10,
+  },
+  questionTilePlaceholder: {
+    opacity: 0,
   },
   questionTileSelected: {
     backgroundColor: '#7F4F24',
@@ -720,12 +857,17 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '800',
   },
+  questionTileNumberPhone: {
+    fontSize: 11,
+    lineHeight: 12,
+    textAlign: 'center',
+  },
   questionTileNumberSelected: {
     color: '#FFFFFF',
   },
   gradeRow: {
     flexDirection: 'row',
-    gap: 8,
+    gap: 10,
   },
   gradeButton: {
     flex: 1,
@@ -834,6 +976,57 @@ const styles = StyleSheet.create({
   typeButtonTextSelected: {
     color: '#FFFFFF',
   },
+  dropdownWrapper: {
+    position: 'relative',
+    zIndex: 2,
+  },
+  dropdownButton: {
+    borderWidth: 1,
+    borderColor: '#b3b291',
+    borderRadius: 10,
+    backgroundColor: '#f8efdf',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  dropdownButtonText: {
+    fontSize: 14,
+    color: '#222222',
+    fontWeight: '600',
+  },
+  dropdownArrow: {
+    color: '#5A4A3A',
+    fontSize: 14,
+    fontWeight: '800',
+  },
+  dropdownMenu: {
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#D6D6D0',
+    borderRadius: 10,
+    backgroundColor: '#FFFFFF',
+    overflow: 'hidden',
+  },
+  dropdownItem: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderBottomWidth: 1,
+    borderBottomColor: '#EEE8E2',
+  },
+  dropdownItemSelected: {
+    backgroundColor: '#7F4F24',
+    borderBottomColor: '#7F4F24',
+  },
+  dropdownItemText: {
+    fontSize: 13,
+    color: '#5A4A3A',
+    fontWeight: '700',
+  },
+  dropdownItemTextSelected: {
+    color: '#FFFFFF',
+  },
   input: {
     borderWidth: 1,
     borderColor: '#D6D6D0',
@@ -854,7 +1047,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#D6D6D0',
     borderRadius: 10,
-    backgroundColor: '#FBFBF8',
+    backgroundColor: '#eee5d8',
     paddingHorizontal: 12,
     paddingVertical: 10,
     fontSize: 14,

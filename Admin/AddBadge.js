@@ -64,7 +64,7 @@ export default function AddBadgeScreen({ navigation }) {
 
             {/* GRADE (IMPORTANT CHANGE: using Grade instead of Level) */}
             <TextInput
-                placeholder="Grade (Grade 1 / Grade 2 / Grade 3)"
+                placeholder="Grade (e.g. Grade 1 )"
                 value={grade}
                 onChangeText={setGrade}
                 style={styles.input}

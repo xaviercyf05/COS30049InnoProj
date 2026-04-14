@@ -1,24 +1,37 @@
 import React from 'react';
-import { Alert, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Alert, Platform, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomeScreen({ navigation }) {
+  const performLogout = async () => {
+    try {
+      await AsyncStorage.removeItem('innopapp_auth_token');
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Login' }],
+      });
+    } catch (error) {
+      Alert.alert('Error', 'Unable to log out right now. Please try again.');
+    }
+  };
+
   const handleLogout = () => {
+    if (Platform.OS === 'web') {
+      const confirmed = typeof window !== 'undefined' ? window.confirm('Are you sure you want to log out?') : true;
+      if (!confirmed) {
+        return;
+      }
+      void performLogout();
+      return;
+    }
+
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Log Out',
         style: 'destructive',
-        onPress: async () => {
-          try {
-            await AsyncStorage.removeItem('innopapp_auth_token');
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Login' }],
-            });
-          } catch (error) {
-            Alert.alert('Error', 'Unable to log out right now. Please try again.');
-          }
+        onPress: () => {
+          void performLogout();
         },
       },
     ]);

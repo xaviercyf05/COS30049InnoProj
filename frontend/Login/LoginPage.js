@@ -110,7 +110,7 @@ export default function LoginPage({ navigation }) {
               <User color="#2D5A27" size={20} style={styles.icon} />
               <TextInput
                 style={styles.input}
-                placeholder="Username or Staff ID"
+                placeholder="Username or User ID"
                 placeholderTextColor="#7E8A7A"
                 value={username}
                 onChangeText={setUsername}
@@ -148,7 +148,7 @@ export default function LoginPage({ navigation }) {
               )}
             </TouchableOpacity>
 
-            <Text style={styles.helperText}>Use your staff account to continue.</Text>
+            <Text style={styles.helperText}>Use your user or admin account to continue.</Text>
           </View>
 
           <View style={styles.footer}>

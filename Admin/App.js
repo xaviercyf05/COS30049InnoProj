@@ -125,12 +125,6 @@ function HomeScreen({ navigation }) {
             <View style={styles.overlay} />
 
             <Text style={styles.cardTitle}>Grade 1</Text>
-
-            {/* Progress Bar */}
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: '40%' }]} />
-              <Text style={styles.progressText}>40%</Text>
-            </View>
           </ImageBackground>
         </TouchableOpacity>
 
@@ -146,11 +140,6 @@ function HomeScreen({ navigation }) {
           >
             <View style={styles.overlay} />
             <Text style={styles.cardTitle}>Grade 2</Text>
-
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: '65%' }]} />
-              <Text style={styles.progressText}>65%</Text>
-            </View>
           </ImageBackground>
         </TouchableOpacity>
 
@@ -166,11 +155,6 @@ function HomeScreen({ navigation }) {
           >
             <View style={styles.overlay} />
             <Text style={styles.cardTitle}>Grade 3</Text>
-
-            <View style={styles.progressBar}>
-              <View style={[styles.progressFill, { width: '20%' }]} />
-              <Text style={styles.progressText}>20%</Text>
-            </View>
           </ImageBackground>
         </TouchableOpacity>
 
@@ -381,31 +365,6 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginBottom: 10,
     letterSpacing: 0.5,
-  },
-
-  /* Elegant Minimalist Progress Bar */
-  progressBar: {
-    height: 4,
-    backgroundColor: 'rgba(255,255,255,0.25)',
-    borderRadius: 10,
-    position: 'relative',
-    marginBottom: 6,
-  },
-
-  progressFill: {
-    height: '100%',
-    backgroundColor: '#FFF',
-    borderRadius: 10,
-  },
-
-  progressText: {
-    position: 'absolute',
-    top: -20,
-    right: 0,
-    fontSize: 10,
-    fontWeight: '800',
-    color: '#FFF',
-    opacity: 0.9,
   },
 
   center: {

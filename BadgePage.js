@@ -4,11 +4,11 @@ import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 export default function BadgeScreen() {
 
     const badges = [
-    { id: 1, name: 'Bako National Park', unlocked: true },
-    { id: 2, name: 'Similajau National Park', unlocked: true },
-    { id: 3, name: 'Kubah National Park', unlocked: true },
-    { id: 4, name: 'Gunung Mulu National Park', unlocked: false },
-    { id: 5, name: 'Maludam National Park', unlocked: false },
+    { id: 1, name: 'Bako National Park', grade: 1, unlocked: true },
+    { id: 2, name: 'Similajau National Park', grade: 2, unlocked: true },
+    { id: 3, name: 'Kubah National Park', grade: 2, unlocked: true },
+    { id: 4, name: 'Gunung Mulu National Park', grade: 3, unlocked: false },
+    { id: 5, name: 'Maludam National Park', grade: 3, unlocked: false },
     ];
 
     const earnedBadges = badges.filter(b => b.unlocked).length;
@@ -42,6 +42,7 @@ export default function BadgeScreen() {
                     ]}
                     />
                 <Text style={styles.badgeText}>{badge.name}</Text>
+                <Text style={styles.gradeText}>Grade {badge.grade}</Text>
             </TouchableOpacity>
             ))}
         </View>
@@ -53,66 +54,69 @@ export default function BadgeScreen() {
 
 const styles = StyleSheet.create({
     container: {
-    flex: 1,
-    padding: 20,
-    backgroundColor: '#fff',
+        flex: 1,
+        padding: 20,
+        backgroundColor: '#FBFCF8',
     },
 
     title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    marginBottom: 20,
+        fontSize: 24,
+        fontWeight: 'bold',
+        marginBottom: 20,
     },
 
     userSection: {
-    alignItems: 'center',
-    marginBottom: 20,
+        alignItems: 'center',
+        marginBottom: 20,
     },
 
     userImage: {
-    width: 70,
-    height: 70,
-    borderRadius: 35,
-    marginBottom: 10,
+        width: 70,
+        height: 70,
+        borderRadius: 35,
+        marginBottom: 10,
     },
 
     username: {
-    fontWeight: 'bold',
+        fontWeight: 'bold',
     },
 
     progress: {
-    color: '#666',
+        color: '#666',
     },
 
     gridWrapper: {
-    alignItems: 'center', // 👈 THIS centers the whole grid
+        alignItems: 'center',
     },
 
     grid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    width: '90%', // 👈 control total width
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        width: '90%',
     },
 
     badgeCard: {
-    width: '30%',
-    margin: '1.5%', // 👈 equal spacing (IMPORTANT)
-    backgroundColor: '#f5f5f5',
-    borderRadius: 12,
-    padding: 15,
-    alignItems: 'center',
+        width: '30%',
+        margin: '1.5%',
+        backgroundColor: '#fff',
+        borderRadius: 12,
+        padding: 15,
+        alignItems: 'center',
+        elevation: 3,
     },
 
     badgeIcon: {
-    width: 50,
-    height: 50,
-    resizeMode: 'contain',
+        width: 50,
+        height: 50,
     },
 
     badgeText: {
-    fontSize: 12,
-    textAlign: 'center',
-    marginTop: 5,
-    color: '#555',
+        fontSize: 12,
+        marginTop: 5,
+    },
+
+    gradeText: {
+        fontSize: 11,
+        color: '#3A4D39',
     },
 });

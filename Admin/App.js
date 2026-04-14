@@ -8,6 +8,7 @@ import Grade3Screen from './Grade3Screen';
 import BadgeScreen from './BadgePage';
 import AddModule from './AddModule';
 import AddBadge from './AddBadge';
+import EditBadgeScreen from './EditBadgeScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -179,6 +180,7 @@ export default function App() {
         <Stack.Screen name="Badges" component={BadgeScreen} />
         <Stack.Screen name="AddModule" component={AddModule} />
         <Stack.Screen name="AddBadge" component={AddBadge} />
+        <Stack.Screen name="EditBadge" component={EditBadgeScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );

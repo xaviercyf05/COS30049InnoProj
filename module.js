@@ -66,7 +66,7 @@ const modulesData = {
   },
 };
 
-export default function ModuleScreen() {
+export default function ModuleScreen({ navigation }) {
   const [expandedMain, setExpandedMain] = useState(null);
   const [selectedContent, setSelectedContent] = useState(null);
 
@@ -77,6 +77,10 @@ export default function ModuleScreen() {
 
   const showSubContent = (subKey, contentData) => {
     setSelectedContent({ ...contentData, key: subKey });
+  };
+
+  const goToAssessment = () => {
+    navigation.navigate('Assessment');
   };
 
   return (
@@ -143,6 +147,11 @@ export default function ModuleScreen() {
                 </View>
               );
             })}
+
+            <TouchableOpacity style={styles.assessmentLink} onPress={goToAssessment}>
+              <Text style={styles.assessmentLinkText}>Assessment</Text>
+              <Text style={styles.assessmentLinkArrow}>↗</Text>
+            </TouchableOpacity>
           </View>
 
           {/* Right Content Area */}
@@ -250,5 +259,23 @@ const styles = StyleSheet.create({
     fontSize: 18,
     color: '#999',
     textAlign: 'center',
+  },
+  assessmentLink: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 16,
+    borderRadius: 12,
+    marginTop: 14,
+    backgroundColor: '#e8f2df',
+  },
+  assessmentLinkText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.olive,
+  },
+  assessmentLinkArrow: {
+    fontSize: 18,
+    color: colors.forest,
   },
 });

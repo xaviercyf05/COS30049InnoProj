@@ -1,5 +1,6 @@
 const express = require("express");
 const path = require("path");
+const fs = require("fs");
 const helmet = require("helmet");
 const cors = require("cors");
 const morgan = require("morgan");
@@ -19,6 +20,7 @@ const richContentModule = require("../feature_modules/rich-content/backend");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
+const uploadsDir = path.join(__dirname, "..", "uploads");
 const richContentStorageDir = richContentModule.initRichContentStorage();
 const richContentDemoDir = path.join(
   __dirname,
@@ -37,8 +39,10 @@ app.use(cors({ origin: env.corsOrigin || "*" }));
 app.use(morgan("combined"));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ limit: "10kb", extended: true }));
+fs.mkdirSync(uploadsDir, { recursive: true });
 app.use(express.static(publicDir));
 app.use("/public", express.static(publicDir));
+app.use("/uploads", express.static(uploadsDir));
 app.use("/storage", express.static(richContentStorageDir));
 app.use("/rich-content-demo", express.static(richContentDemoDir));
 

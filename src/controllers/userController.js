@@ -1,7 +1,12 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const fs = require("fs/promises");
+const path = require("path");
 const { query } = require("../config/db");
 const env = require("../config/env");
+
+const profileImagePrefix = "/uploads/profile-images/";
+const profileImageStorageDir = path.join(__dirname, "..", "..", "uploads", "profile-images");
 
 async function getUserProfileRow(userId) {
   const [rows] = await query(
@@ -9,6 +14,7 @@ async function getUserProfileRow(userId) {
             u.Username,
             u.FullName,
             u.Email,
+            u.ProfileImageUrl,
             u.Status,
             u.IsActive,
             u.Progress,
@@ -43,6 +49,7 @@ function buildRoleAwareProfile(user, viewerRole) {
     username: user.Username,
     fullName: user.FullName,
     email: user.Email,
+    profileImageUrl: user.ProfileImageUrl || null,
     role: normalizedViewerRole,
     viewerRole: normalizedViewerRole,
     accountRole: user.RoleTitle,
@@ -68,6 +75,26 @@ function buildRoleAwareProfile(user, viewerRole) {
       canEditProfile: true,
     },
   };
+}
+
+function createProfileImageUrl(fileName) {
+  return `${profileImagePrefix}${fileName}`;
+}
+
+async function removeStoredProfileImage(imageUrl) {
+  if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith(profileImagePrefix)) {
+    return;
+  }
+
+  const imagePath = path.join(__dirname, "..", "..", imageUrl.replace(/^\/+/, ""));
+
+  try {
+    await fs.unlink(imagePath);
+  } catch (error) {
+    if (error.code !== "ENOENT") {
+      console.warn("Unable to remove old profile image:", error.message);
+    }
+  }
 }
 
 /**
@@ -267,6 +294,68 @@ async function updateUserProfile(req, res) {
 }
 
 /**
+ * Update user profile image
+ */
+async function updateUserProfileImage(req, res) {
+  const uploadedFile = req.file;
+
+  if (!uploadedFile) {
+    return res.status(400).json({
+      success: false,
+      message: "Profile image file is required.",
+    });
+  }
+
+  if (!uploadedFile.mimetype || !uploadedFile.mimetype.startsWith("image/")) {
+    await fs.unlink(uploadedFile.path).catch(() => {});
+
+    return res.status(400).json({
+      success: false,
+      message: "Only image files are allowed.",
+    });
+  }
+
+  try {
+    const { userId, role } = req.user;
+    const user = await getUserProfileRow(userId);
+
+    if (!user) {
+      await fs.unlink(uploadedFile.path).catch(() => {});
+
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const newProfileImageUrl = createProfileImageUrl(uploadedFile.filename);
+
+    await query("UPDATE Users SET ProfileImageUrl = ? WHERE UserID = ?", [
+      newProfileImageUrl,
+      userId,
+    ]);
+
+    await removeStoredProfileImage(user.ProfileImageUrl);
+
+    const updatedUser = await getUserProfileRow(userId);
+
+    return res.json({
+      success: true,
+      message: "Profile image updated successfully.",
+      data: buildRoleAwareProfile(updatedUser, role),
+    });
+  } catch (error) {
+    await fs.unlink(uploadedFile.path).catch(() => {});
+
+    console.error("Update profile image error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+}
+
+/**
  * Change user password
  */
 async function changeUserPassword(req, res) {
@@ -337,5 +426,6 @@ module.exports = {
   loginUser,
   getUserProfile,
   updateUserProfile,
+  updateUserProfileImage,
   changeUserPassword,
 };

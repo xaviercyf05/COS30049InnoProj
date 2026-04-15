@@ -1,6 +1,7 @@
 const express = require("express");
 const { body } = require("express-validator");
 const { authenticateUser } = require("../../middleware/authUser");
+const profileImageUpload = require("../../middleware/profileImageUpload");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const userController = require("../../controllers/userController");
@@ -38,6 +39,16 @@ router.put(
   ],
   validate,
   asyncHandler(userController.updateUserProfile)
+);
+
+/**
+ * PUT /user/profile/image - Update user profile image
+ * Body: multipart/form-data with file field profileImage
+ */
+router.put(
+  "/profile/image",
+  profileImageUpload.single("profileImage"),
+  asyncHandler(userController.updateUserProfileImage)
 );
 
 /**

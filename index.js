@@ -14,7 +14,7 @@ const Stack = createNativeStackNavigator();
 
 const AppNavigator = () => (
   <NavigationContainer>
-    <Stack.Navigator initialRouteName="AdminProfile" screenOptions={{ headerShown: false }}>
+    <Stack.Navigator initialRouteName="GuideProfile" screenOptions={{ headerShown: false }}>
       <Stack.Screen name="GuideAssessment" component={GuideAssessmentScreen} />
       <Stack.Screen name="SubmittedPage" component={SubmittedPageScreen} />
       <Stack.Screen name="HomeScreen" component={HomeScreen} />

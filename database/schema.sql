@@ -62,6 +62,8 @@ ALTER TABLE Users AUTO_INCREMENT = 10000000;
 
 INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID) VALUES
   ('admin', '$2a$12$XTAmB//Mq3sWPbx5e43MQeCL8KZRnuQRFhzwxysI9nL3hVMViS3UW', 'Default Admin', 'admin@default.com', 1);
+INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID) VALUES
+  ('user', '$2a$12$PTiHNmZtQiYrHSguo.x7N.Ag/db.n6bbVddcFW1McScx99ZSN.W7W', 'Default User', 'user@default.com', 2);
 
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
 

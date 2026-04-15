@@ -1,6 +1,14 @@
 import React, { useEffect } from 'react';
 import { ActivityIndicator, StatusBar, StyleSheet, Text, View } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { requestProfileApi } from '../Profile/profileApi.js';
+
+const SESSION_STORAGE_KEYS = [
+  'innopapp_auth_token',
+  'innopapp_auth_role',
+  'innopapp_auth_username',
+  'innopapp_auth_user_id',
+];
 
 export default function LoadingScreen({ navigation }) {
   useEffect(() => {
@@ -9,22 +17,29 @@ export default function LoadingScreen({ navigation }) {
     const checkSession = async () => {
       try {
         const token = await AsyncStorage.getItem('innopapp_auth_token');
+        let nextRoute = 'Login';
 
         if (!token) {
-          await AsyncStorage.multiRemove([
-            'innopapp_auth_role',
-            'innopapp_auth_username',
-            'innopapp_auth_user_id',
-          ]);
+          await AsyncStorage.multiRemove(SESSION_STORAGE_KEYS);
+        } else {
+          try {
+            await requestProfileApi('/api/v1/user/profile', token, {
+              method: 'GET',
+            });
+            nextRoute = 'Home';
+          } catch (error) {
+            await AsyncStorage.multiRemove(SESSION_STORAGE_KEYS);
+          }
         }
 
         if (!active) return;
 
         navigation.reset({
           index: 0,
-          routes: [{ name: token ? 'Home' : 'Login' }],
+          routes: [{ name: nextRoute }],
         });
       } catch (error) {
+        await AsyncStorage.multiRemove(SESSION_STORAGE_KEYS);
         if (!active) return;
         navigation.reset({
           index: 0,

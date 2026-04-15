@@ -16,6 +16,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import LoginPage from './Login/LoginPage.js';
 import LoadingScreen from './Login/LoadingScreen.js';
+import RegisterPlaceholderScreen from './Register/RegisterPlaceholderScreen.js';
 import ModuleScreen from './Module/ModuleScreen.js';
 import Grade1Screen from './Grade1Screen.js';
 import Grade2Screen from './Grade2Screen.js';
@@ -26,6 +27,12 @@ import EditProfileScreen from './Profile/EditProfileScreen.js';
 import { pickProfileImagePath, requestProfileApi, resolveProfileImageUri } from './Profile/profileApi.js';
 
 const Stack = createNativeStackNavigator();
+const SESSION_STORAGE_KEYS = [
+	'innopapp_auth_token',
+	'innopapp_auth_role',
+	'innopapp_auth_username',
+	'innopapp_auth_user_id',
+];
 
 function HomeScreen({ navigation }) {
 	const [menuVisible, setMenuVisible] = useState(false);
@@ -39,6 +46,8 @@ function HomeScreen({ navigation }) {
 			const token = await AsyncStorage.getItem('innopapp_auth_token');
 
 			if (!token) {
+				await AsyncStorage.multiRemove(SESSION_STORAGE_KEYS);
+				setProfile(null);
 				navigation.reset({
 					index: 0,
 					routes: [{ name: 'Login' }],
@@ -60,8 +69,12 @@ function HomeScreen({ navigation }) {
 				);
 			}
 		} catch (error) {
-			const message = error?.message || 'Unable to load your account profile.';
-			Alert.alert('Session Error', message);
+			await AsyncStorage.multiRemove(SESSION_STORAGE_KEYS);
+			setProfile(null);
+			navigation.reset({
+				index: 0,
+				routes: [{ name: 'Login' }],
+			});
 		} finally {
 			setProfileLoading(false);
 		}
@@ -79,12 +92,7 @@ function HomeScreen({ navigation }) {
 
 	const performLogout = async () => {
 		try {
-			await AsyncStorage.multiRemove([
-				'innopapp_auth_token',
-				'innopapp_auth_role',
-				'innopapp_auth_username',
-				'innopapp_auth_user_id',
-			]);
+			await AsyncStorage.multiRemove(SESSION_STORAGE_KEYS);
 			setProfile(null);
 			navigation.reset({
 				index: 0,
@@ -308,6 +316,11 @@ export default function App() {
 			<Stack.Navigator initialRouteName="Loading" screenOptions={{ headerShown: false }}>
 				<Stack.Screen name="Loading" component={LoadingScreen} />
 				<Stack.Screen name="Login" component={LoginPage} />
+				<Stack.Screen
+					name="Register"
+					component={RegisterPlaceholderScreen}
+					options={{ headerShown: true, title: 'Register' }}
+				/>
 				<Stack.Screen name="Home" component={HomeScreen} />
 				<Stack.Screen name="Module" component={ModuleScreen} />
 				<Stack.Screen

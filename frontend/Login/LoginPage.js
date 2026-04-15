@@ -7,7 +7,6 @@ import {
   ScrollView,
   Platform,
   StatusBar,
-  Alert,
   ActivityIndicator,
 } from 'react-native';
 import { Leaf, Lock, ShieldCheck, User, Compass, PawPrint } from 'lucide-react-native';
@@ -20,6 +19,7 @@ export default function LoginPage({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
+  const [errorMessage, setErrorMessage] = useState('');
 
   const API_ORIGIN = 'https://api.innopappserver.xyz';
 
@@ -55,10 +55,11 @@ export default function LoginPage({ navigation }) {
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
-      Alert.alert('Input Required', 'Please enter both Username/User ID and Password.');
+      setErrorMessage('Please enter both Username/User ID and Password.');
       return;
     }
 
+    setErrorMessage('');
     setLoading(true);
     const attemptedUrls = [];
 
@@ -123,7 +124,7 @@ export default function LoginPage({ navigation }) {
           ? 'Login service is temporarily unavailable. Please try again later.'
           : 'Invalid username or password.';
 
-        Alert.alert('Login Failed', data?.message || fallbackMessage);
+        setErrorMessage(data?.message || fallbackMessage);
       }
     } catch (error) {
       const attemptedSuffix = attemptedUrls.length
@@ -134,7 +135,7 @@ export default function LoginPage({ navigation }) {
         ? `Unable to reach login service from web.${attemptedSuffix} If needed, set EXPO_PUBLIC_API_WEB_PROXY to your backend proxy URL.`
         : 'Unable to reach the server. Please check your connection.';
 
-      Alert.alert('Connection Error', webMessage);
+      setErrorMessage(webMessage);
       console.error(error);
     } finally {
       setLoading(false);
@@ -185,7 +186,13 @@ export default function LoginPage({ navigation }) {
                 placeholder="Username or User ID"
                 placeholderTextColor="#7E8A7A"
                 value={username}
-                onChangeText={setUsername}
+                onChangeText={(text) => {
+                  setUsername(text);
+
+                  if (errorMessage) {
+                    setErrorMessage('');
+                  }
+                }}
                 autoCapitalize="none"
                 autoCorrect={false}
                 autoComplete={Platform.OS === 'web' ? 'username' : 'off'}
@@ -201,11 +208,21 @@ export default function LoginPage({ navigation }) {
                 placeholderTextColor="#7E8A7A"
                 secureTextEntry
                 value={password}
-                onChangeText={setPassword}
+                onChangeText={(text) => {
+                  setPassword(text);
+
+                  if (errorMessage) {
+                    setErrorMessage('');
+                  }
+                }}
                 autoComplete={Platform.OS === 'web' ? 'current-password' : 'off'}
                 textContentType="password"
               />
             </View>
+
+            {!!errorMessage && (
+              <Text style={styles.inlineErrorText}>{errorMessage}</Text>
+            )}
 
             <TouchableOpacity
               style={[styles.loginButton, loading && styles.loginButtonDisabled]}
@@ -221,6 +238,14 @@ export default function LoginPage({ navigation }) {
             </TouchableOpacity>
 
             <Text style={styles.helperText}>Use your user or admin account to continue.</Text>
+
+            <TouchableOpacity
+              onPress={() => navigation.navigate('Register')}
+              activeOpacity={0.8}
+              style={styles.registerLinkWrap}
+            >
+              <Text style={styles.registerLinkText}>No account yet? Register here</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.footer}>

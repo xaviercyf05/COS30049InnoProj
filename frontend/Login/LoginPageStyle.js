@@ -166,6 +166,19 @@ export const styles = StyleSheet.create({
     color: '#21311F',
     fontSize: 16,
   },
+  inlineErrorText: {
+    color: '#A12626',
+    backgroundColor: '#FCE8E8',
+    borderWidth: 1,
+    borderColor: '#F6C7C7',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 13,
+    lineHeight: 18,
+    marginTop: 2,
+    marginBottom: 2,
+  },
   loginButton: {
     backgroundColor: '#2D5A27',
     height: 50,
@@ -193,6 +206,16 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     textAlign: 'center',
     marginTop: 14,
+  },
+  registerLinkWrap: {
+    marginTop: 10,
+    alignSelf: 'center',
+  },
+  registerLinkText: {
+    color: '#2D5A27',
+    fontSize: 14,
+    fontWeight: '700',
+    textDecorationLine: 'underline',
   },
   footer: {
     marginTop: 4,

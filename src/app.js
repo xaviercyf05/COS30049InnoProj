@@ -35,14 +35,45 @@ const richContentDemoDir = path.join(
  */
 app.disable("x-powered-by");
 app.use(helmet());
-app.use(cors({ origin: env.corsOrigin || "*" }));
+const configuredCorsOrigins = Array.isArray(env.corsOrigin)
+  ? env.corsOrigin.filter(Boolean)
+  : [];
+
+app.use(
+  cors({
+    origin(origin, callback) {
+      // When no CORS_ORIGIN is configured, allow all origins (dev-friendly default).
+      if (configuredCorsOrigins.length === 0) {
+        return callback(null, true);
+      }
+
+      // Allow server-to-server and same-origin requests without an Origin header.
+      if (!origin) {
+        return callback(null, true);
+      }
+
+      if (configuredCorsOrigins.includes(origin)) {
+        return callback(null, true);
+      }
+
+      return callback(new Error("Not allowed by CORS"));
+    },
+  })
+);
 app.use(morgan("combined"));
 app.use(express.json({ limit: "10kb" }));
 app.use(express.urlencoded({ limit: "10kb", extended: true }));
 fs.mkdirSync(uploadsDir, { recursive: true });
 app.use(express.static(publicDir));
 app.use("/public", express.static(publicDir));
-app.use("/uploads", express.static(uploadsDir));
+app.use(
+  "/uploads",
+  (req, res, next) => {
+    res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
+    next();
+  },
+  express.static(uploadsDir)
+);
 app.use("/storage", express.static(richContentStorageDir));
 app.use("/rich-content-demo", express.static(richContentDemoDir));
 

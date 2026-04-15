@@ -13,15 +13,39 @@ const env = require("../config/env");
  */
 async function loginUser(req, res) {
   try {
-    const { username, password } = req.body;
+    const { identifier, username, userId, password } = req.body;
+
+    const loginIdentifier =
+      (typeof identifier === "string" && identifier.trim().length > 0
+        ? identifier
+        : typeof username === "string" && username.trim().length > 0
+          ? username
+          : userId !== undefined && userId !== null
+            ? String(userId)
+            : "").trim();
+
+    if (!loginIdentifier) {
+      return res.status(400).json({
+        success: false,
+        message: "Username or User ID is required.",
+      });
+    }
+
+    const parsedUserId = /^\d+$/.test(loginIdentifier)
+      ? Number.parseInt(loginIdentifier, 10)
+      : null;
 
     const [rows] = await query(
       `SELECT u.UserID, u.Username, u.PasswordHash, u.Status, u.IsActive, r.RoleTitle
        FROM Users u
        INNER JOIN Roles r ON r.RoleID = u.RoleID
-       WHERE u.Username = ? AND u.IsActive = 1
+       WHERE u.IsActive = 1
+         AND (
+           u.Username = ?
+           OR (? IS NOT NULL AND u.UserID = ?)
+         )
        LIMIT 1`,
-      [username]
+      [loginIdentifier, parsedUserId, parsedUserId]
     );
 
     if (rows.length === 0) {

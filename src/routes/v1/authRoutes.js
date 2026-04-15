@@ -15,18 +15,42 @@ router.get("/login", (req, res) => {
 
 /**
  * POST /auth/login - Login user (park guide or admin)
- * Body: { username, password }
+ * Body: { identifier, password } where identifier can be username or userId
  */
 router.post(
   "/login",
   [
-    body("username")
+    body("identifier")
+      .optional({ values: "falsy" })
       .trim()
-      .isLength({ min: 3, max: 100 })
-      .withMessage("Username must be between 3 and 100 characters."),
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Identifier must be between 1 and 100 characters."),
+    body("username")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Username must be between 1 and 100 characters."),
+    body("userId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("User ID must be a positive integer."),
     body("password")
       .isLength({ min: 8, max: 128 })
       .withMessage("Password must be between 8 and 128 characters."),
+    body().custom((_, { req }) => {
+      const hasIdentifier =
+        (typeof req.body.identifier === "string" && req.body.identifier.trim().length > 0) ||
+        (typeof req.body.username === "string" && req.body.username.trim().length > 0) ||
+        (req.body.userId !== undefined &&
+          req.body.userId !== null &&
+          String(req.body.userId).trim().length > 0);
+
+      if (!hasIdentifier) {
+        throw new Error("Username or User ID is required.");
+      }
+
+      return true;
+    }),
   ],
   validate,
   asyncHandler(userController.loginUser)

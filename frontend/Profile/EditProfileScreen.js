@@ -34,6 +34,27 @@ function formatSavedTime(timestamp) {
   });
 }
 
+function isIncorrectCurrentPasswordError(error) {
+  const nestedValidationMessage = Array.isArray(error?.payload?.errors)
+    ? error.payload.errors.map((entry) => entry?.msg).filter(Boolean).join(' ')
+    : '';
+
+  const normalizedMessage = [
+    error?.message,
+    error?.payload?.message,
+    error?.payload?.error,
+    nestedValidationMessage,
+  ]
+    .filter(Boolean)
+    .join(' ')
+    .toLowerCase();
+
+  return (
+    normalizedMessage.includes('current password') &&
+    (normalizedMessage.includes('incorrect') || normalizedMessage.includes('invalid'))
+  );
+}
+
 function getImageUploadMetadata(asset) {
   const fallbackName = 'profile-image.jpg';
   const fromUri = typeof asset?.uri === 'string' ? asset.uri.split(/[?#]/)[0] : '';
@@ -123,17 +144,36 @@ export default function EditProfileScreen({ navigation, route }) {
   const [hasTypedCurrentPassword, setHasTypedCurrentPassword] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [currentPasswordError, setCurrentPasswordError] = useState('');
 
   const clearPasswordFields = useCallback(() => {
     setHasTypedCurrentPassword(false);
     setCurrentPassword('');
     setNewPassword('');
     setConfirmPassword('');
+    setCurrentPasswordError('');
   }, []);
 
   const handleCurrentPasswordChange = useCallback((value) => {
     setHasTypedCurrentPassword(true);
+    setCurrentPasswordError('');
+
+    if (!normalize(value)) {
+      setNewPassword('');
+      setConfirmPassword('');
+    }
+
     setCurrentPassword(value);
+  }, []);
+
+  const handleNewPasswordChange = useCallback((value) => {
+    setCurrentPasswordError('');
+    setNewPassword(value);
+  }, []);
+
+  const handleConfirmPasswordChange = useCallback((value) => {
+    setCurrentPasswordError('');
+    setConfirmPassword(value);
   }, []);
 
   const isAdmin = useMemo(() => {
@@ -153,6 +193,12 @@ export default function EditProfileScreen({ navigation, route }) {
     normalize(currentPassword).length > 0 ||
     normalize(newPassword).length > 0 ||
     normalize(confirmPassword).length > 0;
+  const isCurrentPasswordProvided = normalize(currentPassword).length > 0;
+  const areNewPasswordFieldsLocked = !isCurrentPasswordProvided;
+  const hasPasswordMismatch =
+    normalize(newPassword).length > 0 &&
+    normalize(confirmPassword).length > 0 &&
+    newPassword !== confirmPassword;
   const hasProfileChanges =
     normalizedFullName !== normalize(profile?.fullName) ||
     normalizedEmail !== normalize(profile?.email) ||
@@ -291,6 +337,8 @@ export default function EditProfileScreen({ navigation, route }) {
       return;
     }
 
+    setCurrentPasswordError('');
+
     if (!normalizedFullName || !normalizedEmail || !normalizedUsername) {
       setLastSaveOutcome('error');
       setLastSaveMessage('Full name, email and username are required.');
@@ -313,10 +361,9 @@ export default function EditProfileScreen({ navigation, route }) {
         return;
       }
 
-      if (newPassword !== confirmPassword) {
+      if (hasPasswordMismatch) {
         setLastSaveOutcome('error');
         setLastSaveMessage('New password and confirmation do not match.');
-        Alert.alert('Validation Error', 'New password and confirmation do not match.');
         return;
       }
     }
@@ -394,9 +441,17 @@ export default function EditProfileScreen({ navigation, route }) {
       setLastSavedAt(new Date());
       setLastSaveMessage('Profile updated successfully.');
     } catch (error) {
-      setLastSaveOutcome('error');
-      setLastSaveMessage(error?.message || 'Unable to save profile changes.');
-      Alert.alert('Save Failed', error?.message || 'Unable to save profile changes.');
+      if (wantsPasswordChange && isIncorrectCurrentPasswordError(error)) {
+        const passwordErrorMessage = 'Current password is incorrect.';
+        setCurrentPasswordError(passwordErrorMessage);
+        setLastSaveOutcome('error');
+        setLastSaveMessage(passwordErrorMessage);
+        Alert.alert('Incorrect Password', passwordErrorMessage);
+      } else {
+        setLastSaveOutcome('error');
+        setLastSaveMessage(error?.message || 'Unable to save profile changes.');
+        Alert.alert('Save Failed', error?.message || 'Unable to save profile changes.');
+      }
     } finally {
       setSaving(false);
     }
@@ -515,11 +570,12 @@ export default function EditProfileScreen({ navigation, route }) {
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>New Password</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, areNewPasswordFieldsLocked && styles.inputDisabled]}
               value={newPassword}
-              onChangeText={setNewPassword}
+              onChangeText={handleNewPasswordChange}
               placeholder="New Password"
               secureTextEntry
+              editable={!areNewPasswordFieldsLocked}
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="off"
@@ -532,11 +588,12 @@ export default function EditProfileScreen({ navigation, route }) {
           <View style={styles.fieldGroup}>
             <Text style={styles.label}>Confirm New Password</Text>
             <TextInput
-              style={styles.input}
+              style={[styles.input, areNewPasswordFieldsLocked && styles.inputDisabled]}
               value={confirmPassword}
-              onChangeText={setConfirmPassword}
+              onChangeText={handleConfirmPasswordChange}
               placeholder="Confirm New Password"
               secureTextEntry
+              editable={!areNewPasswordFieldsLocked}
               autoCapitalize="none"
               autoCorrect={false}
               autoComplete="off"
@@ -545,6 +602,20 @@ export default function EditProfileScreen({ navigation, route }) {
               placeholderTextColor="#8E9B8A"
             />
           </View>
+
+          {areNewPasswordFieldsLocked ? (
+            <Text style={styles.passwordInlineHint}>
+              Enter current password to unlock new password fields.
+            </Text>
+          ) : null}
+
+          {hasPasswordMismatch ? (
+            <Text style={styles.passwordInlineError}>New password and confirmation do not match.</Text>
+          ) : null}
+
+          {currentPasswordError ? (
+            <Text style={styles.passwordInlineError}>{currentPasswordError}</Text>
+          ) : null}
         </View>
 
         <View style={styles.actionRow}>
@@ -725,6 +796,23 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     color: '#1A3024',
     fontSize: 15,
+  },
+  inputDisabled: {
+    backgroundColor: '#F0F3EB',
+    color: '#7A8779',
+  },
+  passwordInlineHint: {
+    color: '#647668',
+    fontSize: 12,
+    lineHeight: 17,
+    marginTop: 2,
+  },
+  passwordInlineError: {
+    color: '#8B2D2D',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 17,
+    marginTop: 6,
   },
   actionRow: {
     marginTop: 6,

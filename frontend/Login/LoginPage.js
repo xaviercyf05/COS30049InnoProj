@@ -21,9 +21,55 @@ export default function LoginPage({ navigation }) {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const apiBaseUrl = Platform.OS === 'web'
-    ? process.env.EXPO_PUBLIC_API_WEB_PROXY || 'http://localhost:3001'
-    : 'https://api.innopappserver.xyz';
+  const API_ORIGIN = 'https://api.innopappserver.xyz';
+
+  const resolveWebProxyBaseUrl = () => {
+    if (typeof window !== 'undefined' && window.location?.hostname) {
+      return `http://${window.location.hostname}:3001`;
+    }
+
+    return 'http://localhost:3001';
+  };
+
+  const isLocalWebHost = () => {
+    if (typeof window === 'undefined' || !window.location?.hostname) {
+      return false;
+    }
+
+    const host = window.location.hostname;
+    return host === 'localhost' || host === '127.0.0.1';
+  };
+
+  const getWebApiBaseUrls = () => {
+    const configuredProxy = process.env.EXPO_PUBLIC_API_WEB_PROXY;
+    const webProxyBaseUrl = resolveWebProxyBaseUrl();
+
+    if (configuredProxy) {
+      return [...new Set([configuredProxy, API_ORIGIN])];
+    }
+
+    // Local web dev usually hits CORS on direct API, so prefer local proxy only.
+    if (isLocalWebHost()) {
+      return [webProxyBaseUrl];
+    }
+
+    const baseUrls = [API_ORIGIN, webProxyBaseUrl];
+
+    return [...new Set(baseUrls)];
+  };
+
+  const submitLoginRequest = (baseUrl) => {
+    return fetch(`${baseUrl}/api/v1/auth/login`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        username,
+        password,
+      }),
+    });
+  };
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
@@ -32,20 +78,38 @@ export default function LoginPage({ navigation }) {
     }
 
     setLoading(true);
+    const attemptedUrls = [];
 
     try {
-      const response = await fetch(`${apiBaseUrl}/api/v1/auth/login`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-          username,
-          password,
-        }),
-      });
+      let response;
 
-      const data = await response.json();
+      if (Platform.OS === 'web') {
+        let lastWebError = null;
+
+        for (const webBaseUrl of getWebApiBaseUrls()) {
+          attemptedUrls.push(`${webBaseUrl}/api/v1/auth/login`);
+
+          try {
+            response = await submitLoginRequest(webBaseUrl);
+            lastWebError = null;
+            break;
+          } catch (error) {
+            lastWebError = error;
+          }
+        }
+
+        if (!response) {
+          throw lastWebError || new Error('Login request failed on web.');
+        }
+      } else {
+        response = await submitLoginRequest(API_ORIGIN);
+      }
+
+      const contentType = response.headers.get('content-type') || '';
+      const isJson = contentType.toLowerCase().includes('application/json');
+      const data = isJson
+        ? await response.json()
+        : { message: await response.text() };
 
       if (response.ok && data?.success && data?.data?.token) {
         await AsyncStorage.setItem('innopapp_auth_token', data.data.token);
@@ -55,11 +119,19 @@ export default function LoginPage({ navigation }) {
         });
         console.log('Logged in:', data.data.user);
       } else {
-        Alert.alert('Login Failed', data.message || 'Invalid username or password.');
+        const fallbackMessage = response.status >= 500
+          ? 'Login service is temporarily unavailable. Please try again later.'
+          : 'Invalid username or password.';
+
+        Alert.alert('Login Failed', data?.message || fallbackMessage);
       }
     } catch (error) {
+      const attemptedSuffix = attemptedUrls.length
+        ? ` Tried: ${attemptedUrls.join(', ')}.`
+        : '';
+
       const webMessage = Platform.OS === 'web'
-        ? 'Unable to reach login service. If you are running web locally, start the proxy with: npm run proxy.'
+        ? `Unable to reach login service from web.${attemptedSuffix} Try setting EXPO_PUBLIC_API_WEB_PROXY, or start the local proxy with: npm run proxy.`
         : 'Unable to reach the server. Please check your connection.';
 
       Alert.alert('Connection Error', webMessage);

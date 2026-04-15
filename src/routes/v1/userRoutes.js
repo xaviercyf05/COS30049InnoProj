@@ -22,6 +22,11 @@ router.get("/profile", asyncHandler(userController.getUserProfile));
 router.put(
   "/profile",
   [
+    body("username")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 3, max: 100 })
+      .withMessage("Username must be between 3 and 100 characters."),
     body("fullName")
       .trim()
       .isLength({ min: 2, max: 150 })

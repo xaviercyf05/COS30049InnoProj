@@ -3,6 +3,73 @@ const jwt = require("jsonwebtoken");
 const { query } = require("../config/db");
 const env = require("../config/env");
 
+async function getUserProfileRow(userId) {
+  const [rows] = await query(
+    `SELECT u.UserID,
+            u.Username,
+            u.FullName,
+            u.Email,
+            u.Status,
+            u.IsActive,
+            u.Progress,
+            u.CreatedAt,
+            r.RoleTitle,
+            q.QualificationName
+       FROM Users u
+       INNER JOIN Roles r ON r.RoleID = u.RoleID
+       LEFT JOIN Qualifications q ON q.QualificationID = u.QualificationID
+       WHERE u.UserID = ?
+       LIMIT 1`,
+    [userId]
+  );
+
+  return rows.length > 0 ? rows[0] : null;
+}
+
+function buildRoleAwareProfile(user, viewerRole) {
+  const normalizedViewerRole = viewerRole === "Admin" ? "Admin" : "User";
+  const isAdmin = normalizedViewerRole === "Admin";
+  const progressValue = Number.isFinite(Number(user.Progress))
+    ? Number(user.Progress)
+    : 0;
+
+  const profileType = isAdmin ? "admin" : "guide";
+  const chapterOne = progressValue >= 34 ? "Completed" : progressValue > 0 ? "In Progress" : "Incomplete";
+  const chapterTwo = progressValue >= 67 ? "Completed" : progressValue >= 34 ? "In Progress" : "Incomplete";
+  const chapterThree = progressValue >= 100 ? "Completed" : progressValue >= 67 ? "In Progress" : "Incomplete";
+
+  return {
+    userId: user.UserID,
+    username: user.Username,
+    fullName: user.FullName,
+    email: user.Email,
+    role: normalizedViewerRole,
+    viewerRole: normalizedViewerRole,
+    accountRole: user.RoleTitle,
+    profileType,
+    status: user.Status,
+    isActive: user.IsActive === 1,
+    progress: progressValue,
+    progressLabel: `${progressValue}%`,
+    createdAt: user.CreatedAt,
+    staffId: `${isAdmin ? "ADM" : "PG"}-${String(user.UserID).padStart(6, "0")}`,
+    station: user.QualificationName || (isAdmin ? "Rainforest National Park HQ" : "Not assigned yet"),
+    chapterStatus: isAdmin
+      ? null
+      : {
+          chapter1: chapterOne,
+          chapter2: chapterTwo,
+          chapter3: chapterThree,
+          onSiteTraining: progressValue >= 100 ? "Completed" : "Incomplete",
+        },
+    permissions: {
+      canManageUsers: isAdmin,
+      canViewProgress: !isAdmin,
+      canEditProfile: true,
+    },
+  };
+}
+
 /**
  * Controller for user authentication and profile management.
  * Handles login for park guides and admin.
@@ -111,39 +178,19 @@ async function loginUser(req, res) {
  */
 async function getUserProfile(req, res) {
   try {
-    const { userId } = req.user;
+    const { userId, role } = req.user;
+    const user = await getUserProfileRow(userId);
 
-    const [rows] = await query(
-      `SELECT u.UserID, u.Username, u.FullName, u.Email, u.Status, u.IsActive, u.Progress, u.CreatedAt, r.RoleTitle
-       FROM Users u
-       INNER JOIN Roles r ON r.RoleID = u.RoleID
-       WHERE u.UserID = ?
-       LIMIT 1`,
-      [userId]
-    );
-
-    if (rows.length === 0) {
+    if (!user) {
       return res.status(404).json({
         success: false,
         message: "User not found.",
       });
     }
 
-    const user = rows[0];
-
     return res.json({
       success: true,
-      data: {
-        userId: user.UserID,
-        username: user.Username,
-        fullName: user.FullName,
-        email: user.Email,
-        role: user.RoleTitle,
-        status: user.Status,
-        isActive: user.IsActive === 1,
-        progress: user.Progress,
-        createdAt: user.CreatedAt,
-      },
+      data: buildRoleAwareProfile(user, role),
     });
   } catch (error) {
     console.error("Get profile error:", error);
@@ -159,30 +206,55 @@ async function getUserProfile(req, res) {
  */
 async function updateUserProfile(req, res) {
   try {
-    const { userId } = req.user;
-    const { fullName, email } = req.body;
+    const { userId, role } = req.user;
+    const { fullName, email, username } = req.body;
 
-    if (!fullName || !email) {
+    const normalizedFullName = String(fullName || "").trim();
+    const normalizedEmail = String(email || "").trim();
+    const normalizedUsername =
+      typeof username === "string" && username.trim().length > 0
+        ? username.trim()
+        : null;
+
+    if (!normalizedFullName || !normalizedEmail) {
       return res.status(400).json({
         success: false,
         message: "Full name and email are required.",
       });
     }
 
-    await query(
-      "UPDATE Users SET FullName = ?, Email = ? WHERE UserID = ?",
-      [fullName, email, userId]
-    );
+    const updateValues = [normalizedFullName, normalizedEmail];
+    let updateSql = "UPDATE Users SET FullName = ?, Email = ?";
+
+    if (normalizedUsername) {
+      updateSql += ", Username = ?";
+      updateValues.push(normalizedUsername);
+    }
+
+    updateSql += " WHERE UserID = ?";
+    updateValues.push(userId);
+
+    const [result] = await query(updateSql, updateValues);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "User not found.",
+      });
+    }
+
+    const updatedUser = await getUserProfileRow(userId);
 
     return res.json({
       success: true,
       message: "Profile updated successfully.",
+      data: buildRoleAwareProfile(updatedUser, role),
     });
   } catch (error) {
     if (error.code === "ER_DUP_ENTRY") {
       return res.status(409).json({
         success: false,
-        message: "Email already in use.",
+        message: "Username or email already in use.",
       });
     }
 

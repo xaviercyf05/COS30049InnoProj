@@ -61,9 +61,9 @@ CREATE TABLE IF NOT EXISTS Users (
 ALTER TABLE Users AUTO_INCREMENT = 10000000;
 
 INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID) VALUES
-  ('admin', '$2a$12$XTAmB//Mq3sWPbx5e43MQeCL8KZRnuQRFhzwxysI9nL3hVMViS3UW', 'Default Admin', 'admin@default.com', 1);
+  ('admin', '$2b$12$wu/Z2nMiZ2PkeXBBe8ll0OLidJrkK7tpLIQqjHe909pYajrEyWzEW', 'Default Admin', 'admin@default.com', 1);
 INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID) VALUES
-  ('user', '$2a$12$PTiHNmZtQiYrHSguo.x7N.Ag/db.n6bbVddcFW1McScx99ZSN.W7W', 'Default User', 'user@default.com', 2);
+  ('user', '$2b$12$JAr3wFTivDH3xBUnbBEJseQOvzGuJPyoxdkK3rXo2ZeBlIe5rhpHq', 'Default User', 'user@default.com', 2);
 
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
 

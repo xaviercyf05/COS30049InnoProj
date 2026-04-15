@@ -468,8 +468,8 @@ export default function EditProfileScreen({ navigation, route }) {
   }
 
   return (
-    <SafeAreaView style={[styles.container, { backgroundColor: isAdmin ? '#0F1E18' : '#FBFCF8' }]}>
-      <StatusBar barStyle={isAdmin ? 'light-content' : 'dark-content'} />
+    <SafeAreaView style={styles.container}>
+      <StatusBar barStyle="dark-content" />
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.heroCard}>
           <Text style={styles.heroKicker}>{isAdmin ? 'National Park Admin' : 'National Park Guide'}</Text>
@@ -679,6 +679,7 @@ const styles = StyleSheet.create({
   },
   container: {
     flex: 1,
+    backgroundColor: '#FBFCF8',
   },
   content: {
     padding: 20,

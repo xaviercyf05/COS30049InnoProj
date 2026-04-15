@@ -59,13 +59,20 @@ export default function LoginPage({ navigation }) {
   };
 
   const submitLoginRequest = (baseUrl) => {
+    const normalizedIdentifier = username.trim();
+    const numericUserId = /^\d+$/.test(normalizedIdentifier)
+      ? Number.parseInt(normalizedIdentifier, 10)
+      : undefined;
+
     return fetch(`${baseUrl}/api/v1/auth/login`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        username,
+        identifier: normalizedIdentifier,
+        username: normalizedIdentifier,
+        userId: numericUserId,
         password,
       }),
     });
@@ -73,7 +80,7 @@ export default function LoginPage({ navigation }) {
 
   const handleLogin = async () => {
     if (!username.trim() || !password.trim()) {
-      Alert.alert('Input Required', 'Please enter both Username and Password.');
+      Alert.alert('Input Required', 'Please enter both Username/User ID and Password.');
       return;
     }
 

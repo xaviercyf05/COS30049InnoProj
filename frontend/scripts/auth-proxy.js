@@ -8,6 +8,7 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,PUT,PATCH,DELETE,OPTIONS',
   'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  'Cross-Origin-Resource-Policy': 'cross-origin',
 };
 
 const readRequestBody = (req) =>
@@ -40,7 +41,10 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  if (!req.url.startsWith('/api/')) {
+  const isApiRoute = req.url.startsWith('/api/');
+  const isUploadRoute = req.url.startsWith('/uploads/');
+
+  if (!isApiRoute && !isUploadRoute) {
     res.writeHead(404, { ...corsHeaders, 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ success: false, message: 'Not found.' }));
     return;
@@ -82,5 +86,5 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`Auth proxy running at http://localhost:${PORT}`);
-  console.log(`Forwarding /api/* to ${TARGET_ORIGIN}`);
+  console.log(`Forwarding /api/* and /uploads/* to ${TARGET_ORIGIN}`);
 });

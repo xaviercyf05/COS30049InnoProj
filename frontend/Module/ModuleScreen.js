@@ -1,13 +1,16 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import withRoleGuard from '../auth/withRoleGuard';
 
-export default function ModuleScreen({ route }) {
+function ModuleScreen({ route, currentProfile }) {
   const grade = route?.params?.grade || 'Grade 1';
+  const userLabel = currentProfile?.fullName || currentProfile?.username || 'Guide';
 
   return (
     <View style={styles.container}>
       <Text style={styles.title}>{grade}</Text>
       <Text>Conservation Basics</Text>
+      <Text style={styles.subText}>Signed in as: {userLabel}</Text>
     </View>
   );
 }
@@ -22,4 +25,14 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
   },
+  subText: {
+    marginTop: 10,
+    fontSize: 13,
+    color: '#4E5D53',
+  },
+});
+
+export default withRoleGuard(ModuleScreen, {
+  allowedRoles: ['User'],
+  screenName: 'Module',
 });

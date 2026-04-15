@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+	ActivityIndicator,
 	Alert,
 	Image,
 	ImageBackground,
@@ -20,15 +21,71 @@ import Grade1Screen from './Grade1Screen.js';
 import Grade2Screen from './Grade2Screen.js';
 import Grade3Screen from './Grade3Screen.js';
 import BadgeScreen from './Badge/BadgePage.js';
+import ProfileScreen from './Profile/ProfileScreen.js';
+import EditProfileScreen from './Profile/EditProfileScreen.js';
+import { pickProfileImagePath, requestProfileApi, resolveProfileImageUri } from './Profile/profileApi.js';
 
 const Stack = createNativeStackNavigator();
 
 function HomeScreen({ navigation }) {
 	const [menuVisible, setMenuVisible] = useState(false);
+	const [profile, setProfile] = useState(null);
+	const [profileLoading, setProfileLoading] = useState(true);
+
+	const loadProfile = useCallback(async () => {
+		setProfileLoading(true);
+
+		try {
+			const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+			if (!token) {
+				navigation.reset({
+					index: 0,
+					routes: [{ name: 'Login' }],
+				});
+				return;
+			}
+
+			const response = await requestProfileApi('/api/v1/user/profile', token, {
+				method: 'GET',
+			});
+
+			const loadedProfile = response.data;
+			setProfile(loadedProfile);
+
+			if (loadedProfile?.viewerRole || loadedProfile?.role) {
+				await AsyncStorage.setItem(
+					'innopapp_auth_role',
+					loadedProfile.viewerRole || loadedProfile.role
+				);
+			}
+		} catch (error) {
+			const message = error?.message || 'Unable to load your account profile.';
+			Alert.alert('Session Error', message);
+		} finally {
+			setProfileLoading(false);
+		}
+	}, [navigation]);
+
+	useEffect(() => {
+		loadProfile();
+
+		const unsubscribe = navigation.addListener('focus', () => {
+			loadProfile();
+		});
+
+		return unsubscribe;
+	}, [loadProfile, navigation]);
 
 	const performLogout = async () => {
 		try {
-			await AsyncStorage.removeItem('innopapp_auth_token');
+			await AsyncStorage.multiRemove([
+				'innopapp_auth_token',
+				'innopapp_auth_role',
+				'innopapp_auth_username',
+				'innopapp_auth_user_id',
+			]);
+			setProfile(null);
 			navigation.reset({
 				index: 0,
 				routes: [{ name: 'Login' }],
@@ -64,6 +121,23 @@ function HomeScreen({ navigation }) {
 		]);
 	};
 
+	const effectiveRole = profile?.viewerRole || profile?.role || 'User';
+	const isAdmin = effectiveRole === 'Admin';
+	const displayName = profile?.fullName || profile?.username || 'User';
+	const resolvedProfileImagePath = pickProfileImagePath(profile);
+	const profileImageSource = resolvedProfileImagePath
+		? { uri: resolveProfileImageUri(resolvedProfileImagePath) }
+		: { uri: 'https://i.pinimg.com/736x/cc/f4/05/ccf405a0cd0fa9c574d87d7bc2bcc900.jpg' };
+
+	if (profileLoading && !profile) {
+		return (
+			<View style={styles.center}>
+				<ActivityIndicator size="large" color="#2E6B4D" />
+				<Text style={styles.centerText}>Loading dashboard...</Text>
+			</View>
+		);
+	}
+
 	return (
 		<View style={styles.container}>
 			<View style={styles.header}>
@@ -80,7 +154,7 @@ function HomeScreen({ navigation }) {
 
 						<TouchableOpacity onPress={() => setMenuVisible(!menuVisible)}>
 							<Image
-								source={{ uri: 'https://i.pinimg.com/736x/cc/f4/05/ccf405a0cd0fa9c574d87d7bc2bcc900.jpg' }}
+								source={profileImageSource}
 								style={styles.userImage}
 							/>
 						</TouchableOpacity>
@@ -91,33 +165,41 @@ function HomeScreen({ navigation }) {
 							<View style={styles.topSection}>
 								<View style={styles.userSection}>
 									<Image
-										source={{ uri: 'https://i.pinimg.com/736x/cc/f4/05/ccf405a0cd0fa9c574d87d7bc2bcc900.jpg' }}
+										source={profileImageSource}
 										style={styles.dropdownImage}
 									/>
-									<Text style={styles.username}>User 123</Text>
+									<Text style={styles.username}>{displayName}</Text>
 								</View>
 
 								<View style={styles.menuSection}>
-									<TouchableOpacity style={styles.dropdownItem}>
-										<Text style={styles.dropdownText}>Profile</Text>
-									</TouchableOpacity>
-
 									<TouchableOpacity
 										style={styles.dropdownItem}
 										onPress={() => {
 											setMenuVisible(false);
-											navigation.navigate('Badges');
+											navigation.navigate('Profile');
 										}}
 									>
-										<Text style={styles.dropdownText}>Badges</Text>
+										<Text style={styles.dropdownText}>Profile</Text>
+									</TouchableOpacity>
+
+									{!isAdmin && (
+										<TouchableOpacity
+											style={styles.dropdownItem}
+											onPress={() => {
+												setMenuVisible(false);
+												navigation.navigate('Badges');
+											}}
+										>
+											<Text style={styles.dropdownText}>Badges</Text>
+										</TouchableOpacity>
+									)}
+
+									<TouchableOpacity style={styles.dropdownItem}>
+										<Text style={styles.dropdownText}>{isAdmin ? 'Operations' : 'Calendar'}</Text>
 									</TouchableOpacity>
 
 									<TouchableOpacity style={styles.dropdownItem}>
-										<Text style={styles.dropdownText}>Calendar</Text>
-									</TouchableOpacity>
-
-									<TouchableOpacity style={styles.dropdownItem}>
-										<Text style={styles.dropdownText}>Announcement</Text>
+										<Text style={styles.dropdownText}>{isAdmin ? 'Announcements' : 'Announcement'}</Text>
 									</TouchableOpacity>
 								</View>
 							</View>
@@ -136,66 +218,85 @@ function HomeScreen({ navigation }) {
 				</View>
 			</View>
 
-			<Text style={styles.pageTitle}>Dashboard</Text>
+			<Text style={styles.pageTitle}>{isAdmin ? 'Admin Dashboard' : 'Dashboard'}</Text>
 
 			<View style={styles.cardContainer}>
-				<TouchableOpacity
-					onPress={() => navigation.navigate('Grade1')}
-					style={styles.cardWrapper}
-				>
-					<ImageBackground
-						source={{ uri: 'https://imgs.mongabay.com/wp-content/uploads/sites/20/2018/03/09165734/20171123-153037-4-2.jpg' }}
-						style={styles.card}
-						imageStyle={{ borderRadius: 20 }}
-					>
-						<View style={styles.overlay} />
+				{isAdmin ? (
+					<View style={styles.adminCard}>
+						<Text style={styles.adminCardTitle}>Administrator Workspace</Text>
+						<Text style={styles.adminCardText}>
+							Your account is configured for administrative duties. Use profile and admin endpoints to manage users,
+							 announcements, and schedules.
+						</Text>
+						<TouchableOpacity
+							style={styles.adminActionButton}
+							onPress={() => navigation.navigate('Profile')}
+							activeOpacity={0.85}
+						>
+							<Text style={styles.adminActionText}>Open My Profile</Text>
+						</TouchableOpacity>
+					</View>
+				) : (
+					<>
+						<TouchableOpacity
+							onPress={() => navigation.navigate('Grade1')}
+							style={styles.cardWrapper}
+						>
+							<ImageBackground
+								source={{ uri: 'https://imgs.mongabay.com/wp-content/uploads/sites/20/2018/03/09165734/20171123-153037-4-2.jpg' }}
+								style={styles.card}
+								imageStyle={{ borderRadius: 20 }}
+							>
+								<View style={styles.overlay} />
 
-						<Text style={styles.cardTitle}>Grade 1</Text>
+								<Text style={styles.cardTitle}>Grade 1</Text>
 
-						<View style={styles.progressBar}>
-							<View style={[styles.progressFill, { width: '40%' }]} />
-							<Text style={styles.progressText}>40%</Text>
-						</View>
-					</ImageBackground>
-				</TouchableOpacity>
+								<View style={styles.progressBar}>
+									<View style={[styles.progressFill, { width: '40%' }]} />
+									<Text style={styles.progressText}>40%</Text>
+								</View>
+							</ImageBackground>
+						</TouchableOpacity>
 
-				<TouchableOpacity
-					onPress={() => navigation.navigate('Grade2')}
-					style={styles.cardWrapper}
-				>
-					<ImageBackground
-						source={{ uri: 'https://mongabay-images.s3.amazonaws.com/780/malaysia/sabah_sepilok_0337.jpg' }}
-						style={styles.card}
-						imageStyle={{ borderRadius: 20 }}
-					>
-						<View style={styles.overlay} />
-						<Text style={styles.cardTitle}>Grade 2</Text>
+						<TouchableOpacity
+							onPress={() => navigation.navigate('Grade2')}
+							style={styles.cardWrapper}
+						>
+							<ImageBackground
+								source={{ uri: 'https://mongabay-images.s3.amazonaws.com/780/malaysia/sabah_sepilok_0337.jpg' }}
+								style={styles.card}
+								imageStyle={{ borderRadius: 20 }}
+							>
+								<View style={styles.overlay} />
+								<Text style={styles.cardTitle}>Grade 2</Text>
 
-						<View style={styles.progressBar}>
-							<View style={[styles.progressFill, { width: '65%' }]} />
-							<Text style={styles.progressText}>65%</Text>
-						</View>
-					</ImageBackground>
-				</TouchableOpacity>
+								<View style={styles.progressBar}>
+									<View style={[styles.progressFill, { width: '65%' }]} />
+									<Text style={styles.progressText}>65%</Text>
+								</View>
+							</ImageBackground>
+						</TouchableOpacity>
 
-				<TouchableOpacity
-					onPress={() => navigation.navigate('Grade3')}
-					style={styles.cardWrapper}
-				>
-					<ImageBackground
-						source={{ uri: 'https://gofbonline.com/wp-content/uploads/2017/06/sustainability-sarawak-banner.jpg' }}
-						style={styles.card}
-						imageStyle={{ borderRadius: 20 }}
-					>
-						<View style={styles.overlay} />
-						<Text style={styles.cardTitle}>Grade 3</Text>
+						<TouchableOpacity
+							onPress={() => navigation.navigate('Grade3')}
+							style={styles.cardWrapper}
+						>
+							<ImageBackground
+								source={{ uri: 'https://gofbonline.com/wp-content/uploads/2017/06/sustainability-sarawak-banner.jpg' }}
+								style={styles.card}
+								imageStyle={{ borderRadius: 20 }}
+							>
+								<View style={styles.overlay} />
+								<Text style={styles.cardTitle}>Grade 3</Text>
 
-						<View style={styles.progressBar}>
-							<View style={[styles.progressFill, { width: '20%' }]} />
-							<Text style={styles.progressText}>20%</Text>
-						</View>
-					</ImageBackground>
-				</TouchableOpacity>
+								<View style={styles.progressBar}>
+									<View style={[styles.progressFill, { width: '20%' }]} />
+									<Text style={styles.progressText}>20%</Text>
+								</View>
+							</ImageBackground>
+						</TouchableOpacity>
+					</>
+				)}
 			</View>
 		</View>
 	);
@@ -228,6 +329,16 @@ export default function App() {
 					name="Badges"
 					component={BadgeScreen}
 					options={{ headerShown: true, title: 'Badges' }}
+				/>
+				<Stack.Screen
+					name="Profile"
+					component={ProfileScreen}
+					options={{ headerShown: true, title: 'My Profile' }}
+				/>
+				<Stack.Screen
+					name="EditProfile"
+					component={EditProfileScreen}
+					options={{ headerShown: true, title: 'Edit Profile' }}
 				/>
 			</Stack.Navigator>
 		</NavigationContainer>
@@ -393,5 +504,50 @@ const styles = StyleSheet.create({
 		fontWeight: '800',
 		color: '#FFF',
 		opacity: 0.9,
+	},
+	center: {
+		flex: 1,
+		justifyContent: 'center',
+		alignItems: 'center',
+		backgroundColor: '#FBFCF8',
+		gap: 10,
+	},
+	centerText: {
+		fontSize: 15,
+		fontWeight: '600',
+		color: '#3A4D39',
+	},
+	adminCard: {
+		width: '100%',
+		backgroundColor: '#F4F1E8',
+		borderWidth: 1,
+		borderColor: '#D5DEC8',
+		borderRadius: 20,
+		padding: 18,
+		marginHorizontal: 8,
+	},
+	adminCardTitle: {
+		fontSize: 18,
+		fontWeight: '800',
+		color: '#1F372B',
+	},
+	adminCardText: {
+		marginTop: 8,
+		fontSize: 14,
+		lineHeight: 20,
+		color: '#4B6252',
+	},
+	adminActionButton: {
+		marginTop: 14,
+		alignSelf: 'flex-start',
+		backgroundColor: '#2E6B4D',
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		borderRadius: 12,
+	},
+	adminActionText: {
+		color: '#FFFFFF',
+		fontSize: 14,
+		fontWeight: '700',
 	},
 });

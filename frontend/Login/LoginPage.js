@@ -23,39 +23,14 @@ export default function LoginPage({ navigation }) {
 
   const API_ORIGIN = 'https://api.innopappserver.xyz';
 
-  const resolveWebProxyBaseUrl = () => {
-    if (typeof window !== 'undefined' && window.location?.hostname) {
-      return `http://${window.location.hostname}:3001`;
-    }
-
-    return 'http://localhost:3001';
-  };
-
-  const isLocalWebHost = () => {
-    if (typeof window === 'undefined' || !window.location?.hostname) {
-      return false;
-    }
-
-    const host = window.location.hostname;
-    return host === 'localhost' || host === '127.0.0.1';
-  };
-
   const getWebApiBaseUrls = () => {
     const configuredProxy = process.env.EXPO_PUBLIC_API_WEB_PROXY;
-    const webProxyBaseUrl = resolveWebProxyBaseUrl();
 
     if (configuredProxy) {
       return [...new Set([configuredProxy, API_ORIGIN])];
     }
 
-    // Local web dev usually hits CORS on direct API, so prefer local proxy only.
-    if (isLocalWebHost()) {
-      return [webProxyBaseUrl];
-    }
-
-    const baseUrls = [API_ORIGIN, webProxyBaseUrl];
-
-    return [...new Set(baseUrls)];
+    return [API_ORIGIN];
   };
 
   const submitLoginRequest = (baseUrl) => {
@@ -119,7 +94,25 @@ export default function LoginPage({ navigation }) {
         : { message: await response.text() };
 
       if (response.ok && data?.success && data?.data?.token) {
-        await AsyncStorage.setItem('innopapp_auth_token', data.data.token);
+        const resolvedRole = data?.data?.user?.role || '';
+        const resolvedUserId = data?.data?.user?.userId;
+        const resolvedUsername = data?.data?.user?.username || '';
+
+        const sessionPairs = [['innopapp_auth_token', data.data.token]];
+
+        if (resolvedRole) {
+          sessionPairs.push(['innopapp_auth_role', resolvedRole]);
+        }
+
+        if (resolvedUsername) {
+          sessionPairs.push(['innopapp_auth_username', resolvedUsername]);
+        }
+
+        if (resolvedUserId !== undefined && resolvedUserId !== null) {
+          sessionPairs.push(['innopapp_auth_user_id', String(resolvedUserId)]);
+        }
+
+        await AsyncStorage.multiSet(sessionPairs);
         navigation.reset({
           index: 0,
           routes: [{ name: 'Home' }],
@@ -138,7 +131,7 @@ export default function LoginPage({ navigation }) {
         : '';
 
       const webMessage = Platform.OS === 'web'
-        ? `Unable to reach login service from web.${attemptedSuffix} Try setting EXPO_PUBLIC_API_WEB_PROXY, or start the local proxy with: npm run proxy.`
+        ? `Unable to reach login service from web.${attemptedSuffix} If needed, set EXPO_PUBLIC_API_WEB_PROXY to your backend proxy URL.`
         : 'Unable to reach the server. Please check your connection.';
 
       Alert.alert('Connection Error', webMessage);

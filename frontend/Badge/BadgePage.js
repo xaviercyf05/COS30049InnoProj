@@ -1,7 +1,9 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import withRoleGuard from '../auth/withRoleGuard';
+import { pickProfileImagePath, resolveProfileImageUri } from '../Profile/profileApi';
 
-export default function BadgeScreen() {
+function BadgeScreen({ currentProfile }) {
   const badges = [
     { id: 1, name: 'Bako National Park', unlocked: true },
     { id: 2, name: 'Similajau National Park', unlocked: true },
@@ -12,15 +14,20 @@ export default function BadgeScreen() {
 
   const earnedBadges = badges.filter((badge) => badge.unlocked).length;
   const totalBadges = badges.length;
+  const displayName = currentProfile?.fullName || currentProfile?.username || 'User';
+  const resolvedProfileImagePath = pickProfileImagePath(currentProfile);
+  const avatarSource = resolvedProfileImagePath
+    ? { uri: resolveProfileImageUri(resolvedProfileImagePath) }
+    : { uri: 'https://i.pinimg.com/736x/cc/f4/05/ccf405a0cd0fa9c574d87d7bc2bcc900.jpg' };
 
   return (
     <View style={styles.container}>
       <View style={styles.userSection}>
         <Image
-          source={{ uri: 'https://i.pinimg.com/736x/cc/f4/05/ccf405a0cd0fa9c574d87d7bc2bcc900.jpg' }}
+          source={avatarSource}
           style={styles.userImage}
         />
-        <Text style={styles.username}>User 123</Text>
+        <Text style={styles.username}>{displayName}</Text>
         <Text style={styles.progress}>
           {earnedBadges} / {totalBadges} badges earned
         </Text>
@@ -92,4 +99,9 @@ const styles = StyleSheet.create({
     marginTop: 5,
     color: '#555',
   },
+});
+
+export default withRoleGuard(BadgeScreen, {
+  allowedRoles: ['User'],
+  screenName: 'Badges',
 });

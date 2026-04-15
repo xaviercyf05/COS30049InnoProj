@@ -9,6 +9,15 @@ export default function LoadingScreen({ navigation }) {
     const checkSession = async () => {
       try {
         const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+        if (!token) {
+          await AsyncStorage.multiRemove([
+            'innopapp_auth_role',
+            'innopapp_auth_username',
+            'innopapp_auth_user_id',
+          ]);
+        }
+
         if (!active) return;
 
         navigation.reset({

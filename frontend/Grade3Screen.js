@@ -1,11 +1,13 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import withRoleGuard from './auth/withRoleGuard';
 
-export default function Grade3Screen() {
+function Grade3Screen({ currentProfile }) {
   return (
     <View style={styles.container}>
       <Text style={styles.title}>Grade 3</Text>
       <Text>Conservation Basics</Text>
+      <Text style={styles.subText}>{currentProfile?.username || 'User'}</Text>
     </View>
   );
 }
@@ -20,4 +22,14 @@ const styles = StyleSheet.create({
     fontSize: 22,
     fontWeight: 'bold',
   },
+  subText: {
+    marginTop: 8,
+    fontSize: 12,
+    color: '#556B5B',
+  },
+});
+
+export default withRoleGuard(Grade3Screen, {
+  allowedRoles: ['User'],
+  screenName: 'Grade 3',
 });

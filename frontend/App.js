@@ -137,6 +137,45 @@ function HomeScreen({ navigation }) {
 		? { uri: resolveProfileImageUri(resolvedProfileImagePath) }
 		: { uri: 'https://i.pinimg.com/736x/cc/f4/05/ccf405a0cd0fa9c574d87d7bc2bcc900.jpg' };
 
+	const userModules = [
+		{
+			id: 'general',
+			title: 'General',
+			image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=80',
+			progressPercent: 55,
+		},
+		{
+			id: 'park-1',
+			title: 'Park 1',
+			image: 'https://imgs.mongabay.com/wp-content/uploads/sites/20/2018/03/09165734/20171123-153037-4-2.jpg',
+			progressPercent: 40,
+		},
+		{
+			id: 'park-2',
+			title: 'Park 2',
+			image: 'https://mongabay-images.s3.amazonaws.com/780/malaysia/sabah_sepilok_0337.jpg',
+			progressPercent: 65,
+		},
+		{
+			id: 'park-3',
+			title: 'Park 3',
+			image: 'https://gofbonline.com/wp-content/uploads/2017/06/sustainability-sarawak-banner.jpg',
+			progressPercent: 20,
+		},
+		{
+			id: 'park-4',
+			title: 'Park 4',
+			image: 'https://images.unsplash.com/photo-1472396961693-142e6e269027?auto=format&fit=crop&w=1200&q=80',
+			progressPercent: 10,
+		},
+		{
+			id: 'park-5',
+			title: 'Park 5',
+			image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80',
+			progressPercent: 5,
+		},
+	];
+
 	if (profileLoading && !profile) {
 		return (
 			<View style={styles.center}>
@@ -246,63 +285,27 @@ function HomeScreen({ navigation }) {
 					</View>
 				) : (
 					<>
-						<TouchableOpacity
-							onPress={() => navigation.navigate('Grade1')}
-							style={styles.cardWrapper}
-						>
-							<ImageBackground
-								source={{ uri: 'https://imgs.mongabay.com/wp-content/uploads/sites/20/2018/03/09165734/20171123-153037-4-2.jpg' }}
-								style={styles.card}
-								imageStyle={{ borderRadius: 20 }}
+						{userModules.map((module) => (
+							<TouchableOpacity
+								key={module.id}
+								onPress={() => navigation.navigate('Module', { moduleName: module.title })}
+								style={styles.cardWrapper}
 							>
-								<View style={styles.overlay} />
+								<ImageBackground
+									source={{ uri: module.image }}
+									style={styles.card}
+									imageStyle={{ borderRadius: 20 }}
+								>
+									<View style={styles.overlay} />
+									<Text style={styles.cardTitle}>{module.title}</Text>
 
-								<Text style={styles.cardTitle}>Grade 1</Text>
-
-								<View style={styles.progressBar}>
-									<View style={[styles.progressFill, { width: '40%' }]} />
-									<Text style={styles.progressText}>40%</Text>
-								</View>
-							</ImageBackground>
-						</TouchableOpacity>
-
-						<TouchableOpacity
-							onPress={() => navigation.navigate('Grade2')}
-							style={styles.cardWrapper}
-						>
-							<ImageBackground
-								source={{ uri: 'https://mongabay-images.s3.amazonaws.com/780/malaysia/sabah_sepilok_0337.jpg' }}
-								style={styles.card}
-								imageStyle={{ borderRadius: 20 }}
-							>
-								<View style={styles.overlay} />
-								<Text style={styles.cardTitle}>Grade 2</Text>
-
-								<View style={styles.progressBar}>
-									<View style={[styles.progressFill, { width: '65%' }]} />
-									<Text style={styles.progressText}>65%</Text>
-								</View>
-							</ImageBackground>
-						</TouchableOpacity>
-
-						<TouchableOpacity
-							onPress={() => navigation.navigate('Grade3')}
-							style={styles.cardWrapper}
-						>
-							<ImageBackground
-								source={{ uri: 'https://gofbonline.com/wp-content/uploads/2017/06/sustainability-sarawak-banner.jpg' }}
-								style={styles.card}
-								imageStyle={{ borderRadius: 20 }}
-							>
-								<View style={styles.overlay} />
-								<Text style={styles.cardTitle}>Grade 3</Text>
-
-								<View style={styles.progressBar}>
-									<View style={[styles.progressFill, { width: '20%' }]} />
-									<Text style={styles.progressText}>20%</Text>
-								</View>
-							</ImageBackground>
-						</TouchableOpacity>
+									<View style={styles.progressBar}>
+										<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
+										<Text style={styles.progressText}>{module.progressPercent}%</Text>
+									</View>
+								</ImageBackground>
+							</TouchableOpacity>
+						))}
 					</>
 				)}
 			</View>

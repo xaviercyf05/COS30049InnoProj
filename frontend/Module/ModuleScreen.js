@@ -3,12 +3,12 @@ import { View, Text, StyleSheet } from 'react-native';
 import withRoleGuard from '../auth/withRoleGuard';
 
 function ModuleScreen({ route, currentProfile }) {
-  const grade = route?.params?.grade || 'Grade 1';
+  const moduleName = route?.params?.moduleName || route?.params?.grade || 'General';
   const userLabel = currentProfile?.fullName || currentProfile?.username || 'Guide';
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>{grade}</Text>
+      <Text style={styles.title}>{moduleName}</Text>
       <Text>Conservation Basics</Text>
       <Text style={styles.subText}>Signed in as: {userLabel}</Text>
     </View>

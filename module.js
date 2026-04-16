@@ -6,8 +6,13 @@ import {
   TouchableOpacity,
   StyleSheet,
   ImageBackground,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
+
+const { width: screenWidth } = Dimensions.get('window');
+const isWeb = Platform.OS === 'web';
 
 const colors = {
   olive: '#936639',
@@ -72,7 +77,7 @@ export default function ModuleScreen({ navigation }) {
 
   const toggleMain = (key) => {
     setExpandedMain(expandedMain === key ? null : key);
-    setSelectedContent(null); // reset content when changing main topic
+    if (expandedMain !== key) setSelectedContent(null);
   };
 
   const showSubContent = (subKey, contentData) => {
@@ -89,86 +94,98 @@ export default function ModuleScreen({ navigation }) {
 
       <View style={styles.container}>
         <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
+          {/* Banner */}
+          <ImageBackground
+            source={{ uri: 'https://picsum.photos/id/1015/1600/500' }}
+            style={styles.banner}
+            imageStyle={{ opacity: 0.85 }}
+          >
+            <View style={styles.bannerOverlay}>
+              <Text style={styles.bannerTitle}>General Module</Text>
+              <Text style={styles.bannerSubtitle}>
+                Conservation • Biodiversity • Eco-tourism • Legislation • Safety
+              </Text>
+            </View>
+          </ImageBackground>
 
-        {/* Big Banner (Canvas-style) */}
-        <ImageBackground
-          source={{ uri: 'https://picsum.photos/id/1015/1600/500' }}
-          style={styles.banner}
-          imageStyle={{ opacity: 0.85 }}
-        >
-          <View style={styles.bannerOverlay}>
-            <Text style={styles.bannerTitle}>Level 1 Modules</Text>
-            <Text style={styles.bannerSubtitle}>
-              Conservation • Biodiversity • Eco-tourism • Legislation • Safety
-            </Text>
-          </View>
-        </ImageBackground>
+          {/* Main Content Area */}
+          <View style={[styles.mainArea, !isWeb && styles.mainAreaMobile]}>
+            {/* Left Navigation */}
+            <View style={[styles.leftNav, !isWeb && styles.leftNavMobile]}>
+              {Object.keys(modulesData).map((key) => {
+                const module = modulesData[key];
+                const isExpanded = expandedMain === key;
 
-        {/* Main Content Area */}
-        <View style={styles.mainArea}>
+                return (
+                  <View key={key}>
+                    <TouchableOpacity
+                      style={[styles.mainTopic, isExpanded && styles.mainTopicActive]}
+                      onPress={() => toggleMain(key)}
+                    >
+                      <Text style={[styles.mainTopicText, isExpanded && styles.mainTopicTextActive]}>
+                        {module.title}
+                      </Text>
+                      <Text style={[styles.arrow, isExpanded && styles.arrowRotated]}>›</Text>
+                    </TouchableOpacity>
 
-          {/* Left Navigation */}
-          <View style={styles.leftNav}>
-            {Object.keys(modulesData).map((key) => {
-              const module = modulesData[key];
-              const isExpanded = expandedMain === key;
+                    {isExpanded && (
+                      <View style={styles.subList}>
+                        {Object.keys(module.subs).map((subKey) => {
+                          const sub = module.subs[subKey];
+                          const isSelected = selectedContent?.key === subKey;
 
-              return (
-                <View key={key}>
-                  <TouchableOpacity
-                    style={[styles.mainTopic, isExpanded && styles.mainTopicActive]}
-                    onPress={() => toggleMain(key)}
-                  >
-                    <Text style={[styles.mainTopicText, isExpanded && styles.mainTopicTextActive]}>
-                      {module.title}
+                          return (
+                            <View key={subKey}>
+                              <TouchableOpacity
+                                style={[
+                                  styles.subTopic,
+                                  isSelected && styles.subTopicActive,
+                                ]}
+                                onPress={() => showSubContent(subKey, sub)}
+                              >
+                                <Text style={styles.subTopicText}>{sub.title}</Text>
+                              </TouchableOpacity>
+
+                              {/* Content appears BELOW on Mobile */}
+                              {!isWeb && isSelected && (
+                                <View style={styles.mobileContent}>
+                                  <Text style={styles.contentTitle}>{sub.title}</Text>
+                                  <Text style={styles.contentText}>{sub.content}</Text>
+                                </View>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </View>
+                );
+              })}
+
+              <TouchableOpacity style={styles.assessmentLink} onPress={goToAssessment}>
+                <Text style={styles.assessmentLinkText}>Take Assessment</Text>
+                <Text style={styles.assessmentLinkArrow}>↗</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Right Content Area - Only visible on Web */}
+            {isWeb && (
+              <View style={styles.rightContent}>
+                {selectedContent ? (
+                  <>
+                    <Text style={styles.contentTitle}>{selectedContent.title}</Text>
+                    <Text style={styles.contentText}>{selectedContent.content}</Text>
+                  </>
+                ) : (
+                  <View style={styles.placeholder}>
+                    <Text style={styles.placeholderText}>
+                      Select a topic from the left panel to begin learning
                     </Text>
-                    <Text style={[styles.arrow, isExpanded && styles.arrowRotated]}>›</Text>
-                  </TouchableOpacity>
-
-                  {isExpanded && (
-                    <View style={styles.subList}>
-                      {Object.keys(module.subs).map((subKey) => {
-                        const sub = module.subs[subKey];
-                        return (
-                          <TouchableOpacity
-                            key={subKey}
-                            style={[
-                              styles.subTopic,
-                              selectedContent?.key === subKey && styles.subTopicActive,
-                            ]}
-                            onPress={() => showSubContent(subKey, sub)}
-                          >
-                            <Text style={styles.subTopicText}>{sub.title}</Text>
-                          </TouchableOpacity>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
-
-            <TouchableOpacity style={styles.assessmentLink} onPress={goToAssessment}>
-              <Text style={styles.assessmentLinkText}>Assessment</Text>
-              <Text style={styles.assessmentLinkArrow}>↗</Text>
-            </TouchableOpacity>
-          </View>
-
-          {/* Right Content Area */}
-          <View style={styles.rightContent}>
-            {selectedContent ? (
-              <>
-                <Text style={styles.contentTitle}>{selectedContent.title}</Text>
-                <Text style={styles.contentText}>{selectedContent.content}</Text>
-              </>
-            ) : (
-              <View style={styles.placeholder}>
-                <Text style={styles.placeholderText}>Select a topic from the left to begin learning</Text>
+                  </View>
+                )}
               </View>
             )}
           </View>
-        </View>
-
         </ScrollView>
       </View>
     </>
@@ -178,25 +195,33 @@ export default function ModuleScreen({ navigation }) {
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#f8f7f2' },
   scrollView: { flex: 1 },
-  scrollContent: { },
-  banner: { height: 260, justifyContent: 'center' },
+  scrollContent: { paddingBottom: 30 },
+
+  banner: { height: 220, justifyContent: 'center' },
   bannerOverlay: {
-    backgroundColor: 'rgba(51, 61, 41, 0.75)',
+    backgroundColor: 'rgba(51, 61, 41, 0.78)',
     width: '100%',
     height: '100%',
     justifyContent: 'center',
     alignItems: 'center',
   },
-  bannerTitle: { fontSize: 42, fontWeight: '800', color: 'white', textAlign: 'center' },
-  bannerSubtitle: { fontSize: 18, color: 'white', marginTop: 8, opacity: 0.95 },
+  bannerTitle: { fontSize: 34, fontWeight: '800', color: 'white', textAlign: 'center' },
+  bannerSubtitle: { fontSize: 15.5, color: 'white', marginTop: 8, textAlign: 'center' },
 
   mainArea: {
     flexDirection: 'row',
-    padding: 20,
-    gap: 20,
+    padding: 12,
+    gap: 12,
   },
+  mainAreaMobile: {
+    flexDirection: 'column',
+    padding: 12,
+  },
+
   leftNav: {
-    width: 340,
+    flex: 1.05,
+    minWidth: 168,
+    maxWidth: 300,
     backgroundColor: 'white',
     borderRadius: 16,
     padding: 12,
@@ -205,8 +230,14 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     elevation: 6,
   },
+  leftNavMobile: {
+    width: '100%',
+    maxWidth: '100%',
+    marginBottom: 16,
+  },
+
   mainTopic: {
-    padding: 16,
+    padding: 15,
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
@@ -214,25 +245,39 @@ const styles = StyleSheet.create({
     marginBottom: 6,
   },
   mainTopicActive: { backgroundColor: colors.sage },
-  mainTopicText: { fontSize: 18, fontWeight: '700', color: colors.olive },
+  mainTopicText: { fontSize: 16.5, fontWeight: '700', color: colors.olive, flex: 1 },
   mainTopicTextActive: { color: 'white' },
-  arrow: { fontSize: 24, color: colors.sage },
+  arrow: { fontSize: 22, color: colors.sage },
   arrowRotated: { transform: [{ rotate: '90deg' }] },
 
-  subList: { paddingLeft: 16, paddingBottom: 8 },
+  subList: { paddingLeft: 12, paddingBottom: 8 },
   subTopic: {
-    padding: 14,
+    padding: 13,
     borderRadius: 8,
     marginBottom: 4,
   },
   subTopicActive: { backgroundColor: '#f0f0f0' },
-  subTopicText: { fontSize: 15.5, color: colors.forest },
+  subTopicText: { fontSize: 15, color: colors.forest },
 
+  /* Mobile Content */
+  mobileContent: {
+    backgroundColor: 'white',
+    marginHorizontal: 4,
+    marginBottom: 16,
+    padding: 18,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    elevation: 4,
+  },
+
+  /* Web Right Content */
   rightContent: {
-    flex: 1,
+    flex: 1.95,
     backgroundColor: 'white',
     borderRadius: 16,
-    padding: 30,
+    padding: 20,
     minHeight: 500,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -240,14 +285,14 @@ const styles = StyleSheet.create({
     elevation: 6,
   },
   contentTitle: {
-    fontSize: 26,
+    fontSize: 23,
     fontWeight: '700',
     color: colors.olive,
-    marginBottom: 20,
+    marginBottom: 18,
   },
   contentText: {
-    fontSize: 16,
-    lineHeight: 26,
+    fontSize: 15.5,
+    lineHeight: 25,
     color: colors.forest,
   },
   placeholder: {
@@ -256,26 +301,28 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   placeholderText: {
-    fontSize: 18,
-    color: '#999',
+    fontSize: 16.5,
+    color: '#888',
     textAlign: 'center',
+    paddingHorizontal: 20,
   },
+
   assessmentLink: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 16,
+    padding: 15,
     borderRadius: 12,
-    marginTop: 14,
+    marginTop: 12,
     backgroundColor: '#e8f2df',
   },
   assessmentLinkText: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: '700',
     color: colors.olive,
   },
   assessmentLinkArrow: {
-    fontSize: 18,
+    fontSize: 20,
     color: colors.forest,
   },
 });

@@ -10,23 +10,45 @@ import {
   TextInput,
   Modal,
   Platform,
+  Dimensions,
 } from 'react-native';
 
-export default function ModuleScreen() {
+const { width: screenWidth } = Dimensions.get('window');
+const isWeb = Platform.OS === 'web';
+
+const colors = {
+  olive: '#936639',
+  brown: '#7f4f24',
+  sage: '#a4ac86',
+  forest: '#414833',
+  deepForest: '#333d29',
+};
+
+export default function AdminModuleScreen() {
   const [modules, setModules] = useState([
     {
-      id: 1,
+      id: '1.1',
       title: '1.1 Conservation',
       subs: [
-        { id: 11, title: '1.1.1 Introduction to Conservation', content: 'Conservation is the protection and preservation of natural resources...' },
-        { id: 12, title: '1.1.2 Protected Species in Sarawak', content: 'Sarawak is home to many protected species...' },
+        { id: '1.1.1', title: '1.1.1 Introduction to Conservation', content: 'Conservation is the protection and preservation of natural resources, biodiversity, and ecosystems in Sarawak’s national parks. As a park guide, your role is to ensure that visitors understand the importance of conservation and do not harm the environment.\n\nKey objectives include maintaining ecological balance, protecting endangered species, and promoting sustainable tourism.' },
+        { id: '1.1.2', title: '1.1.2 Protected Species in Sarawak', content: 'Sarawak is home to many protected species such as the Proboscis Monkey, Bornean Orangutan, and Rafflesia.' },
+        { id: '1.1.3', title: '1.1.3 Sustainable Practices', content: 'Learn best practices for waste management, trail maintenance, and low-impact guiding techniques that help preserve the parks for future generations.' },
       ],
     },
     {
-      id: 2,
+      id: '1.2',
       title: '1.2 Biodiversity',
       subs: [
-        { id: 21, title: '1.2.1 Understanding Biodiversity', content: 'Biodiversity refers to the variety of life...' },
+        { id: '1.2.1', title: '1.2.1 Understanding Biodiversity', content: 'Biodiversity refers to the variety of life in Sarawak’s national parks.' },
+        { id: '1.2.2', title: '1.2.2 Key Ecosystems in National Parks', content: 'Explore the different ecosystems including mangrove forests, dipterocarp forests, and peat swamps found in Bako, Similajau, and other parks.' },
+      ],
+    },
+    {
+      id: '1.3',
+      title: '1.3 Eco-tourism',
+      subs: [
+        { id: '1.3.1', title: '1.3.1 Principles of Eco-tourism', content: 'Responsible travel that conserves the environment and improves the well-being of local people.' },
+        { id: '1.3.2', title: '1.3.2 Visitor Engagement Techniques', content: 'Effective ways to interact with visitors while promoting conservation messages.' },
       ],
     },
   ]);
@@ -53,9 +75,9 @@ export default function ModuleScreen() {
     setModalMode('sub');
     setCurrentMainId(mainId);
     setCurrentSubId(subId);
-
     if (subId) {
-      const sub = modules.find(m => m.id === mainId)?.subs.find(s => s.id === subId);
+      const main = modules.find(m => m.id === mainId);
+      const sub = main?.subs.find(s => s.id === subId);
       setTitleInput(sub?.title || '');
       setContentInput(sub?.content || '');
     } else {
@@ -66,53 +88,34 @@ export default function ModuleScreen() {
   };
 
   const confirmAction = (title, message, onConfirm) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.confirm === 'function') {
-      if (window.confirm(`${title}\n\n${message}`)) {
-        onConfirm();
-      }
+    if (Platform.OS === 'web' && typeof window?.confirm === 'function') {
+      if (window.confirm(`${title}\n\n${message}`)) onConfirm();
       return;
     }
-
-    Alert.alert(
-      title,
-      message,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Delete', style: 'destructive', onPress: onConfirm },
-      ]
-    );
+    Alert.alert(title, message, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: onConfirm },
+    ]);
   };
 
   const deleteMainTopic = (mainId) => {
-    confirmAction(
-      'Delete Main Topic',
-      'This will delete the topic and all its sub-topics. This action cannot be undone.',
-      () => {
-        setModules(prev => prev.filter(m => m.id !== mainId));
-        if (expandedMain === mainId) setExpandedMain(null);
-        if (selectedContent && modules.some(m => m.id === mainId && m.subs.some(s => s.id === selectedContent.id))) {
-          setSelectedContent(null);
-        }
-      }
-    );
+    confirmAction('Delete Main Topic', 'This will delete the topic and all its sub-topics. This action cannot be undone.', () => {
+      setModules(prev => prev.filter(m => m.id !== mainId));
+      if (expandedMain === mainId) setExpandedMain(null);
+      if (selectedContent?.id?.startsWith(mainId)) setSelectedContent(null);
+    });
   };
 
   const deleteSubTopic = (mainId, subId) => {
-    confirmAction(
-      'Delete Sub-topic',
-      'Are you sure you want to delete this sub-topic?',
-      () => {
-        setModules(prev => prev.map(m => {
-          if (m.id === mainId) {
-            return { ...m, subs: m.subs.filter(s => s.id !== subId) };
-          }
-          return m;
-        }));
-        if (selectedContent && selectedContent.id === subId) {
-          setSelectedContent(null);
+    confirmAction('Delete Sub-topic', 'Are you sure you want to delete this sub-topic?', () => {
+      setModules(prev => prev.map(m => {
+        if (m.id === mainId) {
+          return { ...m, subs: m.subs.filter(s => s.id !== subId) };
         }
-      }
-    );
+        return m;
+      }));
+      if (selectedContent?.id === subId) setSelectedContent(null);
+    });
   };
 
   const saveModal = () => {
@@ -123,35 +126,35 @@ export default function ModuleScreen() {
 
     if (modalMode === 'main') {
       if (currentMainId === null) {
-        const newMain = { id: Date.now(), title: titleInput.trim(), subs: [] };
+        const newMain = { id: Date.now().toString(), title: titleInput.trim(), subs: [] };
         setModules(prev => [...prev, newMain]);
       } else {
-        setModules(prev => prev.map(m => m.id === currentMainId ? { ...m, title: titleInput.trim() } : m));
+        setModules(prev => prev.map(m =>
+          m.id === currentMainId ? { ...m, title: titleInput.trim() } : m
+        ));
       }
     } else {
       const newSub = {
-        id: currentSubId || Date.now(),
+        id: currentSubId || Date.now().toString(),
         title: titleInput.trim(),
-        content: contentInput.trim() || 'No content provided yet.',
+        content: contentInput.trim() || 'No content provided yet.'
       };
 
       setModules(prev => prev.map(m => {
         if (m.id === currentMainId) {
           if (currentSubId === null) {
             return { ...m, subs: [...m.subs, newSub] };
-          } else {
-            return { ...m, subs: m.subs.map(s => s.id === currentSubId ? newSub : s) };
           }
+          return {
+            ...m,
+            subs: m.subs.map(s => s.id === currentSubId ? newSub : s)
+          };
         }
         return m;
       }));
     }
 
     setModalVisible(false);
-    resetModal();
-  };
-
-  const resetModal = () => {
     setTitleInput('');
     setContentInput('');
     setCurrentMainId(null);
@@ -159,111 +162,122 @@ export default function ModuleScreen() {
     setModalMode('');
   };
 
-  const showSubContent = (sub) => setSelectedContent(sub);
+  const toggleMain = (id) => {
+    setExpandedMain(expandedMain === id ? null : id);
+    if (expandedMain !== id) setSelectedContent(null);
+  };
+
+  const showSubContent = (sub) => {
+    setSelectedContent(sub);
+  };
 
   return (
-    <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
-      <ImageBackground source={{ uri: 'https://picsum.photos/id/1015/1600/500' }} style={styles.banner} imageStyle={{ opacity: 0.85 }}>
-        <View style={styles.bannerOverlay}>
-          <Text style={styles.bannerTitle}>Level 1 Modules</Text>
-          <Text style={styles.bannerSubtitle}>Conservation • Biodiversity • Eco-tourism • Legislation • Safety</Text>
-        </View>
-      </ImageBackground>
+    <>
+      <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
+        <ImageBackground source={{ uri: 'https://picsum.photos/id/1015/1600/500' }} style={styles.banner} imageStyle={{ opacity: 0.85 }}>
+          <View style={styles.bannerOverlay}>
+            <Text style={styles.bannerTitle}>General Module</Text>
+            <Text style={styles.bannerSubtitle}>Conservation • Biodiversity • Eco-tourism • Legislation • Safety</Text>
+          </View>
+        </ImageBackground>
 
-      <View style={styles.mainArea}>
-        <View style={styles.leftNav}>
-          <TouchableOpacity style={styles.createMainBtn} onPress={() => openMainModal(null)}>
-            <Text style={styles.createMainBtnText}>+ Create New Main Topic</Text>
-          </TouchableOpacity>
+        <View style={[styles.mainArea, !isWeb && styles.mainAreaMobile]}>
+          {/* Left Navigation */}
+          <View style={[styles.leftNav, !isWeb && styles.leftNavMobile]}>
+            <TouchableOpacity style={styles.createMainBtn} onPress={() => openMainModal(null)}>
+              <Text style={styles.createMainBtnText}>+ New Main Topic</Text>
+            </TouchableOpacity>
 
-          {modules.map((mod) => (
-            <View key={mod.id}>
-              <View style={styles.mainTopic}>
-                {/* Clickable area for expand only */}
-                <TouchableOpacity 
-                  style={styles.mainTopicContent}
-                  onPress={() => setExpandedMain(expandedMain === mod.id ? null : mod.id)}
-                  activeOpacity={0.95}
-                >
-                  <Text style={styles.mainTopicText}>{mod.title}</Text>
-                </TouchableOpacity>
-
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity 
-                    onPress={() => openMainModal(mod.id)}
-                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                  >
-                    <Text style={styles.icon}>✏️</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity 
-                    onPress={() => deleteMainTopic(mod.id)}
-                    hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                  >
-                    <Text style={styles.deleteIcon}>🗑️</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
-
-              {expandedMain === mod.id && (
-                <View style={styles.subList}>
-                  <TouchableOpacity style={styles.createSubBtn} onPress={() => openSubModal(mod.id, null)}>
-                    <Text style={styles.createSubBtnText}>+ New Sub-topic</Text>
-                  </TouchableOpacity>
-
-                  {mod.subs.map((sub) => (
-                    <View key={sub.id} style={styles.subTopic}>
-                      <TouchableOpacity 
-                        style={styles.subTopicContent}
-                        onPress={() => showSubContent(sub)}
-                        activeOpacity={0.95}
-                      >
-                        <Text style={styles.subTopicText}>{sub.title}</Text>
+            {modules.map((mod) => {
+              const isExpanded = expandedMain === mod.id;
+              return (
+                <View key={mod.id}>
+                  <View style={styles.mainTopic}>
+                    <TouchableOpacity style={styles.mainTopicContent} onPress={() => toggleMain(mod.id)}>
+                      <Text style={styles.mainTopicText}>{mod.title}</Text>
+                    </TouchableOpacity>
+                    <View style={styles.actionButtons}>
+                      <TouchableOpacity onPress={() => openMainModal(mod.id)}>
+                        <Text style={styles.icon}>✏️</Text>
                       </TouchableOpacity>
-                      <View style={styles.actionButtons}>
-                        <TouchableOpacity 
-                          onPress={() => openSubModal(mod.id, sub.id)}
-                          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                        >
-                          <Text style={styles.icon}>✏️</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity 
-                          onPress={() => deleteSubTopic(mod.id, sub.id)}
-                          hitSlop={{ top: 15, bottom: 15, left: 15, right: 15 }}
-                        >
-                          <Text style={styles.deleteIcon}>🗑️</Text>
-                        </TouchableOpacity>
-                      </View>
+                      <TouchableOpacity onPress={() => deleteMainTopic(mod.id)}>
+                        <Text style={styles.deleteIcon}>🗑️</Text>
+                      </TouchableOpacity>
                     </View>
-                  ))}
+                  </View>
+
+                  {isExpanded && (
+                    <View style={styles.subList}>
+                      <TouchableOpacity style={styles.createSubBtn} onPress={() => openSubModal(mod.id, null)}>
+                        <Text style={styles.createSubBtnText}>+ New Sub-topic</Text>
+                      </TouchableOpacity>
+
+                      {mod.subs.map((sub) => {
+                        const isSelected = selectedContent?.id === sub.id;
+                        return (
+                          <View key={sub.id}>
+                            <View style={styles.subTopic}>
+                              <TouchableOpacity style={styles.subTopicContent} onPress={() => showSubContent(sub)}>
+                                <Text style={styles.subTopicText}>{sub.title}</Text>
+                              </TouchableOpacity>
+                              <View style={styles.actionButtons}>
+                                <TouchableOpacity onPress={() => openSubModal(mod.id, sub.id)}>
+                                  <Text style={styles.icon}>✏️</Text>
+                                </TouchableOpacity>
+                                <TouchableOpacity onPress={() => deleteSubTopic(mod.id, sub.id)}>
+                                  <Text style={styles.deleteIcon}>🗑️</Text>
+                                </TouchableOpacity>
+                              </View>
+                            </View>
+
+                            {/* Mobile Content - Shows below the sub-topic */}
+                            {!isWeb && isSelected && (
+                              <View style={styles.mobileContent}>
+                                <Text style={styles.contentTitle}>{sub.title}</Text>
+                                <Text style={styles.contentText}>{sub.content}</Text>
+                              </View>
+                            )}
+                          </View>
+                        );
+                      })}
+                    </View>
+                  )}
+                </View>
+              );
+            })}
+          </View>
+
+          {/* Web Only - Right Content Panel */}
+          {isWeb && (
+            <View style={styles.rightContent}>
+              {selectedContent ? (
+                <>
+                  <Text style={styles.contentTitle}>{selectedContent.title}</Text>
+                  <Text style={styles.contentText}>{selectedContent.content}</Text>
+                </>
+              ) : (
+                <View style={styles.placeholder}>
+                  <Text style={styles.placeholderText}>
+                    Select a sub-topic from the left to view / edit content
+                  </Text>
                 </View>
               )}
             </View>
-          ))}
-        </View>
-
-        <View style={styles.rightContent}>
-          {selectedContent ? (
-            <>
-              <Text style={styles.contentTitle}>{selectedContent.title}</Text>
-              <Text style={styles.contentText}>{selectedContent.content}</Text>
-            </>
-          ) : (
-            <Text style={styles.placeholderText}>Select a sub-topic from the left</Text>
           )}
         </View>
-      </View>
+      </ScrollView>
 
-      {/* Modal */}
       <Modal
         visible={modalVisible}
-        transparent={true}
+        transparent
         animationType="fade"
-        onRequestClose={() => { setModalVisible(false); resetModal(); }}
+        onRequestClose={() => setModalVisible(false)}
+        statusBarTranslucent={true}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
             <Text style={styles.modalTitle}>
-              {modalMode === 'main' 
+              {modalMode === 'main'
                 ? (currentMainId === null ? 'New Main Topic' : 'Edit Main Topic')
                 : (currentSubId === null ? 'New Sub-topic' : 'Edit Sub-topic')}
             </Text>
@@ -286,10 +300,7 @@ export default function ModuleScreen() {
             )}
 
             <View style={styles.modalButtons}>
-              <TouchableOpacity
-                style={styles.cancelButton}
-                onPress={() => { setModalVisible(false); resetModal(); }}
-              >
+              <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
                 <Text style={styles.cancelText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.saveButton} onPress={saveModal}>
@@ -299,74 +310,130 @@ export default function ModuleScreen() {
           </View>
         </View>
       </Modal>
-    </ScrollView>
+    </>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#FBFCF8' },
-  scrollContent: { paddingBottom: 40 },
-  banner: { height: 260, justifyContent: 'center' },
-  bannerOverlay: { backgroundColor: 'rgba(51,61,41,0.75)', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' },
-  bannerTitle: { fontSize: 42, fontWeight: '800', color: '#fff' },
-  bannerSubtitle: { fontSize: 18, color: '#fff', marginTop: 8 },
+  container: { flex: 1, backgroundColor: '#f8f7f2' },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: 30 },
 
-  mainArea: { flexDirection: 'row', padding: 20, gap: 20 },
-  leftNav: { width: 340, backgroundColor: '#fff', borderRadius: 20, padding: 16, shadowColor: '#3A4D39', shadowOpacity: 0.1, elevation: 6 },
-  createMainBtn: { backgroundColor: '#936639', padding: 14, borderRadius: 15, alignItems: 'center', marginBottom: 16 },
-  createMainBtnText: { color: '#fff', fontWeight: '700' },
+  banner: { height: 220, justifyContent: 'center' },
+  bannerOverlay: { backgroundColor: 'rgba(51, 61, 41, 0.78)', width: '100%', height: '100%', justifyContent: 'center', alignItems: 'center' },
+  bannerTitle: { fontSize: 34, fontWeight: '800', color: 'white', textAlign: 'center' },
+  bannerSubtitle: { fontSize: 15.5, color: 'white', marginTop: 8, textAlign: 'center'},
 
-  mainTopic: { 
-    backgroundColor: '#f8f7f2', 
-    borderRadius: 12, 
-    marginBottom: 8, 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
+  mainArea: { flexDirection: 'row', padding: 12, gap: 12 },
+  mainAreaMobile: { flexDirection: 'column' },
+
+  leftNav: {
+    flex: 1.05,
+    minWidth: 168,
+    maxWidth: 300,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    elevation: 6,
+  },
+  leftNavMobile: { width: '100%', maxWidth: '100%', marginBottom: 16 },
+
+  createMainBtn: { backgroundColor: colors.olive, padding: 15, borderRadius: 14, alignItems: 'center', marginBottom: 14 },
+  createMainBtnText: { color: '#fff', fontWeight: '700', fontSize: 16 },
+
+  mainTopic: {
+    backgroundColor: '#f8f7f2',
+    borderRadius: 12,
+    marginBottom: 8,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingRight: 12 
+    padding: 15,
   },
-  mainTopicContent: { 
-    flex: 1, 
-    padding: 16 
-  },
-  mainTopicText: { fontSize: 18, fontWeight: '700', color: '#3A4D39' },
+  mainTopicContent: { flex: 1, padding: 14 },
+  mainTopicText: { fontSize: 16.5, fontWeight: '700', color: colors.olive, flex: 1 },
 
-  subList: { paddingLeft: 20 },
-  createSubBtn: { backgroundColor: '#a4ac86', padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 10 },
-  createSubBtnText: { color: '#fff', fontWeight: '600' },
+  subList: { paddingLeft: 12, paddingBottom: 8 },
+  createSubBtn: { backgroundColor: colors.sage, padding: 12, borderRadius: 12, alignItems: 'center', marginBottom: 8 },
+  createSubBtnText: { color: '#fff', fontWeight: '600', fontSize: 15 },
 
-  subTopic: { 
-    backgroundColor: '#fff', 
-    borderRadius: 12, 
-    marginBottom: 6, 
-    flexDirection: 'row', 
-    justifyContent: 'space-between', 
+  subTopic: {
+    backgroundColor: '#fff',
+    borderRadius: 8,
+    marginBottom: 6,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
     alignItems: 'center',
-    paddingRight: 12 
+    padding: 13,
   },
-  subTopicContent: { 
-    flex: 1, 
-    padding: 14 
+  subTopicContent: { flex: 1, padding: 13 },
+  subTopicText: { fontSize: 15, color: colors.forest },
+
+  actionButtons: { flexDirection: 'row', gap: 14 },
+  icon: { fontSize: 22, color: colors.sage },
+  deleteIcon: { fontSize: 22, color: '#e63939' },
+
+  /* Mobile Content */
+  mobileContent: {
+    backgroundColor: 'white',
+    marginHorizontal: 4,
+    marginBottom: 16,
+    padding: 18,
+    borderRadius: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.1,
+    elevation: 4,
   },
-  subTopicText: { fontSize: 15.5, color: '#414833' },
 
-  rightContent: { flex: 1, backgroundColor: '#fff', borderRadius: 20, padding: 30, minHeight: 500, shadowColor: '#3A4D39', shadowOpacity: 0.1, elevation: 6 },
-  contentTitle: { fontSize: 26, fontWeight: '700', color: '#3A4D39', marginBottom: 20 },
-  contentText: { fontSize: 16, lineHeight: 26, color: '#414833' },
-  placeholderText: { fontSize: 18, color: '#999', textAlign: 'center', marginTop: 100 },
+  /* Web Right Content */
+  rightContent: {
+    flex: 1.95,
+    backgroundColor: 'white',
+    borderRadius: 16,
+    padding: 20,
+    minHeight: 500,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    elevation: 6,
+  },
+  contentTitle: { fontSize: 23, fontWeight: '700', color: colors.olive, marginBottom: 18 },
+  contentText: { fontSize: 15.5, lineHeight: 25, color: colors.forest },
+  placeholder: { flex: 1, justifyContent: 'center', alignItems: 'center' },
+  placeholderText: { fontSize: 16.5, color: '#888', textAlign: 'center', paddingHorizontal: 20 },
 
-  actionButtons: { flexDirection: 'row', gap: 20 },
-  icon: { fontSize: 26 },
-  deleteIcon: { fontSize: 26, color: '#e63939' },
-
-  modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.65)', justifyContent: 'center', alignItems: 'center' },
-  modalContent: { backgroundColor: '#fff', borderRadius: 20, padding: 24, width: '90%', maxHeight: '88%' },
-  modalTitle: { fontSize: 22, fontWeight: '700', color: '#3A4D39', marginBottom: 20, textAlign: 'center' },
-  label: { fontSize: 16, fontWeight: '600', color: '#3A4D39', marginTop: 12, marginBottom: 6 },
-  input: { borderWidth: 1, borderColor: '#ddd', borderRadius: 12, padding: 14, fontSize: 16, backgroundColor: '#f9f9f7', marginBottom: 12 },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.72)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingTop: Platform.OS === 'android' ? 30 : 0,
+  },
+  modalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 20,
+    padding: 24,
+    width: '90%',
+    maxWidth: 500,
+  },
+  modalTitle: { fontSize: 22, fontWeight: '700', color: colors.forest, marginBottom: 20, textAlign: 'center' },
+  label: { fontSize: 16, fontWeight: '600', color: colors.forest, marginTop: 12, marginBottom: 6 },
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 12,
+    padding: 14,
+    fontSize: 16,
+    backgroundColor: '#f9f9f7',
+    marginBottom: 12,
+  },
   modalButtons: { flexDirection: 'row', justifyContent: 'flex-end', gap: 12, marginTop: 20 },
   cancelButton: { paddingVertical: 12, paddingHorizontal: 24 },
   cancelText: { color: '#666', fontWeight: '600', fontSize: 16 },
-  saveButton: { backgroundColor: '#936639', paddingVertical: 12, paddingHorizontal: 28, borderRadius: 12 },
+  saveButton: { backgroundColor: colors.olive, paddingVertical: 12, paddingHorizontal: 28, borderRadius: 12 },
   saveText: { color: '#fff', fontWeight: '700', fontSize: 16 },
 });

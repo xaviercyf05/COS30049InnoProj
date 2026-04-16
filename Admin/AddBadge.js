@@ -12,7 +12,6 @@ import {
 export default function AddBadgeScreen({ navigation }) {
 
     const [badgeName, setBadgeName] = useState('');
-    const [grade, setGrade] = useState('');
 
     // Fixed badge image for all badges
     const BADGE_IMAGE = {
@@ -20,7 +19,7 @@ export default function AddBadgeScreen({ navigation }) {
     };
 
     const handleAddBadge = () => {
-        if (!badgeName.trim() || !grade.trim()) {
+        if (!badgeName.trim()) {
             Alert.alert('Error', 'Please fill in all fields');
             return;
         }
@@ -28,7 +27,6 @@ export default function AddBadgeScreen({ navigation }) {
         const newBadge = {
             id: Date.now(), // temporary id (backend will replace this)
             name: badgeName,
-            grade: grade,
             image: BADGE_IMAGE.uri,
             unlocked: false
         };
@@ -38,7 +36,6 @@ export default function AddBadgeScreen({ navigation }) {
         Alert.alert('Success', 'Badge added successfully');
 
         setBadgeName('');
-        setGrade('');
 
         navigation.goBack();
     };
@@ -59,14 +56,6 @@ export default function AddBadgeScreen({ navigation }) {
                 placeholder="Badge Name (e.g. Bako National Park)"
                 value={badgeName}
                 onChangeText={setBadgeName}
-                style={styles.input}
-            />
-
-            {/* GRADE (IMPORTANT CHANGE: using Grade instead of Level) */}
-            <TextInput
-                placeholder="Grade (e.g. Grade 1 )"
-                value={grade}
-                onChangeText={setGrade}
                 style={styles.input}
             />
 

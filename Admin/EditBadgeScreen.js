@@ -6,14 +6,13 @@ export default function EditBadgeScreen({ route, navigation }) {
     const { badge, setBadges } = route.params;
 
     const [name, setName] = useState(badge.name);
-    const [grade, setGrade] = useState(String(badge.grade));
 
     const handleSave = () => {
 
         setBadges(prev =>
             prev.map(b =>
                 b.id === badge.id
-                    ? { ...b, name: name, grade: Number(grade) }
+                    ? { ...b, name: name }
                     : b
             )
         );
@@ -32,14 +31,6 @@ export default function EditBadgeScreen({ route, navigation }) {
                 <TextInput
                     value={name}
                     onChangeText={setName}
-                    style={styles.input}
-                />
-
-                <Text style={styles.label}>Grade</Text>
-                <TextInput
-                    value={grade}
-                    onChangeText={setGrade}
-                    keyboardType="numeric"
                     style={styles.input}
                 />
 

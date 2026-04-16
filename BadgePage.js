@@ -4,11 +4,11 @@ import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
 export default function BadgeScreen() {
 
     const badges = [
-    { id: 1, name: 'Bako National Park', grade: 1, unlocked: true },
-    { id: 2, name: 'Similajau National Park', grade: 2, unlocked: true },
-    { id: 3, name: 'Kubah National Park', grade: 2, unlocked: true },
-    { id: 4, name: 'Gunung Mulu National Park', grade: 3, unlocked: false },
-    { id: 5, name: 'Maludam National Park', grade: 3, unlocked: false },
+    { id: 1, name: 'Bako National Park', unlocked: true },
+    { id: 2, name: 'Similajau National Park', unlocked: true },
+    { id: 3, name: 'Kubah National Park', unlocked: true },
+    { id: 4, name: 'Gunung Mulu National Park', unlocked: false },
+    { id: 5, name: 'Maludam National Park', unlocked: false },
     ];
 
     const earnedBadges = badges.filter(b => b.unlocked).length;
@@ -42,7 +42,6 @@ export default function BadgeScreen() {
                     ]}
                     />
                 <Text style={styles.badgeText}>{badge.name}</Text>
-                <Text style={styles.gradeText}>Grade {badge.grade}</Text>
             </TouchableOpacity>
             ))}
         </View>
@@ -113,10 +112,5 @@ const styles = StyleSheet.create({
     badgeText: {
         fontSize: 12,
         marginTop: 5,
-    },
-
-    gradeText: {
-        fontSize: 11,
-        color: '#3A4D39',
     },
 });

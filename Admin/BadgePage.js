@@ -4,11 +4,11 @@ import { View, Text, StyleSheet, Image, TouchableOpacity, Modal } from 'react-na
 export default function BadgeScreen({ navigation }) {
 
     const [badges, setBadges] = useState([
-        { id: 1, name: 'Bako National Park', grade: 1 },
-        { id: 2, name: 'Similajau National Park', grade: 2 },
-        { id: 3, name: 'Kubah National Park', grade: 2 },
-        { id: 4, name: 'Gunung Mulu National Park', grade: 3 },
-        { id: 5, name: 'Maludam National Park', grade: 3 },
+        { id: 1, name: 'Bako National Park' },
+        { id: 2, name: 'Similajau National Park'},
+        { id: 3, name: 'Kubah National Park' },
+        { id: 4, name: 'Gunung Mulu National Park' },
+        { id: 5, name: 'Maludam National Park' },
     ]);
 
     const [activeMenu, setActiveMenu] = useState(null);
@@ -100,7 +100,6 @@ export default function BadgeScreen({ navigation }) {
                             />
 
                             <Text style={styles.badgeText}>{badge.name}</Text>
-                            <Text style={styles.gradeText}>Grade {badge.grade}</Text>
 
                         </View>
                     ))}
@@ -204,11 +203,6 @@ const styles = StyleSheet.create({
     badgeText: {
         fontSize: 12,
         marginTop: 5,
-    },
-
-    gradeText: {
-        fontSize: 11,
-        color: '#3A4D39',
     },
 
     menuIcon: {

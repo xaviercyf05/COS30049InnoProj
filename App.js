@@ -1,12 +1,27 @@
 import React, { useState } from 'react';
-import { NavigationContainer } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { View, Text, TouchableOpacity, Image, StyleSheet, ScrollView, Alert } from 'react-native';
+import {
+  NavigationContainer
+} from '@react-navigation/native';
+import {
+  createNativeStackNavigator
+} from '@react-navigation/native-stack';
+import {
+  View,
+  Text,
+  TouchableOpacity,
+  Image,
+  StyleSheet,
+  ScrollView,
+  Platform,
+  Dimensions
+} from 'react-native';
 
 import AnnounceScreen from './announce';
 import ModuleScreen from './module';
 
 const Stack = createNativeStackNavigator();
+const { height: screenHeight } = Dimensions.get('window');
+const isWeb = Platform.OS === 'web';
 
 function CustomHeader({ navigation }) {
   const [menuVisible, setMenuVisible] = useState(false);
@@ -32,7 +47,7 @@ function CustomHeader({ navigation }) {
     {
       id: 3,
       title: "New Announcement",
-      message: "Level 1 Training – Bako National Park schedule updated",
+      message: "Level 1 Training - Bako National Park schedule updated",
       time: "Yesterday",
       read: true,
     },
@@ -46,8 +61,8 @@ function CustomHeader({ navigation }) {
   ];
 
   const unreadCount = notifications.filter(n => !n.read).length;
-  const displayedNotifications = showAllNotifications 
-    ? notifications 
+  const displayedNotifications = showAllNotifications
+    ? notifications
     : notifications.slice(0, 3);
 
   return (
@@ -56,10 +71,12 @@ function CustomHeader({ navigation }) {
 
       <View style={styles.headerRight}>
         {/* Notification Bell */}
-        <TouchableOpacity onPress={() => {
-          setNotificationVisible(!notificationVisible);
-          if (!notificationVisible) setShowAllNotifications(false); // Reset to collapsed when reopening
-        }}>
+        <TouchableOpacity
+          onPress={() => {
+            setNotificationVisible(!notificationVisible);
+            if (!notificationVisible) setShowAllNotifications(false);
+          }}
+        >
           <View>
             <Image
               source={{ uri: 'https://cdn-icons-png.flaticon.com/512/1827/1827312.png' }}
@@ -81,19 +98,27 @@ function CustomHeader({ navigation }) {
 
       {/* ==================== NOTIFICATION DROPDOWN ==================== */}
       {notificationVisible && (
-        <View style={styles.notificationDropdown}>
+        <View style={[
+          styles.notificationDropdown,
+          !isWeb && styles.notificationDropdownMobile
+        ]}>
           <Text style={styles.dropdownTitle}>
             Notifications {showAllNotifications && `(${notifications.length})`}
           </Text>
-          
-          <ScrollView style={styles.notificationList} nestedScrollEnabled>
+
+          <ScrollView
+            style={styles.notificationList}
+            nestedScrollEnabled={true}
+            showsVerticalScrollIndicator={true}
+            contentContainerStyle={styles.notificationListContent}
+          >
             {displayedNotifications.map((notif) => (
               <View key={notif.id} style={styles.notificationItem}>
                 <View style={styles.notificationContent}>
                   <Text style={[styles.notifTitle, !notif.read && styles.unread]}>
                     {notif.title}
                   </Text>
-                  <Text style={styles.notifMessage} numberOfLines={2}>
+                  <Text style={styles.notifMessage} numberOfLines={3}>
                     {notif.message}
                   </Text>
                   <Text style={styles.notifTime}>{notif.time}</Text>
@@ -104,13 +129,13 @@ function CustomHeader({ navigation }) {
           </ScrollView>
 
           {notifications.length > 3 && (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.showMoreButton}
               onPress={() => setShowAllNotifications(!showAllNotifications)}
             >
               <Text style={styles.showMoreText}>
-                {showAllNotifications 
-                  ? "Show Less" 
+                {showAllNotifications
+                  ? "Show Less"
                   : `Show More Notifications (${notifications.length - 3} more)`}
               </Text>
             </TouchableOpacity>
@@ -176,7 +201,6 @@ export default function App() {
       >
         <Stack.Screen name="Announcements" component={AnnounceScreen} />
         <Stack.Screen name="Modules" component={ModuleScreen} />
-        <Stack.Screen name="Assessment" component={AssessmentScreen} />
       </Stack.Navigator>
     </NavigationContainer>
   );
@@ -192,6 +216,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10,
     paddingTop: 25,
     paddingBottom: 15,
+    zIndex: 100,
   },
 
   headerTitle: {
@@ -247,6 +272,14 @@ const styles = StyleSheet.create({
     zIndex: 1000,
     overflow: 'hidden',
   },
+  notificationDropdownMobile: {
+    width: '92%',
+    maxWidth: 360,
+    top: 75,
+    right: 16,
+    maxHeight: screenHeight * 0.72,
+  },
+
   dropdownTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -256,8 +289,10 @@ const styles = StyleSheet.create({
     borderBottomColor: '#eee',
   },
   notificationList: {
-    maxHeight: 380,
-    paddingHorizontal: 10,
+    maxHeight: 420,
+  },
+  notificationListContent: {
+    paddingHorizontal: 8,
   },
   notificationItem: {
     flexDirection: 'row',
@@ -296,6 +331,7 @@ const styles = StyleSheet.create({
     marginLeft: 8,
     marginTop: 8,
   },
+
   showMoreButton: {
     padding: 16,
     backgroundColor: '#f8f7f2',

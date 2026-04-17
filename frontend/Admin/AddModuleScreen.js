@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import withRoleGuard from '../auth/withRoleGuard.js';
+import { getModuleLibrary, upsertModule } from './moduleLibraryStore.js';
 
 const Editor =
   Platform.OS === 'web'
@@ -25,10 +26,11 @@ function createId() {
   return `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
 
-function AddModuleScreen() {
+function AddModuleScreen({ navigation }) {
   const [moduleTitle, setModuleTitle] = useState('');
   const [moduleImageUrl, setModuleImageUrl] = useState('');
   const [moduleLocalImageUri, setModuleLocalImageUri] = useState('');
+  const [savedCount, setSavedCount] = useState(() => getModuleLibrary().length);
   const [sections, setSections] = useState([
     {
       id: createId(),
@@ -145,15 +147,20 @@ function AddModuleScreen() {
     }
 
     const moduleDraft = {
-      moduleTitle,
-      moduleImageUrl,
+      id: `module-${createId()}`,
+      title: moduleTitle.trim(),
+      moduleImageUrl: moduleImageUrl.trim(),
       moduleLocalImageUri,
-      moduleImage: modulePreviewImage,
       sections,
     };
 
-    console.log('Module draft saved:', moduleDraft);
-    Alert.alert('Saved', 'Module draft has been saved on the frontend.');
+    upsertModule(moduleDraft);
+    setSavedCount(getModuleLibrary().length);
+
+    Alert.alert(
+      'Saved',
+      'Module draft saved. You can edit it from Manage Modules.'
+    );
   };
 
   return (
@@ -163,6 +170,15 @@ function AddModuleScreen() {
     >
       <ScrollView contentContainerStyle={styles.container}>
         <Text style={styles.header}>Create Module</Text>
+
+        <View style={styles.headerActionsRow}>
+          <TouchableOpacity
+            style={styles.manageBtn}
+            onPress={() => navigation.navigate('AdminModules')}
+          >
+            <Text style={styles.manageBtnText}>Manage Modules ({savedCount})</Text>
+          </TouchableOpacity>
+        </View>
 
         <TextInput
           placeholder="Module Title"
@@ -286,8 +302,24 @@ const styles = StyleSheet.create({
   header: {
     fontSize: 26,
     fontWeight: '700',
-    marginBottom: 20,
+    marginBottom: 10,
     color: '#3A4D39',
+  },
+  headerActionsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  manageBtn: {
+    backgroundColor: '#ECF2E5',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  manageBtnText: {
+    color: '#2E6B4D',
+    fontWeight: '700',
+    fontSize: 13,
   },
   moduleInput: {
     backgroundColor: '#FFFFFF',

@@ -5,6 +5,7 @@ import {
 	Image,
 	ImageBackground,
 	Platform,
+	ScrollView,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
@@ -13,16 +14,19 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import LoginPage from './Login/LoginPage.js';
 import LoadingScreen from './Login/LoadingScreen.js';
-import RegisterPlaceholderScreen from './Register/RegisterPlaceholderScreen.js';
+import RegisterScreen from './Register/RegisterScreen.js';
+import SubmissionScreen from './Register/SubmissionScreen.js';
 import ModuleScreen from './Module/ModuleScreen.js';
-import Grade1Screen from './Grade1Screen.js';
-import Grade2Screen from './Grade2Screen.js';
-import Grade3Screen from './Grade3Screen.js';
+import AnnouncementScreen from './Announcement/AnnouncementScreen.js';
 import BadgeScreen from './Badge/BadgePage.js';
 import AddModuleScreen from './Admin/AddModuleScreen.js';
+import AdminModuleManagerScreen from './Admin/AdminModuleManagerScreen.js';
+import AdminAnnouncementScreen from './Admin/AdminAnnouncementScreen.js';
+import AdminRegistrationManagementScreen from './Admin/AdminRegistrationManagementScreen.js';
 import BadgeManagementScreen from './Admin/BadgeManagementScreen.js';
 import AddBadgeScreen from './Admin/AddBadgeScreen.js';
 import EditBadgeScreen from './Admin/EditBadgeScreen.js';
@@ -52,8 +56,41 @@ function AdminFeatureScreen({ route }) {
 	);
 }
 
+function AssessmentScreen({ route, navigation }) {
+	const moduleName = route?.params?.moduleName || 'General Module';
+
+	return (
+		<View style={styles.assessmentContainer}>
+			<View style={styles.assessmentCard}>
+				<Text style={styles.assessmentTitle}>Assessment</Text>
+				<Text style={styles.assessmentSubtitle}>{moduleName}</Text>
+				<Text style={styles.assessmentText}>
+					Assessment content can be connected later. Navigation is enabled now so the
+					training flow is complete on frontend.
+				</Text>
+				<TouchableOpacity
+					style={styles.assessmentBackButton}
+					onPress={() => {
+						if (navigation.canGoBack()) {
+							navigation.goBack();
+							return;
+						}
+
+						navigation.navigate('Home');
+					}}
+				>
+					<Text style={styles.assessmentBackText}>Back To Module</Text>
+				</TouchableOpacity>
+			</View>
+		</View>
+	);
+}
+
 function HomeScreen({ navigation }) {
+	const insets = useSafeAreaInsets();
 	const [menuVisible, setMenuVisible] = useState(false);
+	const [notificationVisible, setNotificationVisible] = useState(false);
+	const [showAllNotifications, setShowAllNotifications] = useState(false);
 	const [profile, setProfile] = useState(null);
 	const [profileLoading, setProfileLoading] = useState(true);
 
@@ -157,13 +194,69 @@ function HomeScreen({ navigation }) {
 
 	const openAdminFeature = (title, description) => {
 		setMenuVisible(false);
+		setNotificationVisible(false);
 		navigation.navigate('AdminFeature', { title, description });
 	};
 
 	const openBadges = () => {
 		setMenuVisible(false);
+		setNotificationVisible(false);
 		navigation.navigate(isAdmin ? 'AdminBadges' : 'Badges');
 	};
+
+	const openAnnouncements = () => {
+		setMenuVisible(false);
+		setNotificationVisible(false);
+		navigation.navigate(isAdmin ? 'AdminAnnouncements' : 'Announcements');
+	};
+
+	const openAdminModules = () => {
+		setMenuVisible(false);
+		setNotificationVisible(false);
+		navigation.navigate('AdminModules');
+	};
+
+	const openAdminRegistrations = () => {
+		setMenuVisible(false);
+		setNotificationVisible(false);
+		navigation.navigate('AdminRegistrations');
+	};
+
+	const notifications = [
+		{
+			id: 1,
+			title: 'New Announcement',
+			message: 'Level 3 Training for Gunung Mulu National Park is now open.',
+			time: '2 min ago',
+			read: false,
+		},
+		{
+			id: 2,
+			title: 'Module Updated',
+			message: 'New content was added to 1.3 Eco-tourism module.',
+			time: '1 hour ago',
+			read: false,
+		},
+		{
+			id: 3,
+			title: 'Assessment Reminder',
+			message: 'Remember to complete your General Module assessment this week.',
+			time: 'Yesterday',
+			read: true,
+		},
+		{
+			id: 4,
+			title: 'System Notice',
+			message: 'Scheduled maintenance starts tomorrow at 10:00 AM.',
+			time: '2 days ago',
+			read: true,
+		},
+	];
+
+	const unreadCount = notifications.filter((item) => !item.read).length;
+	const displayedNotifications = showAllNotifications
+		? notifications
+		: notifications.slice(0, 3);
 
 	const userModules = [
 		{
@@ -215,25 +308,106 @@ function HomeScreen({ navigation }) {
 
 	return (
 		<View style={styles.container}>
-			<View style={styles.header}>
+			<View
+				style={[
+					styles.header,
+					{ paddingTop: Math.max(14, insets.top + 8) },
+				]}
+			>
 				<Text style={styles.headerTitle}>SFC Training</Text>
 
-				<View>
+				<View style={styles.headerOverlayWrapper}>
 					<View style={styles.headerRight}>
-						<TouchableOpacity>
-							<Image
-								source={{ uri: 'https://cdn-icons-png.flaticon.com/512/1827/1827312.png' }}
-								style={styles.icon}
-							/>
+						<TouchableOpacity
+							onPress={() => {
+								setNotificationVisible((previous) => {
+									const nextState = !previous;
+									if (nextState) {
+										setShowAllNotifications(false);
+										setMenuVisible(false);
+									}
+									return nextState;
+								});
+							}}
+						>
+							<View>
+								<Image
+									source={{ uri: 'https://cdn-icons-png.flaticon.com/512/1827/1827312.png' }}
+									style={styles.icon}
+								/>
+								{unreadCount > 0 && (
+									<View style={styles.badge}>
+										<Text style={styles.badgeText}>{unreadCount}</Text>
+									</View>
+								)}
+							</View>
 						</TouchableOpacity>
 
-						<TouchableOpacity onPress={() => setMenuVisible(!menuVisible)}>
+						<TouchableOpacity
+							onPress={() => {
+								setMenuVisible((previous) => {
+									const nextState = !previous;
+									if (nextState) {
+										setNotificationVisible(false);
+									}
+									return nextState;
+								});
+							}}
+						>
 							<Image
 								source={profileImageSource}
 								style={styles.userImage}
 							/>
 						</TouchableOpacity>
 					</View>
+
+					{notificationVisible && (
+						<View
+							style={[
+								styles.notificationDropdown,
+								Platform.OS !== 'web' && styles.notificationDropdownMobile,
+							]}
+						>
+							<Text style={styles.dropdownTitle}>
+								Notifications {showAllNotifications ? `(${notifications.length})` : ''}
+							</Text>
+
+							<ScrollView
+								style={styles.notificationList}
+								contentContainerStyle={styles.notificationListContent}
+								showsVerticalScrollIndicator
+								nestedScrollEnabled
+							>
+								{displayedNotifications.map((item) => (
+									<View key={item.id} style={styles.notificationItem}>
+										<View style={styles.notificationContent}>
+											<Text style={[styles.notificationItemTitle, !item.read && styles.unread]}>
+												{item.title}
+											</Text>
+											<Text style={styles.notificationItemMessage} numberOfLines={3}>
+												{item.message}
+											</Text>
+											<Text style={styles.notificationItemTime}>{item.time}</Text>
+										</View>
+										{!item.read && <View style={styles.unreadDot} />}
+									</View>
+								))}
+							</ScrollView>
+
+							{notifications.length > 3 && (
+								<TouchableOpacity
+									style={styles.showMoreButton}
+									onPress={() => setShowAllNotifications((previous) => !previous)}
+								>
+									<Text style={styles.showMoreText}>
+										{showAllNotifications
+											? 'Show Less'
+											: `Show More Notifications (${notifications.length - 3} more)`}
+									</Text>
+								</TouchableOpacity>
+							)}
+						</View>
+					)}
 
 					{menuVisible && (
 						<View style={styles.dropdown}>
@@ -273,18 +447,32 @@ function HomeScreen({ navigation }) {
 
 									<TouchableOpacity
 										style={styles.dropdownItem}
-										onPress={() => openAdminFeature('Announcement', 'Create and publish announcements for park guides and admins.')}
+										onPress={openAnnouncements}
 									>
-										<Text style={styles.dropdownText}>Announcement</Text>
+										<Text style={styles.dropdownText}>{isAdmin ? 'Admin Announcements' : 'Announcements'}</Text>
 									</TouchableOpacity>
 
 									{isAdmin && (
-										<TouchableOpacity
-											style={styles.dropdownItem}
-											onPress={() => openAdminFeature('Assessments', 'Manage assessment content, attempt settings, and review workflows.')}
-										>
-											<Text style={styles.dropdownText}>Assessments</Text>
-										</TouchableOpacity>
+										<>
+											<TouchableOpacity
+												style={styles.dropdownItem}
+												onPress={openAdminModules}
+											>
+												<Text style={styles.dropdownText}>Module Library</Text>
+											</TouchableOpacity>
+											<TouchableOpacity
+												style={styles.dropdownItem}
+												onPress={openAdminRegistrations}
+											>
+												<Text style={styles.dropdownText}>Registration Requests</Text>
+											</TouchableOpacity>
+											<TouchableOpacity
+												style={styles.dropdownItem}
+												onPress={() => openAdminFeature('Assessments', 'Manage assessment content, attempt settings, and review workflows.')}
+											>
+												<Text style={styles.dropdownText}>Assessments</Text>
+											</TouchableOpacity>
+										</>
 									)}
 								</View>
 							</View>
@@ -293,6 +481,7 @@ function HomeScreen({ navigation }) {
 								style={styles.logoutButton}
 								onPress={() => {
 									setMenuVisible(false);
+									setNotificationVisible(false);
 									handleLogout();
 								}}
 							>
@@ -308,12 +497,20 @@ function HomeScreen({ navigation }) {
 			{isAdmin && (
 				<View style={styles.headerRow}>
 					<Text style={styles.sectionLabel}>Module Management</Text>
-					<TouchableOpacity
-						style={styles.addButton}
-						onPress={() => navigation.navigate('AddModule')}
-					>
-						<Text style={styles.addButtonText}>Add Module</Text>
-					</TouchableOpacity>
+					<View style={styles.adminActions}>
+						<TouchableOpacity
+							style={styles.secondaryAddButton}
+							onPress={() => navigation.navigate('AdminModules')}
+						>
+							<Text style={styles.secondaryAddButtonText}>Manage Modules</Text>
+						</TouchableOpacity>
+						<TouchableOpacity
+							style={styles.addButton}
+							onPress={() => navigation.navigate('AddModule')}
+						>
+							<Text style={styles.addButtonText}>Add Module</Text>
+						</TouchableOpacity>
+					</View>
 				</View>
 			)}
 
@@ -352,26 +549,19 @@ export default function App() {
 				<Stack.Screen name="Login" component={LoginPage} />
 				<Stack.Screen
 					name="Register"
-					component={RegisterPlaceholderScreen}
-					options={{ headerShown: true, title: 'Register' }}
+					component={RegisterScreen}
+					options={{ headerShown: false, title: 'Register' }}
+				/>
+				<Stack.Screen
+					name="Submission"
+					component={SubmissionScreen}
+					options={{ headerShown: false, title: 'Submission' }}
 				/>
 				<Stack.Screen name="Home" component={HomeScreen} />
 				<Stack.Screen name="Module" component={ModuleScreen} />
-				<Stack.Screen
-					name="Grade1"
-					component={Grade1Screen}
-					options={{ headerShown: true, title: 'Grade 1' }}
-				/>
-				<Stack.Screen
-					name="Grade2"
-					component={Grade2Screen}
-					options={{ headerShown: true, title: 'Grade 2' }}
-				/>
-				<Stack.Screen
-					name="Grade3"
-					component={Grade3Screen}
-					options={{ headerShown: true, title: 'Grade 3' }}
-				/>
+				<Stack.Screen name="Assessment" component={AssessmentScreen} />
+				<Stack.Screen name="Announcements" component={AnnouncementScreen} />
+				<Stack.Screen name="AdminAnnouncements" component={AdminAnnouncementScreen} />
 				<Stack.Screen
 					name="Badges"
 					component={BadgeScreen}
@@ -391,6 +581,14 @@ export default function App() {
 					name="AddModule"
 					component={AddModuleScreen}
 					options={{ headerShown: true, title: 'Add Module' }}
+				/>
+				<Stack.Screen
+					name="AdminModules"
+					component={AdminModuleManagerScreen}
+				/>
+				<Stack.Screen
+					name="AdminRegistrations"
+					component={AdminRegistrationManagementScreen}
 				/>
 				<Stack.Screen
 					name="AdminBadges"
@@ -448,11 +646,31 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		gap: 18,
 	},
+	headerOverlayWrapper: {
+		position: 'relative',
+	},
 	icon: {
 		width: 24,
 		height: 24,
 		tintColor: '#3A4D39',
 		opacity: 0.7,
+	},
+	badge: {
+		position: 'absolute',
+		top: -4,
+		right: -6,
+		backgroundColor: '#D63F3F',
+		borderRadius: 10,
+		minWidth: 18,
+		height: 18,
+		justifyContent: 'center',
+		alignItems: 'center',
+		paddingHorizontal: 4,
+	},
+	badgeText: {
+		color: '#FFFFFF',
+		fontSize: 11,
+		fontWeight: '800',
 	},
 	userImage: {
 		width: 40,
@@ -460,6 +678,92 @@ const styles = StyleSheet.create({
 		borderRadius: 20,
 		borderWidth: 1.5,
 		borderColor: '#E8E8E0',
+	},
+	notificationDropdown: {
+		position: 'absolute',
+		top: 56,
+		right: 56,
+		width: 340,
+		maxHeight: 420,
+		backgroundColor: 'rgba(255, 255, 255, 0.98)',
+		borderRadius: 20,
+		shadowColor: '#3A4D39',
+		shadowOffset: { width: 0, height: 10 },
+		shadowOpacity: 0.14,
+		shadowRadius: 20,
+		elevation: 10,
+		zIndex: 10000,
+		overflow: 'hidden',
+	},
+	notificationDropdownMobile: {
+		right: 0,
+		width: 292,
+	},
+	dropdownTitle: {
+		fontSize: 17,
+		fontWeight: '700',
+		color: '#304637',
+		paddingHorizontal: 16,
+		paddingVertical: 14,
+		borderBottomWidth: 1,
+		borderBottomColor: '#EEF2EA',
+	},
+	notificationList: {
+		maxHeight: 300,
+	},
+	notificationListContent: {
+		paddingHorizontal: 8,
+	},
+	notificationItem: {
+		flexDirection: 'row',
+		paddingVertical: 12,
+		paddingHorizontal: 8,
+		borderBottomWidth: 1,
+		borderBottomColor: '#F2F5EF',
+		gap: 8,
+	},
+	notificationContent: {
+		flex: 1,
+	},
+	notificationItemTitle: {
+		fontSize: 14,
+		fontWeight: '700',
+		color: '#3A4D39',
+		marginBottom: 3,
+	},
+	unread: {
+		color: '#233427',
+	},
+	notificationItemMessage: {
+		fontSize: 13,
+		color: '#566658',
+		lineHeight: 18,
+	},
+	notificationItemTime: {
+		marginTop: 4,
+		fontSize: 11,
+		fontWeight: '600',
+		color: '#7D8A7C',
+	},
+	unreadDot: {
+		width: 8,
+		height: 8,
+		borderRadius: 999,
+		backgroundColor: '#D66B6B',
+		marginTop: 6,
+	},
+	showMoreButton: {
+		paddingVertical: 12,
+		paddingHorizontal: 16,
+		backgroundColor: '#F7FAF3',
+		borderTopWidth: 1,
+		borderTopColor: '#EEF2EA',
+	},
+	showMoreText: {
+		fontSize: 13,
+		fontWeight: '700',
+		color: '#2E6B4D',
+		textAlign: 'center',
 	},
 	dropdown: {
 		position: 'absolute',
@@ -533,6 +837,21 @@ const styles = StyleSheet.create({
 		fontSize: 16,
 		fontWeight: '700',
 		color: '#3A4D39',
+	},
+	adminActions: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 8,
+	},
+	secondaryAddButton: {
+		backgroundColor: '#EAF2E3',
+		paddingVertical: 8,
+		paddingHorizontal: 12,
+		borderRadius: 8,
+	},
+	secondaryAddButtonText: {
+		color: '#2E6B4D',
+		fontWeight: '700',
 	},
 	addButton: {
 		backgroundColor: '#656d4a',
@@ -663,5 +982,51 @@ const styles = StyleSheet.create({
 		fontSize: 15,
 		lineHeight: 22,
 		color: '#4B6252',
+	},
+	assessmentContainer: {
+		flex: 1,
+		backgroundColor: '#FBFCF8',
+		justifyContent: 'center',
+		alignItems: 'center',
+		padding: 20,
+	},
+	assessmentCard: {
+		width: '100%',
+		maxWidth: 480,
+		backgroundColor: '#FFFFFF',
+		borderWidth: 1,
+		borderColor: '#E7ECE1',
+		borderRadius: 16,
+		padding: 20,
+	},
+	assessmentTitle: {
+		fontSize: 24,
+		fontWeight: '800',
+		color: '#20372A',
+	},
+	assessmentSubtitle: {
+		marginTop: 6,
+		fontSize: 14,
+		fontWeight: '700',
+		color: '#4E6657',
+	},
+	assessmentText: {
+		marginTop: 12,
+		fontSize: 14,
+		lineHeight: 22,
+		color: '#4B6252',
+	},
+	assessmentBackButton: {
+		marginTop: 16,
+		alignSelf: 'flex-start',
+		backgroundColor: '#2E6B4D',
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+		borderRadius: 10,
+	},
+	assessmentBackText: {
+		color: '#FFFFFF',
+		fontWeight: '700',
+		fontSize: 14,
 	},
 });

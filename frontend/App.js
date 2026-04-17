@@ -22,6 +22,10 @@ import Grade1Screen from './Grade1Screen.js';
 import Grade2Screen from './Grade2Screen.js';
 import Grade3Screen from './Grade3Screen.js';
 import BadgeScreen from './Badge/BadgePage.js';
+import AddModuleScreen from './Admin/AddModuleScreen.js';
+import BadgeManagementScreen from './Admin/BadgeManagementScreen.js';
+import AddBadgeScreen from './Admin/AddBadgeScreen.js';
+import EditBadgeScreen from './Admin/EditBadgeScreen.js';
 import ProfileScreen from './Profile/ProfileScreen.js';
 import EditProfileScreen from './Profile/EditProfileScreen.js';
 import { pickProfileImagePath, requestProfileApi, resolveProfileImageUri } from './Profile/profileApi.js';
@@ -156,6 +160,11 @@ function HomeScreen({ navigation }) {
 		navigation.navigate('AdminFeature', { title, description });
 	};
 
+	const openBadges = () => {
+		setMenuVisible(false);
+		navigation.navigate(isAdmin ? 'AdminBadges' : 'Badges');
+	};
+
 	const userModules = [
 		{
 			id: 'general',
@@ -250,12 +259,9 @@ function HomeScreen({ navigation }) {
 
 									<TouchableOpacity
 										style={styles.dropdownItem}
-										onPress={() => {
-											setMenuVisible(false);
-											navigation.navigate('Badges');
-										}}
+										onPress={openBadges}
 									>
-										<Text style={styles.dropdownText}>Badges</Text>
+										<Text style={styles.dropdownText}>{isAdmin ? 'Badge Management' : 'Badges'}</Text>
 									</TouchableOpacity>
 
 									<TouchableOpacity
@@ -304,11 +310,7 @@ function HomeScreen({ navigation }) {
 					<Text style={styles.sectionLabel}>Module Management</Text>
 					<TouchableOpacity
 						style={styles.addButton}
-						onPress={() => navigation.navigate('AddModule', {
-							title: 'Add Module',
-							description:
-								'Create and organize module chapters and subsection content from this admin flow.',
-						})}
+						onPress={() => navigation.navigate('AddModule')}
 					>
 						<Text style={styles.addButtonText}>Add Module</Text>
 					</TouchableOpacity>
@@ -387,13 +389,23 @@ export default function App() {
 				/>
 				<Stack.Screen
 					name="AddModule"
-					component={AdminFeatureScreen}
-					initialParams={{
-						title: 'Add Module',
-						description:
-							'Create module structure, section outlines, and content authoring flow from this admin feature.',
-					}}
+					component={AddModuleScreen}
 					options={{ headerShown: true, title: 'Add Module' }}
+				/>
+				<Stack.Screen
+					name="AdminBadges"
+					component={BadgeManagementScreen}
+					options={{ headerShown: true, title: 'Badge Management' }}
+				/>
+				<Stack.Screen
+					name="AddBadge"
+					component={AddBadgeScreen}
+					options={{ headerShown: true, title: 'Add Badge' }}
+				/>
+				<Stack.Screen
+					name="EditBadge"
+					component={EditBadgeScreen}
+					options={{ headerShown: true, title: 'Edit Badge' }}
 				/>
 				<Stack.Screen
 					name="AdminFeature"

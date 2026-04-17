@@ -35,7 +35,39 @@ function makeDefaultSection() {
   return {
     id: createId('section'),
     title: '',
-    subsections: [],
+    content: '',
+  };
+}
+
+function normalizeSection(section) {
+  if (!section) {
+    return makeDefaultSection();
+  }
+
+  const composedFromSubsections = Array.isArray(section.subsections)
+    ? section.subsections
+        .map((subSection) => {
+          const subTitle = subSection?.title?.trim();
+          const subContent = subSection?.content?.trim();
+
+          if (!subTitle && !subContent) {
+            return '';
+          }
+
+          if (subTitle && subContent) {
+            return `<h4>${subTitle}</h4>${subContent}`;
+          }
+
+          return subTitle || subContent || '';
+        })
+        .filter(Boolean)
+        .join('<hr />')
+    : '';
+
+  return {
+    id: section.id || createId('section'),
+    title: section.title || '',
+    content: section.content || composedFromSubsections,
   };
 }
 
@@ -59,7 +91,9 @@ function toDraft(moduleEntry) {
     title: moduleEntry.title || '',
     moduleImageUrl: moduleEntry.moduleImageUrl || '',
     moduleLocalImageUri: moduleEntry.moduleLocalImageUri || '',
-    sections: moduleEntry.sections?.length ? moduleEntry.sections : [makeDefaultSection()],
+    sections: moduleEntry.sections?.length
+      ? moduleEntry.sections.map((section) => normalizeSection(section))
+      : [makeDefaultSection()],
   };
 }
 
@@ -147,68 +181,24 @@ function AdminModuleManagerScreen({ navigation }) {
     }));
   };
 
+  const updateSectionContent = (sectionId, contentValue) => {
+    setDraft((previous) => ({
+      ...previous,
+      sections: previous.sections.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              content: contentValue,
+            }
+          : section
+      ),
+    }));
+  };
+
   const deleteSection = (sectionId) => {
     setDraft((previous) => ({
       ...previous,
       sections: previous.sections.filter((section) => section.id !== sectionId),
-    }));
-  };
-
-  const addSubSection = (sectionId) => {
-    setDraft((previous) => ({
-      ...previous,
-      sections: previous.sections.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              subsections: [
-                ...(section.subsections || []),
-                {
-                  id: createId('sub'),
-                  title: '',
-                  content: '',
-                },
-              ],
-            }
-          : section
-      ),
-    }));
-  };
-
-  const updateSubSection = (sectionId, subSectionId, field, value) => {
-    setDraft((previous) => ({
-      ...previous,
-      sections: previous.sections.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              subsections: (section.subsections || []).map((subSection) =>
-                subSection.id === subSectionId
-                  ? {
-                      ...subSection,
-                      [field]: value,
-                    }
-                  : subSection
-              ),
-            }
-          : section
-      ),
-    }));
-  };
-
-  const deleteSubSection = (sectionId, subSectionId) => {
-    setDraft((previous) => ({
-      ...previous,
-      sections: previous.sections.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              subsections: (section.subsections || []).filter(
-                (subSection) => subSection.id !== subSectionId
-              ),
-            }
-          : section
-      ),
     }));
   };
 
@@ -399,7 +389,7 @@ function AdminModuleManagerScreen({ navigation }) {
             <View key={section.id} style={styles.sectionBox}>
               <View style={styles.sectionHeader}>
                 <TextInput
-                  placeholder="Section Title (e.g. 1.1)"
+                  placeholder="Section Title"
                   placeholderTextColor={PLACEHOLDER_COLOR}
                   value={section.title}
                   onChangeText={(value) => updateSectionTitle(section.id, value)}
@@ -414,46 +404,12 @@ function AdminModuleManagerScreen({ navigation }) {
                 </TouchableOpacity>
               </View>
 
-              <TouchableOpacity onPress={() => addSubSection(section.id)} style={styles.addSubBtn}>
-                <Text style={styles.addSubText}>+ Add Subsection</Text>
-              </TouchableOpacity>
-
-              {(section.subsections || []).map((subSection) => (
-                <View key={subSection.id} style={styles.subBox}>
-                  <View style={styles.subHeader}>
-                    <TextInput
-                      placeholder="Subsection Title (e.g. 1.1.1)"
-                      placeholderTextColor={PLACEHOLDER_COLOR}
-                      value={subSection.title}
-                      onChangeText={(value) =>
-                        updateSubSection(section.id, subSection.id, 'title', value)
-                      }
-                      style={styles.subTitleInput}
-                    />
-
-                    <TouchableOpacity
-                      style={styles.subDeleteBtn}
-                      onPress={() => deleteSubSection(section.id, subSection.id)}
-                    >
-                      <Image
-                        source={{
-                          uri: 'https://images.vexels.com/media/users/3/223479/isolated/preview/8ecc75c9d0cf6d942cce96e196d4953f-trash-bin-icon-flat.png',
-                        }}
-                        style={styles.deleteIcon}
-                      />
-                    </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.editorBox}>
-                    <Editor
-                      value={subSection.content}
-                      onChange={(html) =>
-                        updateSubSection(section.id, subSection.id, 'content', html)
-                      }
-                    />
-                  </View>
-                </View>
-              ))}
+              <View style={styles.editorBox}>
+                <Editor
+                  value={section.content}
+                  onChange={(html) => updateSectionContent(section.id, html)}
+                />
+              </View>
             </View>
           ))}
 
@@ -726,51 +682,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#D62828',
     lineHeight: 14,
-  },
-  addSubBtn: {
-    marginBottom: 10,
-  },
-  addSubText: {
-    color: '#4A5D23',
-  },
-  subBox: {
-    backgroundColor: '#FAFAFA',
-    borderRadius: 10,
-    padding: 12,
-    marginTop: 15,
-    borderWidth: 1,
-    borderColor: '#EEEEEE',
-  },
-  subHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 10,
-  },
-  subTitleInput: {
-    flex: 1,
-    borderWidth: 1,
-    borderColor: '#DDDDDD',
-    padding: 8,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 8,
-  },
-  subDeleteBtn: {
-    marginLeft: 10,
-    padding: 6,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#000000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 2,
-  },
-  deleteIcon: {
-    width: 22,
-    height: 22,
-    resizeMode: 'contain',
   },
   editorBox: {
     borderWidth: 1,

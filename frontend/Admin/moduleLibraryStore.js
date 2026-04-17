@@ -2,6 +2,43 @@ function cloneDeep(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function normalizeSection(section, index = 0) {
+  const composedFromSubsections = Array.isArray(section?.subsections)
+    ? section.subsections
+        .map((subSection) => {
+          const subTitle = subSection?.title?.trim();
+          const subContent = subSection?.content?.trim();
+
+          if (!subTitle && !subContent) {
+            return '';
+          }
+
+          if (subTitle && subContent) {
+            return `<h4>${subTitle}</h4>${subContent}`;
+          }
+
+          return subTitle || subContent || '';
+        })
+        .filter(Boolean)
+        .join('<hr />')
+    : '';
+
+  return {
+    id: section?.id || `section-${Date.now()}-${index}`,
+    title: section?.title || '',
+    content: section?.content || composedFromSubsections,
+  };
+}
+
+function normalizeModule(moduleEntry) {
+  return {
+    ...moduleEntry,
+    sections: Array.isArray(moduleEntry?.sections)
+      ? moduleEntry.sections.map((section, index) => normalizeSection(section, index))
+      : [],
+  };
+}
+
 const initialLibrary = [
   {
     id: 'general-default',
@@ -13,20 +50,16 @@ const initialLibrary = [
       {
         id: 'section-1',
         title: '1.1 Conservation',
-        subsections: [
-          {
-            id: 'sub-1',
-            title: '1.1.1 Introduction to Conservation',
-            content:
-              '<p>Conservation protects biodiversity and ecosystems in Sarawak parks.</p>',
-          },
-        ],
+        content:
+          '<p>Conservation protects biodiversity and ecosystems in Sarawak parks.</p>',
       },
     ],
   },
 ];
 
-let moduleLibrary = cloneDeep(initialLibrary);
+let moduleLibrary = cloneDeep(initialLibrary).map((moduleEntry) =>
+  normalizeModule(moduleEntry)
+);
 
 export function getModuleLibrary() {
   return cloneDeep(moduleLibrary);
@@ -38,7 +71,7 @@ export function getModuleById(moduleId) {
 }
 
 export function upsertModule(draftModule) {
-  const modulePayload = cloneDeep(draftModule);
+  const modulePayload = normalizeModule(cloneDeep(draftModule));
 
   const existingIndex = moduleLibrary.findIndex((moduleItem) => moduleItem.id === modulePayload.id);
 

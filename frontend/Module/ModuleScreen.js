@@ -33,6 +33,6 @@ const styles = StyleSheet.create({
 });
 
 export default withRoleGuard(ModuleScreen, {
-  allowedRoles: ['User'],
+  allowedRoles: ['User', 'Admin'],
   screenName: 'Module',
 });

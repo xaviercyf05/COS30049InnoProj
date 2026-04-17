@@ -34,6 +34,20 @@ const SESSION_STORAGE_KEYS = [
 	'innopapp_auth_user_id',
 ];
 
+function AdminFeatureScreen({ route }) {
+	const title = route?.params?.title || 'Admin Feature';
+	const description =
+		route?.params?.description ||
+		'This feature is available in the admin dashboard flow and can be wired to backend APIs next.';
+
+	return (
+		<View style={styles.adminFeatureContainer}>
+			<Text style={styles.adminFeatureTitle}>{title}</Text>
+			<Text style={styles.adminFeatureText}>{description}</Text>
+		</View>
+	);
+}
+
 function HomeScreen({ navigation }) {
 	const [menuVisible, setMenuVisible] = useState(false);
 	const [profile, setProfile] = useState(null);
@@ -137,6 +151,11 @@ function HomeScreen({ navigation }) {
 		? { uri: resolveProfileImageUri(resolvedProfileImagePath) }
 		: { uri: 'https://i.pinimg.com/736x/cc/f4/05/ccf405a0cd0fa9c574d87d7bc2bcc900.jpg' };
 
+	const openAdminFeature = (title, description) => {
+		setMenuVisible(false);
+		navigation.navigate('AdminFeature', { title, description });
+	};
+
 	const userModules = [
 		{
 			id: 'general',
@@ -229,25 +248,38 @@ function HomeScreen({ navigation }) {
 										<Text style={styles.dropdownText}>Profile</Text>
 									</TouchableOpacity>
 
-									{!isAdmin && (
+									<TouchableOpacity
+										style={styles.dropdownItem}
+										onPress={() => {
+											setMenuVisible(false);
+											navigation.navigate('Badges');
+										}}
+									>
+										<Text style={styles.dropdownText}>Badges</Text>
+									</TouchableOpacity>
+
+									<TouchableOpacity
+										style={styles.dropdownItem}
+										onPress={() => openAdminFeature('Calendar', 'View and manage schedule and training calendar entries.')}
+									>
+										<Text style={styles.dropdownText}>Calendar</Text>
+									</TouchableOpacity>
+
+									<TouchableOpacity
+										style={styles.dropdownItem}
+										onPress={() => openAdminFeature('Announcement', 'Create and publish announcements for park guides and admins.')}
+									>
+										<Text style={styles.dropdownText}>Announcement</Text>
+									</TouchableOpacity>
+
+									{isAdmin && (
 										<TouchableOpacity
 											style={styles.dropdownItem}
-											onPress={() => {
-												setMenuVisible(false);
-												navigation.navigate('Badges');
-											}}
+											onPress={() => openAdminFeature('Assessments', 'Manage assessment content, attempt settings, and review workflows.')}
 										>
-											<Text style={styles.dropdownText}>Badges</Text>
+											<Text style={styles.dropdownText}>Assessments</Text>
 										</TouchableOpacity>
 									)}
-
-									<TouchableOpacity style={styles.dropdownItem}>
-										<Text style={styles.dropdownText}>{isAdmin ? 'Operations' : 'Calendar'}</Text>
-									</TouchableOpacity>
-
-									<TouchableOpacity style={styles.dropdownItem}>
-										<Text style={styles.dropdownText}>{isAdmin ? 'Announcements' : 'Announcement'}</Text>
-									</TouchableOpacity>
 								</View>
 							</View>
 
@@ -267,47 +299,44 @@ function HomeScreen({ navigation }) {
 
 			<Text style={styles.pageTitle}>{isAdmin ? 'Admin Dashboard' : 'Dashboard'}</Text>
 
-			<View style={styles.cardContainer}>
-				{isAdmin ? (
-					<View style={styles.adminCard}>
-						<Text style={styles.adminCardTitle}>Administrator Workspace</Text>
-						<Text style={styles.adminCardText}>
-							Your account is configured for administrative duties. Use profile and admin endpoints to manage users,
-							 announcements, and schedules.
-						</Text>
-						<TouchableOpacity
-							style={styles.adminActionButton}
-							onPress={() => navigation.navigate('Profile')}
-							activeOpacity={0.85}
-						>
-							<Text style={styles.adminActionText}>Open My Profile</Text>
-						</TouchableOpacity>
-					</View>
-				) : (
-					<>
-						{userModules.map((module) => (
-							<TouchableOpacity
-								key={module.id}
-								onPress={() => navigation.navigate('Module', { moduleName: module.title })}
-								style={styles.cardWrapper}
-							>
-								<ImageBackground
-									source={{ uri: module.image }}
-									style={styles.card}
-									imageStyle={{ borderRadius: 20 }}
-								>
-									<View style={styles.overlay} />
-									<Text style={styles.cardTitle}>{module.title}</Text>
+			{isAdmin && (
+				<View style={styles.headerRow}>
+					<Text style={styles.sectionLabel}>Module Management</Text>
+					<TouchableOpacity
+						style={styles.addButton}
+						onPress={() => navigation.navigate('AddModule', {
+							title: 'Add Module',
+							description:
+								'Create and organize module chapters and subsection content from this admin flow.',
+						})}
+					>
+						<Text style={styles.addButtonText}>Add Module</Text>
+					</TouchableOpacity>
+				</View>
+			)}
 
-									<View style={styles.progressBar}>
-										<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
-										<Text style={styles.progressText}>{module.progressPercent}%</Text>
-									</View>
-								</ImageBackground>
-							</TouchableOpacity>
-						))}
-					</>
-				)}
+			<View style={styles.cardContainer}>
+				{userModules.map((module) => (
+					<TouchableOpacity
+						key={module.id}
+						onPress={() => navigation.navigate('Module', { moduleName: module.title })}
+						style={styles.cardWrapper}
+					>
+						<ImageBackground
+							source={{ uri: module.image }}
+							style={styles.card}
+							imageStyle={{ borderRadius: 20 }}
+						>
+							<View style={styles.overlay} />
+							<Text style={styles.cardTitle}>{module.title}</Text>
+
+							<View style={styles.progressBar}>
+								<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
+								<Text style={styles.progressText}>{module.progressPercent}%</Text>
+							</View>
+						</ImageBackground>
+					</TouchableOpacity>
+				))}
 			</View>
 		</View>
 	);
@@ -355,6 +384,24 @@ export default function App() {
 					name="EditProfile"
 					component={EditProfileScreen}
 					options={{ headerShown: true, title: 'Edit Profile' }}
+				/>
+				<Stack.Screen
+					name="AddModule"
+					component={AdminFeatureScreen}
+					initialParams={{
+						title: 'Add Module',
+						description:
+							'Create module structure, section outlines, and content authoring flow from this admin feature.',
+					}}
+					options={{ headerShown: true, title: 'Add Module' }}
+				/>
+				<Stack.Screen
+					name="AdminFeature"
+					component={AdminFeatureScreen}
+					options={({ route }) => ({
+						headerShown: true,
+						title: route?.params?.title || 'Admin Feature',
+					})}
 				/>
 			</Stack.Navigator>
 		</NavigationContainer>
@@ -459,9 +506,31 @@ const styles = StyleSheet.create({
 	pageTitle: {
 		fontSize: 24,
 		fontWeight: 'bold',
-		marginBottom: 20,
+		marginBottom: 12,
 		marginHorizontal: 20,
 		marginTop: 20,
+	},
+	headerRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		marginHorizontal: 20,
+		marginBottom: 8,
+	},
+	sectionLabel: {
+		fontSize: 16,
+		fontWeight: '700',
+		color: '#3A4D39',
+	},
+	addButton: {
+		backgroundColor: '#656d4a',
+		paddingVertical: 8,
+		paddingHorizontal: 12,
+		borderRadius: 8,
+	},
+	addButtonText: {
+		color: '#fff',
+		fontWeight: 'bold',
 	},
 	cardContainer: {
 		flexDirection: 'row',
@@ -565,5 +634,22 @@ const styles = StyleSheet.create({
 		color: '#FFFFFF',
 		fontSize: 14,
 		fontWeight: '700',
+	},
+	adminFeatureContainer: {
+		flex: 1,
+		backgroundColor: '#FBFCF8',
+		paddingHorizontal: 20,
+		paddingTop: 26,
+	},
+	adminFeatureTitle: {
+		fontSize: 24,
+		fontWeight: '800',
+		color: '#1F372B',
+	},
+	adminFeatureText: {
+		marginTop: 10,
+		fontSize: 15,
+		lineHeight: 22,
+		color: '#4B6252',
 	},
 });

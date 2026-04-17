@@ -102,6 +102,6 @@ const styles = StyleSheet.create({
 });
 
 export default withRoleGuard(BadgeScreen, {
-  allowedRoles: ['User'],
+  allowedRoles: ['User', 'Admin'],
   screenName: 'Badges',
 });

@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import {
   Modal,
+  Platform,
   Pressable,
   ScrollView,
   StatusBar,
@@ -10,22 +11,39 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
 
 const COLORS = {
-  darkBrown: '#582F0E',
-  brown: '#7F4F24',
-  olive: '#936639',
-  beige: '#B6AD90',
-  lightBeige: '#C2C5AA',
-  sage: '#A4AC86',
-  darkGreen: '#414833',
-  deepestGreen: '#333D29',
-  errorRed: '#D32F2F',
+  pageBg: '#FBFCF8',
+  surface: '#FFFFFF',
+  border: '#E8EEE3',
+  borderSoft: '#EEF2EA',
+  heading: '#20372A',
+  body: '#445A4D',
+  muted: '#6A7A67',
+  accent: '#2E6B4D',
+  accentSoft: '#ECF2E5',
+  primaryButton: '#656D4A',
+  primaryButtonDisabled: '#A5B49A',
+  inputBg: '#F9FBF7',
+  inputBorder: '#DDE4D7',
+  danger: '#C73737',
+  overlay: 'rgba(0, 0, 0, 0.48)',
 };
 
+const REQUIREMENTS = [
+  'Malaysian citizen',
+  'At least SPM qualification (or equivalent)',
+  'At least 18 years old',
+  'Interest in conservation, biodiversity, and eco-tourism',
+  'Physically fit for outdoor guiding activities',
+  'Good communication in English and Bahasa Malaysia',
+];
+
 export default function RegisterScreen({ navigation }) {
+  const insets = useSafeAreaInsets();
+
   const [formData, setFormData] = useState({
     username: '',
     password: '',
@@ -115,33 +133,61 @@ export default function RegisterScreen({ navigation }) {
     }
   };
 
-  return (
-    <SafeAreaView style={styles.safeArea} edges={['top']}>
-      <StatusBar barStyle="light-content" backgroundColor={COLORS.deepestGreen} />
+  const handleBack = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
 
-      <ScrollView contentContainerStyle={styles.scrollContainer} showsVerticalScrollIndicator={false}>
-        <View style={styles.header}>
-          <Text style={styles.headerTitle}>Park Guide Registration</Text>
-          <Text style={styles.headerSubtitle}>
-            Join Sarawak National Parks and Nature Reserves Team
+    navigation.navigate('Login');
+  };
+
+  return (
+    <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
+      <StatusBar barStyle="dark-content" backgroundColor="#FFFFFF" />
+
+      <View
+        style={[
+          styles.topBar,
+          {
+            paddingTop: Platform.OS === 'web' ? 14 : Math.max(10, insets.top + 4),
+          },
+        ]}
+      >
+        <TouchableOpacity style={styles.navPill} onPress={handleBack}>
+          <Text style={styles.navPillText}>{'< Back'}</Text>
+        </TouchableOpacity>
+
+        <Text style={styles.topTitle}>Register</Text>
+        <View style={styles.topSpacer} />
+      </View>
+
+      <ScrollView
+        style={styles.container}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.introCard}>
+          <Text style={styles.introTitle}>Park Guide Registration</Text>
+          <Text style={styles.introSubtitle}>
+            Join Sarawak National Parks and Nature Reserves team.
           </Text>
         </View>
 
         <View style={styles.requirementsCard}>
-          <Text style={styles.requirementsTitle}>Requirements</Text>
-          <Text style={styles.bullet}>- Malaysian citizen</Text>
-          <Text style={styles.bullet}>- At least SPM qualification (or equivalent)</Text>
-          <Text style={styles.bullet}>- At least 18 years old</Text>
-          <Text style={styles.bullet}>- Interest in conservation, biodiversity, and eco-tourism</Text>
-          <Text style={styles.bullet}>- Physically fit for outdoor guiding activities</Text>
-          <Text style={styles.bullet}>- Good communication in English and Bahasa Malaysia</Text>
+          <Text style={styles.sectionHeader}>Requirements</Text>
+          {REQUIREMENTS.map((requirement) => (
+            <Text key={requirement} style={styles.bullet}>
+              {'\u2022'} {requirement}
+            </Text>
+          ))}
 
           <Text style={styles.noteText}>
             Your application will be reviewed by the Sarawak Forestry Corporation admin team.
           </Text>
         </View>
 
-        <View style={styles.formContainer}>
+        <View style={styles.formCard}>
           <Text style={styles.sectionTitle}>Create Your Account</Text>
           <Text style={styles.sectionSubtitle}>Please fill in all required details.</Text>
 
@@ -149,6 +195,7 @@ export default function RegisterScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="e.g. johnparkguide"
+            placeholderTextColor="#8A9687"
             value={formData.username}
             onChangeText={(text) => handleInputChange('username', text)}
             autoCapitalize="none"
@@ -158,6 +205,7 @@ export default function RegisterScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="Minimum 6 characters"
+            placeholderTextColor="#8A9687"
             value={formData.password}
             onChangeText={(text) => handleInputChange('password', text)}
             secureTextEntry
@@ -167,6 +215,7 @@ export default function RegisterScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="As per IC"
+            placeholderTextColor="#8A9687"
             value={formData.fullName}
             onChangeText={(text) => handleInputChange('fullName', text)}
           />
@@ -175,6 +224,7 @@ export default function RegisterScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="e.g. 012-3456789"
+            placeholderTextColor="#8A9687"
             value={formData.phoneNumber}
             onChangeText={(text) => handleInputChange('phoneNumber', text)}
             keyboardType="phone-pad"
@@ -184,6 +234,7 @@ export default function RegisterScreen({ navigation }) {
           <TextInput
             style={styles.input}
             placeholder="e.g. youremail@gmail.com"
+            placeholderTextColor="#8A9687"
             value={formData.email}
             onChangeText={(text) => handleInputChange('email', text)}
             keyboardType="email-address"
@@ -242,196 +293,220 @@ export default function RegisterScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: COLORS.lightBeige,
+    backgroundColor: COLORS.pageBg,
   },
-  scrollContainer: {
-    paddingHorizontal: 20,
-    paddingBottom: 80,
-  },
-  header: {
+  topBar: {
+    backgroundColor: COLORS.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: COLORS.borderSoft,
+    paddingBottom: 12,
+    paddingHorizontal: 16,
+    flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: COLORS.deepestGreen,
-    borderBottomLeftRadius: 30,
-    borderBottomRightRadius: 30,
-    paddingVertical: 34,
-    marginHorizontal: -20,
-    marginBottom: 24,
-    paddingHorizontal: 20,
+    justifyContent: 'space-between',
   },
-  headerTitle: {
-    fontSize: 28,
+  navPill: {
+    backgroundColor: COLORS.accentSoft,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    minWidth: 92,
+    alignItems: 'center',
+  },
+  navPillText: {
+    color: COLORS.accent,
+    fontSize: 12,
     fontWeight: '700',
-    color: COLORS.lightBeige,
-    textAlign: 'center',
   },
-  headerSubtitle: {
-    fontSize: 15,
-    color: COLORS.sage,
-    marginTop: 8,
+  topTitle: {
+    flex: 1,
     textAlign: 'center',
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  topSpacer: {
+    width: 92,
+  },
+  container: {
+    flex: 1,
+    backgroundColor: COLORS.pageBg,
+  },
+  scrollContent: {
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    paddingBottom: 28,
+  },
+  introCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    marginBottom: 14,
+  },
+  introTitle: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: COLORS.heading,
+  },
+  introSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    color: COLORS.body,
     lineHeight: 22,
   },
   requirementsCard: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 20,
-    marginBottom: 24,
-    shadowColor: COLORS.darkBrown,
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 4,
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
+    marginBottom: 14,
   },
-  requirementsTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.olive,
-    marginBottom: 10,
+  sectionHeader: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 8,
   },
   bullet: {
     fontSize: 14,
-    color: COLORS.darkGreen,
-    marginBottom: 7,
-    lineHeight: 21,
+    color: COLORS.body,
+    marginBottom: 6,
+    lineHeight: 20,
   },
   noteText: {
-    fontSize: 13,
-    color: COLORS.brown,
+    fontSize: 12,
+    color: COLORS.muted,
     marginTop: 10,
-    textAlign: 'center',
-    fontStyle: 'italic',
+    lineHeight: 18,
   },
-  formContainer: {
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
-    padding: 22,
-    shadowColor: COLORS.darkBrown,
-    shadowOffset: { width: 0, height: 5 },
-    shadowOpacity: 0.12,
-    shadowRadius: 10,
-    elevation: 5,
+  formCard: {
+    backgroundColor: COLORS.surface,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: COLORS.border,
+    padding: 16,
   },
   sectionTitle: {
-    fontSize: 23,
-    fontWeight: '700',
-    color: COLORS.deepestGreen,
-    textAlign: 'center',
+    fontSize: 22,
+    fontWeight: '800',
+    color: COLORS.heading,
   },
   sectionSubtitle: {
     fontSize: 14,
-    color: COLORS.brown,
-    textAlign: 'center',
+    color: COLORS.body,
     marginTop: 6,
-    marginBottom: 18,
+    marginBottom: 14,
   },
   label: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.deepestGreen,
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.heading,
     marginBottom: 6,
-    marginLeft: 2,
   },
   input: {
-    backgroundColor: COLORS.lightBeige,
+    backgroundColor: COLORS.inputBg,
     borderRadius: 12,
-    paddingHorizontal: 14,
-    paddingVertical: 12,
-    fontSize: 15,
-    color: COLORS.deepestGreen,
-    marginBottom: 14,
-    borderWidth: 1.5,
-    borderColor: COLORS.sage,
+    paddingHorizontal: 12,
+    paddingVertical: 11,
+    fontSize: 14,
+    color: COLORS.heading,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: COLORS.inputBorder,
   },
   uploadButton: {
-    backgroundColor: COLORS.beige,
-    borderRadius: 14,
-    paddingVertical: 22,
+    backgroundColor: '#F5F8F1',
+    borderRadius: 12,
+    paddingVertical: 18,
     alignItems: 'center',
-    borderWidth: 2,
-    borderColor: COLORS.olive,
+    borderWidth: 1,
+    borderColor: '#D8E2CF',
     borderStyle: 'dashed',
-    marginBottom: 16,
+    marginBottom: 12,
     paddingHorizontal: 12,
   },
   uploadButtonText: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: COLORS.olive,
+    fontSize: 14,
+    fontWeight: '700',
+    color: COLORS.accent,
     textAlign: 'center',
-    lineHeight: 22,
+    lineHeight: 20,
   },
   errorText: {
-    color: COLORS.errorRed,
+    color: COLORS.danger,
     fontSize: 14,
     fontWeight: '600',
-    textAlign: 'center',
+    textAlign: 'left',
     marginBottom: 8,
   },
   submitButton: {
-    backgroundColor: COLORS.olive,
+    backgroundColor: COLORS.primaryButton,
     borderRadius: 12,
-    paddingVertical: 16,
+    paddingVertical: 14,
     alignItems: 'center',
     marginTop: 4,
   },
   submitButtonDisabled: {
-    backgroundColor: COLORS.sage,
+    backgroundColor: COLORS.primaryButtonDisabled,
   },
   submitButtonText: {
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '700',
     color: '#FFFFFF',
   },
   loginLink: {
-    alignItems: 'center',
-    marginTop: 18,
+    alignItems: 'flex-start',
+    marginTop: 14,
   },
   loginLinkText: {
     fontSize: 14,
-    color: COLORS.darkGreen,
+    color: COLORS.body,
   },
   loginLinkHighlight: {
-    color: COLORS.brown,
+    color: COLORS.accent,
     fontWeight: '700',
   },
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.72)',
+    backgroundColor: COLORS.overlay,
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
   },
   modalContent: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: COLORS.surface,
     borderRadius: 16,
-    padding: 24,
+    padding: 20,
     width: '100%',
     maxWidth: 520,
     alignItems: 'center',
   },
   modalTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: COLORS.deepestGreen,
+    fontSize: 19,
+    fontWeight: '800',
+    color: COLORS.heading,
     marginBottom: 10,
     textAlign: 'center',
   },
   modalMessage: {
-    fontSize: 15,
-    color: COLORS.darkGreen,
+    fontSize: 14,
+    color: COLORS.body,
     textAlign: 'center',
-    lineHeight: 22,
-    marginBottom: 22,
+    lineHeight: 21,
+    marginBottom: 18,
   },
   modalButton: {
-    backgroundColor: COLORS.olive,
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-    borderRadius: 12,
+    backgroundColor: COLORS.primaryButton,
+    borderRadius: 10,
+    paddingVertical: 10,
+    paddingHorizontal: 36,
   },
   modalButtonText: {
     color: '#FFFFFF',
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '700',
   },
 });

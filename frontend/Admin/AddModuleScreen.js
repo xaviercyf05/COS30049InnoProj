@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -12,8 +12,13 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import withRoleGuard from '../auth/withRoleGuard.js';
-import { getModuleLibrary, upsertModule } from './moduleLibraryStore.js';
+import {
+  requestProfileApi,
+  resolveApiAssetUri,
+  uploadModuleCoverImage,
+} from '../Profile/profileApi.js';
 
 const Editor =
   Platform.OS === 'web'
@@ -30,7 +35,8 @@ function AddModuleScreen({ navigation }) {
   const [moduleTitle, setModuleTitle] = useState('');
   const [moduleImageUrl, setModuleImageUrl] = useState('');
   const [moduleLocalImageUri, setModuleLocalImageUri] = useState('');
-  const [savedCount, setSavedCount] = useState(() => getModuleLibrary().length);
+  const [moduleLocalImageAsset, setModuleLocalImageAsset] = useState(null);
+  const [savedCount, setSavedCount] = useState(0);
   const [sections, setSections] = useState([
     {
       id: createId(),
@@ -39,7 +45,49 @@ function AddModuleScreen({ navigation }) {
     },
   ]);
 
-  const modulePreviewImage = moduleLocalImageUri || moduleImageUrl.trim();
+  const modulePreviewImage =
+    moduleLocalImageUri ||
+    resolveApiAssetUri(moduleImageUrl.trim()) ||
+    moduleImageUrl.trim();
+
+  useEffect(() => {
+    let active = true;
+
+    const loadSavedModuleCount = async () => {
+      try {
+        const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+        if (!token) {
+          return;
+        }
+
+        const response = await requestProfileApi('/api/v1/admin/modules', token, {
+          method: 'GET',
+        });
+
+        if (!active) {
+          return;
+        }
+
+        setSavedCount(Array.isArray(response.data) ? response.data.length : 0);
+      } catch (_error) {
+        if (active) {
+          setSavedCount(0);
+        }
+      }
+    };
+
+    loadSavedModuleCount();
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadSavedModuleCount();
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [navigation]);
 
   const addSection = () => {
     setSections((previous) => [
@@ -93,35 +141,80 @@ function AddModuleScreen({ navigation }) {
     });
 
     if (!result.canceled && result.assets?.length) {
-      setModuleLocalImageUri(result.assets[0].uri);
+      const selectedAsset = result.assets[0];
+      setModuleLocalImageUri(selectedAsset.uri);
+      setModuleLocalImageAsset(selectedAsset);
     }
   };
 
   const clearLocalImage = () => {
     setModuleLocalImageUri('');
+    setModuleLocalImageAsset(null);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!moduleTitle.trim()) {
       Alert.alert('Missing details', 'Please provide a module title before saving.');
       return;
     }
 
-    const moduleDraft = {
-      id: `module-${createId()}`,
-      title: moduleTitle.trim(),
-      moduleImageUrl: moduleImageUrl.trim(),
-      moduleLocalImageUri,
-      sections,
-    };
+    const token = await AsyncStorage.getItem('innopapp_auth_token');
 
-    upsertModule(moduleDraft);
-    setSavedCount(getModuleLibrary().length);
+    if (!token) {
+      Alert.alert('Session expired', 'Please log in again to continue.');
+      return;
+    }
 
-    Alert.alert(
-      'Saved',
-      'Module draft saved. You can edit it from Manage Modules.'
-    );
+    const normalizedSections = sections
+      .map((section, index) => {
+        const normalizedTitle = String(section.title || '').trim();
+        const normalizedContent = String(section.content || '').trim();
+
+        if (!normalizedTitle && !normalizedContent) {
+          return null;
+        }
+
+        return {
+          title: normalizedTitle || `Section ${index + 1}`,
+          content: normalizedContent || '<p>No content provided.</p>',
+        };
+      })
+      .filter(Boolean);
+
+    if (normalizedSections.length === 0) {
+      Alert.alert('Missing details', 'Please add at least one section with content.');
+      return;
+    }
+
+    try {
+      let normalizedModuleImageUrl = moduleImageUrl.trim();
+
+      if (moduleLocalImageAsset) {
+        normalizedModuleImageUrl = await uploadModuleCoverImage(token, moduleLocalImageAsset);
+      }
+
+      await requestProfileApi('/api/v1/admin/modules', token, {
+        method: 'POST',
+        body: {
+          title: moduleTitle.trim(),
+          moduleImageUrl: normalizedModuleImageUrl,
+          sections: normalizedSections,
+        },
+      });
+
+      const moduleListResponse = await requestProfileApi('/api/v1/admin/modules', token, {
+        method: 'GET',
+      });
+
+      setSavedCount(Array.isArray(moduleListResponse.data) ? moduleListResponse.data.length : 0);
+      setModuleImageUrl(normalizedModuleImageUrl);
+      setModuleLocalImageUri('');
+      setModuleLocalImageAsset(null);
+
+      Alert.alert('Saved', 'Module saved to backend. You can edit it from Manage Modules.');
+    } catch (error) {
+      Alert.alert('Save failed', error?.message || 'Unable to save module right now.');
+    }
   };
 
   return (
@@ -157,7 +250,13 @@ function AddModuleScreen({ navigation }) {
               placeholder="Image URL (optional)"
               placeholderTextColor={PLACEHOLDER_COLOR}
               value={moduleImageUrl}
-              onChangeText={setModuleImageUrl}
+              onChangeText={(value) => {
+                setModuleImageUrl(value);
+                if (value.trim()) {
+                  setModuleLocalImageUri('');
+                  setModuleLocalImageAsset(null);
+                }
+              }}
               style={styles.imageUrlInput}
             />
 

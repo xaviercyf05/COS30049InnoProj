@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Platform,
   ScrollView,
   StyleSheet,
@@ -8,6 +9,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { requestProfileApi } from '../Profile/profileApi.js';
 import withRoleGuard from '../auth/withRoleGuard';
 
 const SAMPLE_ANNOUNCEMENTS = [
@@ -85,8 +88,69 @@ function AnnouncementCard({ item }) {
 
 function AnnouncementScreen({ navigation }) {
   const insets = useSafeAreaInsets();
+  const [announcements, setAnnouncements] = useState(SAMPLE_ANNOUNCEMENTS);
+  const [loading, setLoading] = useState(true);
 
-  const announcements = useMemo(() => SAMPLE_ANNOUNCEMENTS, []);
+  useEffect(() => {
+    let active = true;
+
+    const loadAnnouncements = async () => {
+      setLoading(true);
+
+      try {
+        const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+        if (!token) {
+          return;
+        }
+
+        const response = await requestProfileApi('/api/v1/notifications/announcements', token, {
+          method: 'GET',
+        });
+
+        if (!active) {
+          return;
+        }
+
+        const loaded = Array.isArray(response.data) ? response.data : [];
+
+        if (loaded.length === 0) {
+          setAnnouncements([]);
+          return;
+        }
+
+        setAnnouncements(
+          loaded.map((item) => ({
+            id: item.id || item.announcementId,
+            title: item.title || 'Announcement',
+            teaser: item.teaser || item.content || '',
+            fullDesc: item.fullDesc || item.content || item.teaser || '',
+            posted: item.posted || 'Recently',
+            avatarLabel: item.avatarLabel || 'AN',
+          }))
+        );
+      } catch (_error) {
+        if (active) {
+          setAnnouncements(SAMPLE_ANNOUNCEMENTS);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadAnnouncements();
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadAnnouncements();
+    });
+
+    return () => {
+      active = false;
+      unsubscribe();
+    };
+  }, [navigation]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -121,9 +185,18 @@ function AnnouncementScreen({ navigation }) {
           Digital Park Guide Training Platform • Sarawak Forestry Corporation
         </Text>
 
-        {announcements.map((item) => (
-          <AnnouncementCard key={item.id} item={item} />
-        ))}
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color="#2E6B4D" />
+            <Text style={styles.loadingText}>Loading announcements...</Text>
+          </View>
+        ) : announcements.length > 0 ? (
+          announcements.map((item) => <AnnouncementCard key={item.id} item={item} />)
+        ) : (
+          <View style={styles.emptyCard}>
+            <Text style={styles.emptyText}>No announcements available right now.</Text>
+          </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -180,6 +253,31 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#5D715D',
     marginBottom: 16,
+  },
+  loadingWrap: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EDE3',
+    borderRadius: 14,
+    padding: 20,
+    alignItems: 'center',
+    marginBottom: 14,
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#4F6354',
+    fontSize: 14,
+  },
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8EDE3',
+    borderRadius: 14,
+    padding: 18,
+  },
+  emptyText: {
+    color: '#566A5C',
+    fontSize: 14,
   },
   announcementCard: {
     backgroundColor: '#FFFFFF',

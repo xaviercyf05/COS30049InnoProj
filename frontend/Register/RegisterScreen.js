@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import * as DocumentPicker from 'expo-document-picker';
+import { API_ORIGIN, getApiBaseUrls } from '../Profile/profileApi.js';
 
 const COLORS = {
   pageBg: '#FBFCF8',
@@ -86,7 +87,12 @@ export default function RegisterScreen({ navigation }) {
 
       if (!result.canceled && result.assets?.length > 0) {
         const file = result.assets[0];
-        setResumeFile({ name: file.name, uri: file.uri });
+        setResumeFile({
+          name: file.name,
+          uri: file.uri,
+          mimeType: file.mimeType || 'application/pdf',
+          file: file.file,
+        });
         setErrorMessage('');
       }
     } catch (error) {
@@ -97,7 +103,7 @@ export default function RegisterScreen({ navigation }) {
   const getValidationError = () => {
     if (!formData.username.trim()) return 'Username is required.';
     if (!formData.password.trim()) return 'Password is required.';
-    if (formData.password.length < 6) return 'Password must be at least 6 characters.';
+    if (formData.password.length < 8) return 'Password must be at least 8 characters.';
     if (!formData.fullName.trim()) return 'Full name is required.';
     if (!formData.phoneNumber.trim()) return 'Phone number is required.';
     if (!formData.email.trim()) return 'Email address is required.';
@@ -105,7 +111,7 @@ export default function RegisterScreen({ navigation }) {
     return '';
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     const validationError = getValidationError();
     if (validationError) {
       setErrorMessage(validationError);
@@ -115,14 +121,78 @@ export default function RegisterScreen({ navigation }) {
     setIsSubmitting(true);
     setErrorMessage('');
 
-    setTimeout(() => {
-      setIsSubmitting(false);
+    const createFormPayload = () => {
+      const payload = new FormData();
+      payload.append('username', formData.username.trim());
+      payload.append('password', formData.password);
+      payload.append('fullName', formData.fullName.trim());
+      payload.append('phoneNumber', formData.phoneNumber.trim());
+      payload.append('email', formData.email.trim());
+
+      if (resumeFile.file) {
+        payload.append('resume', resumeFile.file);
+      } else {
+        payload.append('resume', {
+          uri: resumeFile.uri,
+          name: resumeFile.name || 'resume.pdf',
+          type: resumeFile.mimeType || 'application/pdf',
+        });
+      }
+
+      return payload;
+    };
+
+    const baseUrls = Platform.OS === 'web' ? getApiBaseUrls() : [API_ORIGIN];
+    let response = null;
+    let responsePayload = null;
+    let lastNetworkError = null;
+
+    try {
+      for (const baseUrl of baseUrls) {
+        try {
+          const candidateResponse = await fetch(`${baseUrl}/api/v1/public/register`, {
+            method: 'POST',
+            body: createFormPayload(),
+          });
+
+          const contentType = candidateResponse.headers.get('content-type') || '';
+          responsePayload = contentType.toLowerCase().includes('application/json')
+            ? await candidateResponse.json()
+            : { message: await candidateResponse.text() };
+
+          response = candidateResponse;
+          break;
+        } catch (error) {
+          lastNetworkError = error;
+        }
+      }
+
+      if (!response) {
+        throw lastNetworkError || new Error('Unable to reach registration service.');
+      }
+
+      if (!response.ok || !responsePayload?.success) {
+        setErrorMessage(
+          responsePayload?.message ||
+            'Unable to submit registration right now. Please try again.'
+        );
+        return;
+      }
+
       showModal(
         'Application Submitted',
         'Your registration has been received successfully. You will be notified once it is reviewed.',
         true
       );
-    }, 700);
+    } catch (error) {
+      setErrorMessage(
+        Platform.OS === 'web'
+          ? 'Unable to reach registration service from web. Check API proxy settings and try again.'
+          : 'Unable to reach the registration service. Please check your connection.'
+      );
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const handleModalClose = () => {

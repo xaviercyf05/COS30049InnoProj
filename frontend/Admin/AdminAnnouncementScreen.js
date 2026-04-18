@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
   Modal,
   Platform,
@@ -11,6 +12,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { requestProfileApi } from '../Profile/profileApi.js';
 import withRoleGuard from '../auth/withRoleGuard';
 
 function nowLabel() {
@@ -25,24 +28,9 @@ function nowLabel() {
 
 function AdminAnnouncementScreen({ navigation }) {
   const insets = useSafeAreaInsets();
-  const [announcements, setAnnouncements] = useState([
-    {
-      id: 1,
-      title: 'Level 1 Training - Bako National Park',
-      teaser: 'Complete Level 1 to become a certified Park Guide for Bako National Park.',
-      fullDesc: 'Complete all Level 1 modules before assessment to qualify for certification.',
-      posted: nowLabel(),
-      avatarLabel: 'L1',
-    },
-    {
-      id: 2,
-      title: 'Level 2 Training Open - Similajau and Kubah',
-      teaser: 'Level 2 is now available for Similajau and Kubah tracks.',
-      fullDesc: 'Level 2 covers advanced field communication and park-specific regulation topics.',
-      posted: nowLabel(),
-      avatarLabel: 'L2',
-    },
-  ]);
+  const [announcements, setAnnouncements] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   const [expandedId, setExpandedId] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -50,6 +38,57 @@ function AdminAnnouncementScreen({ navigation }) {
   const [titleInput, setTitleInput] = useState('');
   const [teaserInput, setTeaserInput] = useState('');
   const [descInput, setDescInput] = useState('');
+
+  const getAuthToken = async () => {
+    const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+    if (!token) {
+      throw new Error('Session expired. Please log in again.');
+    }
+
+    return token;
+  };
+
+  const normalizeAnnouncement = (announcement) => ({
+    id: announcement.id || announcement.announcementId,
+    title: announcement.title || 'Announcement',
+    teaser: announcement.teaser || announcement.content || '',
+    fullDesc: announcement.fullDesc || announcement.content || announcement.teaser || '',
+    posted: announcement.posted || nowLabel(),
+    avatarLabel: announcement.avatarLabel || 'AN',
+  });
+
+  const loadAnnouncements = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const token = await getAuthToken();
+      const response = await requestProfileApi('/api/v1/admin/announcements', token, {
+        method: 'GET',
+      });
+
+      const loaded = Array.isArray(response.data) ? response.data : [];
+      setAnnouncements(loaded.map((item) => normalizeAnnouncement(item)));
+    } catch (error) {
+      Alert.alert(
+        'Unable to load announcements',
+        error?.message || 'Please try again shortly.'
+      );
+      setAnnouncements([]);
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadAnnouncements();
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadAnnouncements();
+    });
+
+    return unsubscribe;
+  }, [loadAnnouncements, navigation]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -99,47 +138,79 @@ function AdminAnnouncementScreen({ navigation }) {
     confirmAction(
       'Delete Announcement',
       'Are you sure you want to delete this announcement?',
-      () => {
-        setAnnouncements((previous) => previous.filter((item) => item.id !== id));
-        if (expandedId === id) {
-          setExpandedId(null);
+      async () => {
+        try {
+          const token = await getAuthToken();
+          await requestProfileApi(`/api/v1/admin/announcements/${id}`, token, {
+            method: 'DELETE',
+          });
+
+          setAnnouncements((previous) => previous.filter((item) => item.id !== id));
+          if (expandedId === id) {
+            setExpandedId(null);
+          }
+        } catch (error) {
+          Alert.alert(
+            'Delete failed',
+            error?.message || 'Unable to delete announcement right now.'
+          );
         }
       }
     );
   };
 
-  const saveAnnouncement = () => {
+  const saveAnnouncement = async () => {
     if (!titleInput.trim()) {
       Alert.alert('Missing title', 'Please provide an announcement title.');
       return;
     }
 
-    const existingAvatar = currentEditId
-      ? announcements.find((item) => item.id === currentEditId)?.avatarLabel || 'GEN'
-      : 'NEW';
-
-    const announcementPayload = {
-      id: currentEditId || Date.now(),
-      title: titleInput.trim(),
-      teaser: teaserInput.trim() || 'No teaser provided.',
-      fullDesc: descInput.trim() || 'No description provided.',
-      posted: nowLabel(),
-      avatarLabel: existingAvatar,
-    };
-
-    if (currentEditId) {
-      setAnnouncements((previous) =>
-        previous.map((item) => (item.id === currentEditId ? announcementPayload : item))
-      );
-    } else {
-      setAnnouncements((previous) => [announcementPayload, ...previous]);
+    if (!teaserInput.trim() && !descInput.trim()) {
+      Alert.alert('Missing content', 'Please provide teaser or full description.');
+      return;
     }
 
-    setModalVisible(false);
-    setCurrentEditId(null);
-    setTitleInput('');
-    setTeaserInput('');
-    setDescInput('');
+    setSaving(true);
+
+    try {
+      const token = await getAuthToken();
+      const normalizedTitle = titleInput.trim();
+      const normalizedTeaser = teaserInput.trim();
+      const normalizedDesc = descInput.trim() || normalizedTeaser;
+
+      if (currentEditId) {
+        await requestProfileApi(`/api/v1/admin/announcements/${currentEditId}`, token, {
+          method: 'PUT',
+          body: {
+            title: normalizedTitle,
+            teaser: normalizedTeaser,
+            fullDesc: normalizedDesc,
+            targetRole: 'All',
+          },
+        });
+      } else {
+        await requestProfileApi('/api/v1/admin/announcements', token, {
+          method: 'POST',
+          body: {
+            title: normalizedTitle,
+            content: normalizedDesc,
+            targetRole: 'All',
+          },
+        });
+      }
+
+      await loadAnnouncements();
+
+      setModalVisible(false);
+      setCurrentEditId(null);
+      setTitleInput('');
+      setTeaserInput('');
+      setDescInput('');
+    } catch (error) {
+      Alert.alert('Save failed', error?.message || 'Unable to save announcement right now.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -168,61 +239,68 @@ function AdminAnnouncementScreen({ navigation }) {
           <Text style={styles.createButtonText}>+ Create New Announcement</Text>
         </TouchableOpacity>
 
-        {announcements.map((item) => (
-          <TouchableOpacity
-            key={item.id}
-            style={[styles.announcementCard, expandedId === item.id && styles.announcementCardExpanded]}
-            onPress={() => setExpandedId(expandedId === item.id ? null : item.id)}
-            activeOpacity={0.9}
-          >
-            <View style={styles.leftSection}>
-              <View style={styles.dotIndicator} />
-              <View style={styles.avatarBadge}>
-                <Text style={styles.avatarText}>{item.avatarLabel}</Text>
-              </View>
-            </View>
-
-            <View style={styles.announcementContent}>
-              <View style={styles.announcementHeader}>
-                <Text style={styles.announcementTitle}>{item.title}</Text>
-                <View style={styles.actionButtons}>
-                  <TouchableOpacity
-                    onPress={(event) => {
-                      if (event?.stopPropagation) {
-                        event.stopPropagation();
-                      }
-                      openEditModal(item.id);
-                    }}
-                  >
-                    <Text style={styles.editText}>Edit</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    onPress={(event) => {
-                      if (event?.stopPropagation) {
-                        event.stopPropagation();
-                      }
-                      deleteAnnouncement(item.id);
-                    }}
-                  >
-                    <Text style={styles.deleteText}>Delete</Text>
-                  </TouchableOpacity>
+        {loading ? (
+          <View style={styles.loadingCard}>
+            <ActivityIndicator size="large" color="#2E6B4D" />
+            <Text style={styles.loadingText}>Loading announcements...</Text>
+          </View>
+        ) : (
+          announcements.map((item) => (
+            <TouchableOpacity
+              key={item.id}
+              style={[styles.announcementCard, expandedId === item.id && styles.announcementCardExpanded]}
+              onPress={() => setExpandedId(expandedId === item.id ? null : item.id)}
+              activeOpacity={0.9}
+            >
+              <View style={styles.leftSection}>
+                <View style={styles.dotIndicator} />
+                <View style={styles.avatarBadge}>
+                  <Text style={styles.avatarText}>{item.avatarLabel}</Text>
                 </View>
               </View>
 
-              <Text style={styles.teaser}>{item.teaser}</Text>
-
-              {expandedId === item.id && (
-                <View style={styles.expandedArea}>
-                  <Text style={styles.fullDescription}>{item.fullDesc}</Text>
+              <View style={styles.announcementContent}>
+                <View style={styles.announcementHeader}>
+                  <Text style={styles.announcementTitle}>{item.title}</Text>
+                  <View style={styles.actionButtons}>
+                    <TouchableOpacity
+                      onPress={(event) => {
+                        if (event?.stopPropagation) {
+                          event.stopPropagation();
+                        }
+                        openEditModal(item.id);
+                      }}
+                    >
+                      <Text style={styles.editText}>Edit</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      onPress={(event) => {
+                        if (event?.stopPropagation) {
+                          event.stopPropagation();
+                        }
+                        deleteAnnouncement(item.id);
+                      }}
+                    >
+                      <Text style={styles.deleteText}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              )}
 
-              <View style={styles.metaRow}>
-                <Text style={styles.postedText}>Posted on: {item.posted}</Text>
+                <Text style={styles.teaser}>{item.teaser}</Text>
+
+                {expandedId === item.id && (
+                  <View style={styles.expandedArea}>
+                    <Text style={styles.fullDescription}>{item.fullDesc}</Text>
+                  </View>
+                )}
+
+                <View style={styles.metaRow}>
+                  <Text style={styles.postedText}>Posted on: {item.posted}</Text>
+                </View>
               </View>
-            </View>
-          </TouchableOpacity>
-        ))}
+            </TouchableOpacity>
+          ))
+        )}
       </ScrollView>
 
       <Modal
@@ -269,8 +347,12 @@ function AdminAnnouncementScreen({ navigation }) {
               <TouchableOpacity style={styles.cancelButton} onPress={() => setModalVisible(false)}>
                 <Text style={styles.cancelButtonText}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.saveButton} onPress={saveAnnouncement}>
-                <Text style={styles.saveButtonText}>Save</Text>
+              <TouchableOpacity
+                style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+                onPress={saveAnnouncement}
+                disabled={saving}
+              >
+                <Text style={styles.saveButtonText}>{saving ? 'Saving...' : 'Save'}</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -331,6 +413,19 @@ const styles = StyleSheet.create({
     color: '#5D715D',
     fontSize: 14,
     marginBottom: 14,
+  },
+  loadingCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#E8EDE3',
+    paddingVertical: 24,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#4F6354',
+    fontSize: 14,
   },
   createButton: {
     backgroundColor: '#656D4A',
@@ -508,6 +603,9 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 10,
     backgroundColor: '#2E6B4D',
+  },
+  saveButtonDisabled: {
+    opacity: 0.7,
   },
   saveButtonText: {
     color: '#FFFFFF',

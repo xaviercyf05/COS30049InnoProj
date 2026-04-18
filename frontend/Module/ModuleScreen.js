@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   ImageBackground,
   Platform,
   ScrollView,
@@ -8,7 +9,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { requestProfileApi } from '../Profile/profileApi.js';
 import withRoleGuard from '../auth/withRoleGuard';
 
 const MODULE_TOPICS = [
@@ -125,22 +128,146 @@ const TRACK_SUMMARY = {
   'Park 5': 'Park 5 Training Track',
 };
 
+function stripHtmlContent(value) {
+  if (!value) {
+    return '';
+  }
+
+  return String(value)
+    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, ' ')
+    .replace(/<[^>]+>/g, ' ')
+    .replace(/&nbsp;/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
 function ModuleScreen({ route, navigation, currentProfile }) {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
+  const routeModuleId = route?.params?.moduleId || null;
   const moduleName = route?.params?.moduleName || route?.params?.grade || 'General';
   const userLabel = currentProfile?.fullName || currentProfile?.username || 'Guide';
   const moduleSummary = TRACK_SUMMARY[moduleName] || TRACK_SUMMARY.General;
 
+  const [topics, setTopics] = useState(MODULE_TOPICS);
   const [expandedMain, setExpandedMain] = useState(MODULE_TOPICS[0].id);
   const [selectedContent, setSelectedContent] = useState(MODULE_TOPICS[0].subs[0]);
+  const [loading, setLoading] = useState(Boolean(routeModuleId));
 
   const moduleMap = useMemo(() => {
-    return MODULE_TOPICS.reduce((result, topic) => {
+    return topics.reduce((result, topic) => {
       result[topic.id] = topic;
       return result;
     }, {});
-  }, []);
+  }, [topics]);
+
+  useEffect(() => {
+    if (!routeModuleId) {
+      setTopics(MODULE_TOPICS);
+      setLoading(false);
+      return;
+    }
+
+    let active = true;
+
+    const loadModuleContent = async () => {
+      setLoading(true);
+
+      try {
+        const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+        if (!token) {
+          throw new Error('No active session.');
+        }
+
+        const response = await requestProfileApi(`/api/v1/modules/${routeModuleId}/details`, token, {
+          method: 'GET',
+        });
+
+        const materials = Array.isArray(response?.data?.materials)
+          ? response.data.materials
+          : [];
+
+        if (!materials.length) {
+          if (active) {
+            setTopics(MODULE_TOPICS);
+          }
+          return;
+        }
+
+        const groupedByChapter = new Map();
+
+        materials.forEach((material) => {
+          const chapterTitle = String(material.chapter || 'General').trim() || 'General';
+
+          if (!groupedByChapter.has(chapterTitle)) {
+            groupedByChapter.set(chapterTitle, []);
+          }
+
+          const chapterMaterials = groupedByChapter.get(chapterTitle);
+          chapterMaterials.push({
+            id: String(material.materialId || `${chapterTitle}-${chapterMaterials.length + 1}`),
+            title: material.title || chapterTitle,
+            content: stripHtmlContent(material.content || ''),
+          });
+        });
+
+        const formattedTopics = Array.from(groupedByChapter.entries()).map(
+          ([chapterTitle, subTopics], index) => ({
+            id: `${index + 1}.${index + 1}`,
+            title: /^\d/.test(chapterTitle) ? chapterTitle : `${index + 1}. ${chapterTitle}`,
+            subs: subTopics,
+          })
+        );
+
+        if (active) {
+          setTopics(formattedTopics.length ? formattedTopics : MODULE_TOPICS);
+        }
+      } catch (_error) {
+        if (active) {
+          setTopics(MODULE_TOPICS);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadModuleContent();
+
+    return () => {
+      active = false;
+    };
+  }, [routeModuleId]);
+
+  useEffect(() => {
+    if (!topics.length) {
+      setExpandedMain(null);
+      setSelectedContent(null);
+      return;
+    }
+
+    setExpandedMain((previousExpandedMain) => {
+      const hasExisting = topics.some((topic) => topic.id === previousExpandedMain);
+      return hasExisting ? previousExpandedMain : topics[0].id;
+    });
+
+    setSelectedContent((previousSelectedContent) => {
+      if (previousSelectedContent) {
+        const existingTopic = topics.find((topic) =>
+          topic.subs.some((subTopic) => subTopic.id === previousSelectedContent.id)
+        );
+
+        if (existingTopic) {
+          return previousSelectedContent;
+        }
+      }
+
+      return topics[0]?.subs?.[0] || null;
+    });
+  }, [topics]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -212,9 +339,15 @@ function ModuleScreen({ route, navigation, currentProfile }) {
           </View>
         </ImageBackground>
 
+        {loading ? (
+          <View style={styles.loadingPanel}>
+            <ActivityIndicator size="large" color="#2E6B4D" />
+            <Text style={styles.loadingText}>Loading module content...</Text>
+          </View>
+        ) : (
         <View style={[styles.mainArea, !isWeb && styles.mainAreaMobile]}>
           <View style={[styles.leftNav, !isWeb && styles.leftNavMobile]}>
-            {MODULE_TOPICS.map((topic) => {
+            {topics.map((topic) => {
               const isExpanded = expandedMain === topic.id;
 
               return (
@@ -283,6 +416,7 @@ function ModuleScreen({ route, navigation, currentProfile }) {
             </View>
           )}
         </View>
+        )}
       </ScrollView>
     </SafeAreaView>
   );
@@ -371,6 +505,20 @@ const styles = StyleSheet.create({
   },
   mainAreaMobile: {
     flexDirection: 'column',
+  },
+  loadingPanel: {
+    marginHorizontal: 16,
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#EDF2E8',
+    borderRadius: 16,
+    paddingVertical: 26,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#4C6454',
+    fontSize: 14,
   },
   leftNav: {
     flex: 1,

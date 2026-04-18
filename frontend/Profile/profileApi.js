@@ -1,6 +1,6 @@
 import { Platform } from 'react-native';
 
-const API_ORIGIN = 'https://api.innopappserver.xyz';
+export const API_ORIGIN = 'https://api.innopappserver.xyz';
 const PROFILE_IMAGE_BASE_URL = `${API_ORIGIN}/uploads/profile-images`;
 
 function getWebImageBaseUrl() {
@@ -13,7 +13,7 @@ function getWebImageBaseUrl() {
   return PROFILE_IMAGE_BASE_URL;
 }
 
-const getApiBaseUrls = () => {
+export const getApiBaseUrls = () => {
   // Default to direct backend access on every platform.
   const configuredProxy = process.env.EXPO_PUBLIC_API_WEB_PROXY;
 
@@ -25,6 +25,62 @@ const getApiBaseUrls = () => {
 
   return [API_ORIGIN];
 };
+
+function inferImageMimeType(imageAsset) {
+  const explicitMimeType = String(imageAsset?.mimeType || imageAsset?.type || '').trim();
+
+  if (explicitMimeType.toLowerCase().startsWith('image/')) {
+    return explicitMimeType;
+  }
+
+  const fileName = String(imageAsset?.fileName || imageAsset?.name || '').toLowerCase();
+
+  if (fileName.endsWith('.png')) {
+    return 'image/png';
+  }
+
+  if (fileName.endsWith('.webp')) {
+    return 'image/webp';
+  }
+
+  if (fileName.endsWith('.gif')) {
+    return 'image/gif';
+  }
+
+  if (fileName.endsWith('.jpeg') || fileName.endsWith('.jpg')) {
+    return 'image/jpeg';
+  }
+
+  return 'image/jpeg';
+}
+
+export function resolveApiAssetUri(assetPath) {
+  if (!assetPath || typeof assetPath !== 'string') {
+    return null;
+  }
+
+  const normalizedPath = assetPath.trim().replace(/\\/g, '/');
+
+  if (!normalizedPath) {
+    return null;
+  }
+
+  if (/^(data:|blob:|file:)/i.test(normalizedPath)) {
+    return normalizedPath;
+  }
+
+  if (/^https?:/i.test(normalizedPath)) {
+    return normalizedPath;
+  }
+
+  const preferredBaseUrl = getApiBaseUrls()[0] || API_ORIGIN;
+  const normalizedBaseUrl = String(preferredBaseUrl).replace(/\/+$/, '');
+  const normalizedRelativePath = normalizedPath.startsWith('/')
+    ? normalizedPath
+    : `/${normalizedPath}`;
+
+  return `${normalizedBaseUrl}${normalizedRelativePath}`;
+}
 
 const parseResponseBody = async (response) => {
   const contentType = response.headers.get('content-type') || '';
@@ -167,4 +223,40 @@ export async function requestProfileApi(path, token, options = {}) {
   fallbackError.cause = lastNetworkError;
   fallbackError.attemptedUrls = attemptedUrls;
   throw fallbackError;
+}
+
+export async function uploadModuleCoverImage(token, imageAsset) {
+  if (!imageAsset || (!imageAsset.file && !imageAsset.uri)) {
+    throw new Error('Please select an image before uploading.');
+  }
+
+  const formData = new FormData();
+
+  if (imageAsset.file) {
+    formData.append('coverImage', imageAsset.file);
+  } else {
+    const fileName =
+      imageAsset.fileName ||
+      imageAsset.name ||
+      `module-cover-${Date.now()}.jpg`;
+
+    formData.append('coverImage', {
+      uri: imageAsset.uri,
+      name: fileName,
+      type: inferImageMimeType(imageAsset),
+    });
+  }
+
+  const response = await requestProfileApi('/api/v1/admin/modules/cover-image', token, {
+    method: 'POST',
+    body: formData,
+  });
+
+  const moduleImageUrl = String(response?.data?.moduleImageUrl || '').trim();
+
+  if (!moduleImageUrl) {
+    throw new Error('Cover image upload succeeded but no URL was returned.');
+  }
+
+  return moduleImageUrl;
 }

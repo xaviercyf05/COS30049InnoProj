@@ -8,7 +8,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import withRoleGuard from '../auth/withRoleGuard.js';
+import { requestProfileApi } from '../Profile/profileApi.js';
 
 const BADGE_IMAGE = {
   uri: 'https://cdn-icons-png.flaticon.com/512/16779/16779402.png',
@@ -17,20 +19,32 @@ const BADGE_IMAGE = {
 function AddBadgeScreen({ navigation }) {
   const [badgeName, setBadgeName] = useState('');
 
-  const handleAddBadge = () => {
+  const handleAddBadge = async () => {
     if (!badgeName.trim()) {
       Alert.alert('Missing details', 'Please enter a badge name.');
       return;
     }
 
-    const newBadge = {
-      id: Date.now(),
-      name: badgeName.trim(),
-      image: BADGE_IMAGE.uri,
-      unlocked: false,
-    };
+    try {
+      const token = await AsyncStorage.getItem('innopapp_auth_token');
 
-    navigation.navigate('AdminBadges', { createdBadge: newBadge });
+      if (!token) {
+        Alert.alert('Session expired', 'Please log in again to continue.');
+        return;
+      }
+
+      await requestProfileApi('/api/v1/admin/badges', token, {
+        method: 'POST',
+        body: {
+          name: badgeName.trim(),
+          iconUrl: BADGE_IMAGE.uri,
+        },
+      });
+
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert('Create failed', error?.message || 'Unable to create badge right now.');
+    }
   };
 
   return (

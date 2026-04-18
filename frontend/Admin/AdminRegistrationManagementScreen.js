@@ -1,5 +1,6 @@
-import React, { useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   FlatList,
   Modal,
   Platform,
@@ -10,6 +11,8 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_ORIGIN, getApiBaseUrls, requestProfileApi } from '../Profile/profileApi.js';
 import withRoleGuard from '../auth/withRoleGuard';
 
 const COLORS = {
@@ -30,39 +33,52 @@ const COLORS = {
 function AdminRegistrationManagementScreen({ navigation }) {
   const insets = useSafeAreaInsets();
 
-  const [applications, setApplications] = useState([
-    {
-      id: '1',
-      username: 'johnparkguide',
-      fullName: 'John Tan',
-      phoneNumber: '012-3456789',
-      email: 'john@gmail.com',
-      resumeName: 'John_Tan_Resume.pdf',
-      status: 'pending',
-    },
-    {
-      id: '2',
-      username: 'sarahforest',
-      fullName: 'Sarah Lim',
-      phoneNumber: '014-5678901',
-      email: 'sarah@gmail.com',
-      resumeName: 'Sarah_Lim_CV.pdf',
-      status: 'pending',
-    },
-    {
-      id: '3',
-      username: 'mikeguide88',
-      fullName: 'Michael Wong',
-      phoneNumber: '011-2233445',
-      email: 'mike@gmail.com',
-      resumeName: 'Michael_Wong_Application.pdf',
-      status: 'approved',
-    },
-  ]);
+  const [applications, setApplications] = useState([]);
+  const [loading, setLoading] = useState(true);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
   const [modalMessage, setModalMessage] = useState('');
+
+  const getAuthToken = async () => {
+    const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+    if (!token) {
+      throw new Error('Session expired. Please log in again.');
+    }
+
+    return token;
+  };
+
+  const loadApplications = useCallback(async () => {
+    setLoading(true);
+
+    try {
+      const token = await getAuthToken();
+      const response = await requestProfileApi('/api/v1/admin/registrations', token, {
+        method: 'GET',
+      });
+
+      setApplications(Array.isArray(response.data) ? response.data : []);
+    } catch (error) {
+      showModal(
+        'Unable to load applications',
+        error?.message || 'Please try again in a moment.'
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadApplications();
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadApplications();
+    });
+
+    return unsubscribe;
+  }, [loadApplications, navigation]);
 
   const counts = useMemo(() => {
     const pending = applications.filter((item) => item.status === 'pending').length;
@@ -83,20 +99,80 @@ function AdminRegistrationManagementScreen({ navigation }) {
     setModalVisible(true);
   };
 
-  const updateStatus = (id, newStatus) => {
-    setApplications((previous) =>
-      previous.map((item) => (item.id === id ? { ...item, status: newStatus } : item))
-    );
+  const updateStatus = async (id, newStatus) => {
+    try {
+      const token = await getAuthToken();
 
-    const title = newStatus === 'approved' ? 'Application Approved' : 'Application Rejected';
-    showModal(title, `The application has been marked as ${newStatus}.`);
+      await requestProfileApi(`/api/v1/admin/registrations/${id}/status`, token, {
+        method: 'PUT',
+        body: {
+          status: newStatus,
+        },
+      });
+
+      await loadApplications();
+
+      const title = newStatus === 'approved' ? 'Application Approved' : 'Application Rejected';
+      showModal(title, `The application has been marked as ${newStatus}.`);
+    } catch (error) {
+      showModal('Update failed', error?.message || 'Unable to update application status.');
+    }
   };
 
-  const openResume = (item) => {
-    showModal(
-      'Resume Preview',
-      `Demo mode: ${item.resumeName} would be opened/downloaded here.\n\nConnect this to backend storage when API is ready.`
-    );
+  const openResume = async (item) => {
+    try {
+      const token = await getAuthToken();
+      const baseUrls = Platform.OS === 'web' ? getApiBaseUrls() : [API_ORIGIN];
+      let lastError = null;
+
+      for (const baseUrl of baseUrls) {
+        try {
+          const response = await fetch(
+            `${baseUrl}/api/v1/admin/registrations/${item.id}/resume`,
+            {
+              method: 'GET',
+              headers: {
+                Authorization: `Bearer ${token}`,
+              },
+            }
+          );
+
+          if (!response.ok) {
+            const contentType = response.headers.get('content-type') || '';
+            const payload = contentType.toLowerCase().includes('application/json')
+              ? await response.json()
+              : { message: await response.text() };
+
+            throw new Error(payload?.message || `Request failed with status ${response.status}`);
+          }
+
+          if (Platform.OS === 'web') {
+            const resumeBlob = await response.blob();
+            const resumeBlobUrl = URL.createObjectURL(resumeBlob);
+            const link = document.createElement('a');
+            link.href = resumeBlobUrl;
+            link.download = item.resumeName || 'resume.pdf';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            setTimeout(() => URL.revokeObjectURL(resumeBlobUrl), 60000);
+          } else {
+            showModal(
+              'Resume Ready',
+              'Resume preview is available in web mode. For native apps, add a dedicated file viewer integration.'
+            );
+          }
+
+          return;
+        } catch (error) {
+          lastError = error;
+        }
+      }
+
+      throw lastError || new Error('Unable to retrieve resume file.');
+    } catch (error) {
+      showModal('Resume unavailable', error?.message || 'Unable to open resume right now.');
+    }
   };
 
   const renderStatus = (status) => {
@@ -157,49 +233,56 @@ function AdminRegistrationManagementScreen({ navigation }) {
         </View>
       </View>
 
-      <FlatList
-        data={applications}
-        keyExtractor={(item) => item.id}
-        contentContainerStyle={styles.listContainer}
-        showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <View style={styles.card}>
-            <View style={styles.cardHeader}>
-              <Text style={styles.fullName}>{item.fullName}</Text>
-              <Text style={[styles.statusBadge, renderStatus(item.status)]}>
-                {item.status.toUpperCase()}
-              </Text>
-            </View>
-
-            <Text style={styles.detail}>Username: {item.username}</Text>
-            <Text style={styles.detail}>Phone: {item.phoneNumber}</Text>
-            <Text style={styles.detail}>Email: {item.email}</Text>
-            <Text style={styles.detail}>Resume: {item.resumeName}</Text>
-
-            <TouchableOpacity style={styles.resumeButton} onPress={() => openResume(item)}>
-              <Text style={styles.resumeButtonText}>Open Resume</Text>
-            </TouchableOpacity>
-
-            {item.status === 'pending' && (
-              <View style={styles.actionButtons}>
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.approveBtn]}
-                  onPress={() => updateStatus(item.id, 'approved')}
-                >
-                  <Text style={styles.actionText}>Approve</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  style={[styles.actionBtn, styles.rejectBtn]}
-                  onPress={() => updateStatus(item.id, 'rejected')}
-                >
-                  <Text style={styles.actionText}>Reject</Text>
-                </TouchableOpacity>
+      {loading ? (
+        <View style={styles.loadingState}>
+          <ActivityIndicator size="large" color={COLORS.olive} />
+          <Text style={styles.loadingText}>Loading registration applications...</Text>
+        </View>
+      ) : (
+        <FlatList
+          data={applications}
+          keyExtractor={(item) => item.id}
+          contentContainerStyle={styles.listContainer}
+          showsVerticalScrollIndicator={false}
+          renderItem={({ item }) => (
+            <View style={styles.card}>
+              <View style={styles.cardHeader}>
+                <Text style={styles.fullName}>{item.fullName}</Text>
+                <Text style={[styles.statusBadge, renderStatus(item.status)]}>
+                  {item.status.toUpperCase()}
+                </Text>
               </View>
-            )}
-          </View>
-        )}
-      />
+
+              <Text style={styles.detail}>Username: {item.username}</Text>
+              <Text style={styles.detail}>Phone: {item.phoneNumber}</Text>
+              <Text style={styles.detail}>Email: {item.email}</Text>
+              <Text style={styles.detail}>Resume: {item.resumeName}</Text>
+
+              <TouchableOpacity style={styles.resumeButton} onPress={() => openResume(item)}>
+                <Text style={styles.resumeButtonText}>Open Resume</Text>
+              </TouchableOpacity>
+
+              {item.status === 'pending' && (
+                <View style={styles.actionButtons}>
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.approveBtn]}
+                    onPress={() => updateStatus(item.id, 'approved')}
+                  >
+                    <Text style={styles.actionText}>Approve</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    style={[styles.actionBtn, styles.rejectBtn]}
+                    onPress={() => updateStatus(item.id, 'rejected')}
+                  >
+                    <Text style={styles.actionText}>Reject</Text>
+                  </TouchableOpacity>
+                </View>
+              )}
+            </View>
+          )}
+        />
+      )}
 
       <Modal
         animationType="fade"
@@ -287,6 +370,18 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: COLORS.muted,
     fontWeight: '600',
+  },
+  loadingState: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 24,
+  },
+  loadingText: {
+    marginTop: 12,
+    color: COLORS.subHeading,
+    fontSize: 14,
+    textAlign: 'center',
   },
   listContainer: {
     padding: 16,

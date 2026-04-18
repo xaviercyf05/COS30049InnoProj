@@ -32,7 +32,12 @@ import AddBadgeScreen from './Admin/AddBadgeScreen.js';
 import EditBadgeScreen from './Admin/EditBadgeScreen.js';
 import ProfileScreen from './Profile/ProfileScreen.js';
 import EditProfileScreen from './Profile/EditProfileScreen.js';
-import { pickProfileImagePath, requestProfileApi, resolveProfileImageUri } from './Profile/profileApi.js';
+import {
+	pickProfileImagePath,
+	requestProfileApi,
+	resolveApiAssetUri,
+	resolveProfileImageUri,
+} from './Profile/profileApi.js';
 
 const Stack = createNativeStackNavigator();
 const SESSION_STORAGE_KEYS = [
@@ -93,6 +98,74 @@ function HomeScreen({ navigation }) {
 	const [showAllNotifications, setShowAllNotifications] = useState(false);
 	const [profile, setProfile] = useState(null);
 	const [profileLoading, setProfileLoading] = useState(true);
+	const [notifications, setNotifications] = useState([
+		{
+			id: 1,
+			title: 'New Announcement',
+			message: 'Level 3 Training for Gunung Mulu National Park is now open.',
+			time: '2 min ago',
+			read: false,
+		},
+		{
+			id: 2,
+			title: 'Module Updated',
+			message: 'New content was added to 1.3 Eco-tourism module.',
+			time: '1 hour ago',
+			read: false,
+		},
+		{
+			id: 3,
+			title: 'Assessment Reminder',
+			message: 'Remember to complete your General Module assessment this week.',
+			time: 'Yesterday',
+			read: true,
+		},
+		{
+			id: 4,
+			title: 'System Notice',
+			message: 'Scheduled maintenance starts tomorrow at 10:00 AM.',
+			time: '2 days ago',
+			read: true,
+		},
+	]);
+	const [userModules, setUserModules] = useState([
+		{
+			id: 'general',
+			title: 'General',
+			image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=80',
+			progressPercent: 55,
+		},
+		{
+			id: 'park-1',
+			title: 'Park 1',
+			image: 'https://imgs.mongabay.com/wp-content/uploads/sites/20/2018/03/09165734/20171123-153037-4-2.jpg',
+			progressPercent: 40,
+		},
+		{
+			id: 'park-2',
+			title: 'Park 2',
+			image: 'https://mongabay-images.s3.amazonaws.com/780/malaysia/sabah_sepilok_0337.jpg',
+			progressPercent: 65,
+		},
+		{
+			id: 'park-3',
+			title: 'Park 3',
+			image: 'https://gofbonline.com/wp-content/uploads/2017/06/sustainability-sarawak-banner.jpg',
+			progressPercent: 20,
+		},
+		{
+			id: 'park-4',
+			title: 'Park 4',
+			image: 'https://images.unsplash.com/photo-1472396961693-142e6e269027?auto=format&fit=crop&w=1200&q=80',
+			progressPercent: 10,
+		},
+		{
+			id: 'park-5',
+			title: 'Park 5',
+			image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80',
+			progressPercent: 5,
+		},
+	]);
 
 	const loadProfile = useCallback(async () => {
 		setProfileLoading(true);
@@ -121,6 +194,35 @@ function HomeScreen({ navigation }) {
 				await AsyncStorage.setItem(
 					'innopapp_auth_role',
 					loadedProfile.viewerRole || loadedProfile.role
+				);
+			}
+
+			const [notificationsResponse, modulesResponse] = await Promise.all([
+				requestProfileApi('/api/v1/notifications', token, { method: 'GET' }).catch(() => null),
+				requestProfileApi('/api/v1/modules/dashboard', token, { method: 'GET' }).catch(() => null),
+			]);
+
+			if (Array.isArray(notificationsResponse?.data)) {
+				setNotifications(
+					notificationsResponse.data.map((item, index) => ({
+						id: item.notificationId || index + 1,
+						title: item.title || 'Notification',
+						message: item.message || '',
+						time: 'Recently',
+						read: false,
+					}))
+				);
+			}
+
+			if (Array.isArray(modulesResponse?.data) && modulesResponse.data.length > 0) {
+				setUserModules(
+					modulesResponse.data.map((module, index) => ({
+						id: String(module.moduleId || index + 1),
+						moduleId: module.moduleId,
+						title: module.title || `Module ${index + 1}`,
+						image: resolveApiAssetUri(module.image) || module.image,
+						progressPercent: Number(module.progressPercent || 0),
+					}))
 				);
 			}
 		} catch (error) {
@@ -222,80 +324,10 @@ function HomeScreen({ navigation }) {
 		navigation.navigate('AdminRegistrations');
 	};
 
-	const notifications = [
-		{
-			id: 1,
-			title: 'New Announcement',
-			message: 'Level 3 Training for Gunung Mulu National Park is now open.',
-			time: '2 min ago',
-			read: false,
-		},
-		{
-			id: 2,
-			title: 'Module Updated',
-			message: 'New content was added to 1.3 Eco-tourism module.',
-			time: '1 hour ago',
-			read: false,
-		},
-		{
-			id: 3,
-			title: 'Assessment Reminder',
-			message: 'Remember to complete your General Module assessment this week.',
-			time: 'Yesterday',
-			read: true,
-		},
-		{
-			id: 4,
-			title: 'System Notice',
-			message: 'Scheduled maintenance starts tomorrow at 10:00 AM.',
-			time: '2 days ago',
-			read: true,
-		},
-	];
-
 	const unreadCount = notifications.filter((item) => !item.read).length;
 	const displayedNotifications = showAllNotifications
 		? notifications
 		: notifications.slice(0, 3);
-
-	const userModules = [
-		{
-			id: 'general',
-			title: 'General',
-			image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=80',
-			progressPercent: 55,
-		},
-		{
-			id: 'park-1',
-			title: 'Park 1',
-			image: 'https://imgs.mongabay.com/wp-content/uploads/sites/20/2018/03/09165734/20171123-153037-4-2.jpg',
-			progressPercent: 40,
-		},
-		{
-			id: 'park-2',
-			title: 'Park 2',
-			image: 'https://mongabay-images.s3.amazonaws.com/780/malaysia/sabah_sepilok_0337.jpg',
-			progressPercent: 65,
-		},
-		{
-			id: 'park-3',
-			title: 'Park 3',
-			image: 'https://gofbonline.com/wp-content/uploads/2017/06/sustainability-sarawak-banner.jpg',
-			progressPercent: 20,
-		},
-		{
-			id: 'park-4',
-			title: 'Park 4',
-			image: 'https://images.unsplash.com/photo-1472396961693-142e6e269027?auto=format&fit=crop&w=1200&q=80',
-			progressPercent: 10,
-		},
-		{
-			id: 'park-5',
-			title: 'Park 5',
-			image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80',
-			progressPercent: 5,
-		},
-	];
 
 	if (profileLoading && !profile) {
 		return (
@@ -518,7 +550,12 @@ function HomeScreen({ navigation }) {
 				{userModules.map((module) => (
 					<TouchableOpacity
 						key={module.id}
-						onPress={() => navigation.navigate('Module', { moduleName: module.title })}
+						onPress={() =>
+							navigation.navigate('Module', {
+								moduleName: module.title,
+								moduleId: module.moduleId,
+							})
+						}
 						style={styles.cardWrapper}
 					>
 						<ImageBackground

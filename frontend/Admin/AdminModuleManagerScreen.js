@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Alert,
   Image,
@@ -11,14 +11,14 @@ import {
   View,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import withRoleGuard from '../auth/withRoleGuard.js';
 import {
-  deleteModule,
-  getModuleById,
-  getModuleLibrary,
-  upsertModule,
-} from './moduleLibraryStore.js';
+  requestProfileApi,
+  resolveApiAssetUri,
+  uploadModuleCoverImage,
+} from '../Profile/profileApi.js';
 
 const Editor =
   Platform.OS === 'web'
@@ -29,6 +29,19 @@ const PLACEHOLDER_COLOR = '#A8ADA3';
 
 function createId(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+}
+
+function extractNumericModuleId(moduleIdentifier) {
+  if (moduleIdentifier === null || moduleIdentifier === undefined) {
+    return null;
+  }
+
+  if (typeof moduleIdentifier === 'number') {
+    return Number.isFinite(moduleIdentifier) ? moduleIdentifier : null;
+  }
+
+  const match = String(moduleIdentifier).match(/(\d+)/);
+  return match ? Number.parseInt(match[1], 10) : null;
 }
 
 function makeDefaultSection() {
@@ -77,6 +90,7 @@ function createEmptyDraft() {
     title: '',
     moduleImageUrl: '',
     moduleLocalImageUri: '',
+    moduleLocalImageAsset: null,
     sections: [makeDefaultSection()],
   };
 }
@@ -87,10 +101,11 @@ function toDraft(moduleEntry) {
   }
 
   return {
-    id: moduleEntry.id,
+    id: moduleEntry.id || (moduleEntry.moduleId ? `module-${moduleEntry.moduleId}` : null),
     title: moduleEntry.title || '',
-    moduleImageUrl: moduleEntry.moduleImageUrl || '',
-    moduleLocalImageUri: moduleEntry.moduleLocalImageUri || '',
+    moduleImageUrl: moduleEntry.moduleImageUrl || moduleEntry.image || '',
+    moduleLocalImageUri: '',
+    moduleLocalImageAsset: null,
     sections: moduleEntry.sections?.length
       ? moduleEntry.sections.map((section) => normalizeSection(section))
       : [makeDefaultSection()],
@@ -100,35 +115,82 @@ function toDraft(moduleEntry) {
 function AdminModuleManagerScreen({ navigation }) {
   const insets = useSafeAreaInsets();
 
-  const [modules, setModules] = useState(() => getModuleLibrary());
-  const [draft, setDraft] = useState(() => {
-    const initialModule = getModuleLibrary()[0];
-    return toDraft(initialModule);
-  });
+  const [modules, setModules] = useState([]);
+  const [draft, setDraft] = useState(createEmptyDraft());
 
-  const modulePreviewImage = draft.moduleLocalImageUri || draft.moduleImageUrl.trim();
+  const modulePreviewImage =
+    draft.moduleLocalImageUri ||
+    resolveApiAssetUri(draft.moduleImageUrl.trim()) ||
+    draft.moduleImageUrl.trim();
 
-  const refreshModules = (focusedModuleId = null) => {
-    const updatedLibrary = getModuleLibrary();
-    setModules(updatedLibrary);
+  const getAuthToken = async () => {
+    const token = await AsyncStorage.getItem('innopapp_auth_token');
 
-    if (!updatedLibrary.length) {
-      setDraft(createEmptyDraft());
-      return;
+    if (!token) {
+      throw new Error('Session expired. Please log in again.');
     }
 
-    const fallbackId = focusedModuleId || draft.id || updatedLibrary[0].id;
-    const nextModule = getModuleById(fallbackId) || updatedLibrary[0];
-    setDraft(toDraft(nextModule));
+    return token;
   };
 
-  const openModuleForEdit = (moduleId) => {
-    const moduleEntry = getModuleById(moduleId);
-    if (!moduleEntry) {
+  const loadModuleForEdit = async (moduleId, token) => {
+    const response = await requestProfileApi(`/api/v1/admin/modules/${moduleId}`, token, {
+      method: 'GET',
+    });
+
+    if (response?.data) {
+      setDraft(toDraft(response.data));
       return;
     }
 
-    setDraft(toDraft(moduleEntry));
+    setDraft(createEmptyDraft());
+  };
+
+  const refreshModules = async (focusedModuleId = null) => {
+    try {
+      const token = await getAuthToken();
+      const listResponse = await requestProfileApi('/api/v1/admin/modules', token, {
+        method: 'GET',
+      });
+
+      const updatedLibrary = Array.isArray(listResponse.data) ? listResponse.data : [];
+      setModules(updatedLibrary);
+
+      if (!updatedLibrary.length) {
+        setDraft(createEmptyDraft());
+        return;
+      }
+
+      const fallbackId =
+        focusedModuleId ||
+        extractNumericModuleId(draft.id) ||
+        updatedLibrary[0].moduleId;
+
+      await loadModuleForEdit(fallbackId, token);
+    } catch (error) {
+      Alert.alert('Unable to load modules', error?.message || 'Please try again shortly.');
+      setModules([]);
+      setDraft(createEmptyDraft());
+    }
+  };
+
+  useEffect(() => {
+    refreshModules();
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      refreshModules();
+    });
+
+    return unsubscribe;
+  }, [navigation]);
+
+  const openModuleForEdit = async (moduleId) => {
+    try {
+      const token = await getAuthToken();
+      await loadModuleForEdit(moduleId, token);
+    } catch (error) {
+      Alert.alert('Unable to open module', error?.message || 'Please try again.');
+    }
   };
 
   const startNewDraft = () => {
@@ -152,10 +214,17 @@ function AdminModuleManagerScreen({ navigation }) {
   const removeModule = (moduleId) => {
     confirmAction(
       'Delete Module',
-      'This module and its sections will be removed from the frontend draft library.',
-      () => {
-        deleteModule(moduleId);
-        refreshModules();
+      'This module and its sections will be removed from backend storage.',
+      async () => {
+        try {
+          const token = await getAuthToken();
+          await requestProfileApi(`/api/v1/admin/modules/${moduleId}`, token, {
+            method: 'DELETE',
+          });
+          await refreshModules();
+        } catch (error) {
+          Alert.alert('Delete failed', error?.message || 'Unable to delete module right now.');
+        }
       }
     );
   };
@@ -222,9 +291,11 @@ function AdminModuleManagerScreen({ navigation }) {
     });
 
     if (!result.canceled && result.assets?.length) {
+      const selectedAsset = result.assets[0];
       setDraft((previous) => ({
         ...previous,
-        moduleLocalImageUri: result.assets[0].uri,
+        moduleLocalImageUri: selectedAsset.uri,
+        moduleLocalImageAsset: selectedAsset,
       }));
     }
   };
@@ -233,26 +304,77 @@ function AdminModuleManagerScreen({ navigation }) {
     setDraft((previous) => ({
       ...previous,
       moduleLocalImageUri: '',
+      moduleLocalImageAsset: null,
     }));
   };
 
-  const saveDraft = () => {
+  const saveDraft = async () => {
     if (!draft.title.trim()) {
       Alert.alert('Missing details', 'Please provide a module title before saving.');
       return;
     }
 
-    const modulePayload = {
-      id: draft.id || createId('module'),
-      title: draft.title.trim(),
-      moduleImageUrl: draft.moduleImageUrl.trim(),
-      moduleLocalImageUri: draft.moduleLocalImageUri,
-      sections: draft.sections,
-    };
+    const normalizedSections = draft.sections
+      .map((section, index) => {
+        const normalizedTitle = String(section.title || '').trim();
+        const normalizedContent = String(section.content || '').trim();
 
-    upsertModule(modulePayload);
-    refreshModules(modulePayload.id);
-    Alert.alert('Saved', 'Module changes have been stored in the frontend library.');
+        if (!normalizedTitle && !normalizedContent) {
+          return null;
+        }
+
+        return {
+          title: normalizedTitle || `Section ${index + 1}`,
+          content: normalizedContent || '<p>No content provided.</p>',
+        };
+      })
+      .filter(Boolean);
+
+    if (normalizedSections.length === 0) {
+      Alert.alert('Missing details', 'Please add at least one section with content.');
+      return;
+    }
+
+    const numericModuleId = extractNumericModuleId(draft.id);
+
+    try {
+      const token = await getAuthToken();
+      let normalizedModuleImageUrl = draft.moduleImageUrl.trim();
+
+      if (draft.moduleLocalImageAsset) {
+        normalizedModuleImageUrl = await uploadModuleCoverImage(
+          token,
+          draft.moduleLocalImageAsset
+        );
+      }
+
+      const modulePayload = {
+        title: draft.title.trim(),
+        moduleImageUrl: normalizedModuleImageUrl,
+        sections: normalizedSections,
+      };
+
+      if (numericModuleId) {
+        await requestProfileApi(`/api/v1/admin/modules/${numericModuleId}`, token, {
+          method: 'PUT',
+          body: modulePayload,
+        });
+
+        await refreshModules(numericModuleId);
+      } else {
+        const createResponse = await requestProfileApi('/api/v1/admin/modules', token, {
+          method: 'POST',
+          body: modulePayload,
+        });
+
+        const createdId = createResponse?.data?.moduleId;
+        await refreshModules(createdId || null);
+      }
+
+      Alert.alert('Saved', 'Module changes have been stored in backend library.');
+    } catch (error) {
+      Alert.alert('Save failed', error?.message || 'Unable to save module right now.');
+    }
   };
 
   return (
@@ -294,28 +416,30 @@ function AdminModuleManagerScreen({ navigation }) {
         {modules.length ? (
           <View style={styles.libraryList}>
             {modules.map((moduleItem) => {
-              const isActive = draft.id === moduleItem.id;
+              const moduleIdentifier = moduleItem.id || `module-${moduleItem.moduleId}`;
+              const moduleNumericId = moduleItem.moduleId || extractNumericModuleId(moduleIdentifier);
+              const isActive = draft.id === moduleIdentifier;
 
               return (
-                <View key={moduleItem.id} style={[styles.libraryCard, isActive && styles.libraryCardActive]}>
+                <View key={moduleIdentifier} style={[styles.libraryCard, isActive && styles.libraryCardActive]}>
                   <View style={styles.libraryMeta}>
                     <Text style={styles.libraryName}>{moduleItem.title}</Text>
                     <Text style={styles.librarySubtext}>
-                      {(moduleItem.sections || []).length} section(s)
+                      {moduleItem.sectionCount || 0} section(s)
                     </Text>
                   </View>
 
                   <View style={styles.libraryActions}>
                     <TouchableOpacity
                       style={styles.libraryActionButton}
-                      onPress={() => openModuleForEdit(moduleItem.id)}
+                      onPress={() => openModuleForEdit(moduleNumericId)}
                     >
                       <Text style={styles.libraryActionButtonText}>Edit</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.libraryDeleteButton}
-                      onPress={() => removeModule(moduleItem.id)}
+                      onPress={() => removeModule(moduleNumericId)}
                     >
                       <Text style={styles.libraryDeleteButtonText}>Delete</Text>
                     </TouchableOpacity>
@@ -360,6 +484,8 @@ function AdminModuleManagerScreen({ navigation }) {
                   setDraft((previous) => ({
                     ...previous,
                     moduleImageUrl: value,
+                    moduleLocalImageUri: value.trim() ? '' : previous.moduleLocalImageUri,
+                    moduleLocalImageAsset: value.trim() ? null : previous.moduleLocalImageAsset,
                   }));
                 }}
                 style={styles.imageUrlInput}

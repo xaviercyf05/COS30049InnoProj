@@ -1,16 +1,64 @@
-import React from 'react';
-import { View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { ActivityIndicator, View, Text, StyleSheet, Image, TouchableOpacity } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import withRoleGuard from '../auth/withRoleGuard';
 import { pickProfileImagePath, resolveProfileImageUri } from '../Profile/profileApi';
+import { requestProfileApi } from '../Profile/profileApi';
 
 function BadgeScreen({ currentProfile }) {
-  const badges = [
-    { id: 1, name: 'Bako National Park', unlocked: true },
-    { id: 2, name: 'Similajau National Park', unlocked: true },
-    { id: 3, name: 'Kubah National Park', unlocked: true },
-    { id: 4, name: 'Gunung Mulu National Park', unlocked: false },
-    { id: 5, name: 'Maludam National Park', unlocked: false },
-  ];
+  const [badges, setBadges] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    const loadBadges = async () => {
+      setLoading(true);
+
+      try {
+        const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+        if (!token) {
+          if (active) {
+            setBadges([]);
+          }
+          return;
+        }
+
+        const response = await requestProfileApi('/api/v1/badges', token, {
+          method: 'GET',
+        });
+
+        if (!active) {
+          return;
+        }
+
+        const loadedBadges = Array.isArray(response.data) ? response.data : [];
+        setBadges(
+          loadedBadges.map((badge) => ({
+            id: badge.id || badge.badgeId,
+            name: badge.name,
+            unlocked: Boolean(badge.unlocked),
+            image: badge.image,
+          }))
+        );
+      } catch (_error) {
+        if (active) {
+          setBadges([]);
+        }
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadBadges();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const earnedBadges = badges.filter((badge) => badge.unlocked).length;
   const totalBadges = badges.length;
@@ -34,17 +82,24 @@ function BadgeScreen({ currentProfile }) {
       </View>
 
       <View style={styles.gridWrapper}>
-        <View style={styles.grid}>
-          {badges.map((badge) => (
-            <TouchableOpacity key={badge.id} style={styles.badgeCard}>
-              <Image
-                source={{ uri: 'https://cdn-icons-png.flaticon.com/512/16779/16779402.png' }}
-                style={[styles.badgeIcon, { opacity: badge.unlocked ? 1 : 0.3 }]}
-              />
-              <Text style={styles.badgeText}>{badge.name}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color="#2E6B4D" />
+            <Text style={styles.loadingText}>Loading badges...</Text>
+          </View>
+        ) : (
+          <View style={styles.grid}>
+            {badges.map((badge) => (
+              <TouchableOpacity key={badge.id} style={styles.badgeCard}>
+                <Image
+                  source={{ uri: badge.image || 'https://cdn-icons-png.flaticon.com/512/16779/16779402.png' }}
+                  style={[styles.badgeIcon, { opacity: badge.unlocked ? 1 : 0.3 }]}
+                />
+                <Text style={styles.badgeText}>{badge.name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
     </View>
   );
@@ -74,6 +129,18 @@ const styles = StyleSheet.create({
   },
   gridWrapper: {
     alignItems: 'center',
+  },
+  loadingWrap: {
+    width: '90%',
+    backgroundColor: '#F5F5F5',
+    borderRadius: 12,
+    paddingVertical: 28,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#5C6A60',
+    fontSize: 13,
   },
   grid: {
     flexDirection: 'row',

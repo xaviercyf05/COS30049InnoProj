@@ -7,7 +7,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import withRoleGuard from '../auth/withRoleGuard.js';
+import { requestProfileApi } from '../Profile/profileApi.js';
 
 function EditBadgeScreen({ route, navigation }) {
   const badge = route?.params?.badge;
@@ -15,7 +17,7 @@ function EditBadgeScreen({ route, navigation }) {
 
   const canSave = useMemo(() => name.trim().length > 0, [name]);
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!badge) {
       Alert.alert('Missing badge', 'Badge details were not provided.');
       navigation.goBack();
@@ -27,12 +29,26 @@ function EditBadgeScreen({ route, navigation }) {
       return;
     }
 
-    navigation.navigate('AdminBadges', {
-      updatedBadge: {
-        ...badge,
-        name: name.trim(),
-      },
-    });
+    try {
+      const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+      if (!token) {
+        Alert.alert('Session expired', 'Please log in again to continue.');
+        return;
+      }
+
+      await requestProfileApi(`/api/v1/admin/badges/${badge.id}`, token, {
+        method: 'PUT',
+        body: {
+          name: name.trim(),
+          iconUrl: badge.image,
+        },
+      });
+
+      navigation.goBack();
+    } catch (error) {
+      Alert.alert('Update failed', error?.message || 'Unable to update badge right now.');
+    }
   };
 
   if (!badge) {

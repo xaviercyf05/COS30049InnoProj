@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Image,
   Modal,
   StyleSheet,
@@ -7,56 +8,62 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import withRoleGuard from '../auth/withRoleGuard.js';
 import { pickProfileImagePath, resolveProfileImageUri } from '../Profile/profileApi.js';
+import { requestProfileApi } from '../Profile/profileApi.js';
 
-const INITIAL_BADGES = [
-  { id: 1, name: 'Bako National Park', unlocked: true },
-  { id: 2, name: 'Similajau National Park', unlocked: true },
-  { id: 3, name: 'Kubah National Park', unlocked: true },
-  { id: 4, name: 'Gunung Mulu National Park', unlocked: false },
-  { id: 5, name: 'Maludam National Park', unlocked: false },
-];
-
-function BadgeManagementScreen({ navigation, route, currentProfile }) {
-  const [badges, setBadges] = useState(INITIAL_BADGES);
+function BadgeManagementScreen({ navigation, currentProfile }) {
+  const [badges, setBadges] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [activeMenu, setActiveMenu] = useState(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
 
-  const createdBadge = route?.params?.createdBadge;
-  const updatedBadge = route?.params?.updatedBadge;
+  const getAuthToken = async () => {
+    const token = await AsyncStorage.getItem('innopapp_auth_token');
 
-  useEffect(() => {
-    if (!createdBadge) {
-      return;
+    if (!token) {
+      throw new Error('Session expired. Please log in again.');
     }
 
-    setBadges((previous) => {
-      const alreadyExists = previous.some((badge) => badge.id === createdBadge.id);
-      if (alreadyExists) {
-        return previous;
-      }
+    return token;
+  };
 
-      return [createdBadge, ...previous];
+  const loadBadges = async () => {
+    setLoading(true);
+
+    try {
+      const token = await getAuthToken();
+      const response = await requestProfileApi('/api/v1/admin/badges', token, {
+        method: 'GET',
+      });
+
+      const loaded = Array.isArray(response.data) ? response.data : [];
+      setBadges(
+        loaded.map((badge) => ({
+          id: badge.id || badge.badgeId,
+          name: badge.name,
+          unlocked: Boolean(badge.unlocked),
+          image: badge.image,
+        }))
+      );
+    } catch (_error) {
+      setBadges([]);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadBadges();
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      loadBadges();
     });
 
-    navigation.setParams({ createdBadge: undefined });
-  }, [createdBadge, navigation]);
-
-  useEffect(() => {
-    if (!updatedBadge) {
-      return;
-    }
-
-    setBadges((previous) =>
-      previous.map((badge) =>
-        badge.id === updatedBadge.id ? { ...badge, ...updatedBadge } : badge
-      )
-    );
-
-    navigation.setParams({ updatedBadge: undefined });
-  }, [updatedBadge, navigation]);
+    return unsubscribe;
+  }, [navigation]);
 
   const earnedBadges = badges.filter((badge) => badge.unlocked).length;
   const displayName = currentProfile?.fullName || currentProfile?.username || 'Admin';
@@ -78,10 +85,20 @@ function BadgeManagementScreen({ navigation, route, currentProfile }) {
     setDeleteModalVisible(true);
   };
 
-  const confirmDelete = () => {
-    setBadges((previous) => previous.filter((badge) => badge.id !== selectedId));
-    setDeleteModalVisible(false);
-    setSelectedId(null);
+  const confirmDelete = async () => {
+    try {
+      const token = await getAuthToken();
+      await requestProfileApi(`/api/v1/admin/badges/${selectedId}`, token, {
+        method: 'DELETE',
+      });
+
+      setBadges((previous) => previous.filter((badge) => badge.id !== selectedId));
+    } catch (_error) {
+      // Keep modal behavior simple and avoid disrupting UI interactions.
+    } finally {
+      setDeleteModalVisible(false);
+      setSelectedId(null);
+    }
   };
 
   return (
@@ -108,47 +125,54 @@ function BadgeManagementScreen({ navigation, route, currentProfile }) {
       </View>
 
       <View style={styles.gridWrapper}>
-        <View style={styles.grid}>
-          {badges.map((badge) => (
-            <View key={badge.id} style={styles.badgeCard}>
-              <TouchableOpacity
-                style={styles.menuIcon}
-                onPress={() => setActiveMenu(activeMenu === badge.id ? null : badge.id)}
-              >
-                <Text style={styles.menuDots}>...</Text>
-              </TouchableOpacity>
+        {loading ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color="#2E6B4D" />
+            <Text style={styles.loadingText}>Loading badges...</Text>
+          </View>
+        ) : (
+          <View style={styles.grid}>
+            {badges.map((badge) => (
+              <View key={badge.id} style={styles.badgeCard}>
+                <TouchableOpacity
+                  style={styles.menuIcon}
+                  onPress={() => setActiveMenu(activeMenu === badge.id ? null : badge.id)}
+                >
+                  <Text style={styles.menuDots}>...</Text>
+                </TouchableOpacity>
 
-              {activeMenu === badge.id && (
-                <View style={styles.dropdownMenu}>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setActiveMenu(null);
-                      navigation.navigate('EditBadge', { badge });
-                    }}
-                  >
-                    <Text style={styles.menuText}>Edit</Text>
-                  </TouchableOpacity>
+                {activeMenu === badge.id && (
+                  <View style={styles.dropdownMenu}>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setActiveMenu(null);
+                        navigation.navigate('EditBadge', { badge });
+                      }}
+                    >
+                      <Text style={styles.menuText}>Edit</Text>
+                    </TouchableOpacity>
 
-                  <TouchableOpacity
-                    onPress={() => {
-                      setActiveMenu(null);
-                      openDeleteModal(badge.id);
-                    }}
-                  >
-                    <Text style={[styles.menuText, styles.menuDeleteText]}>Delete</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
+                    <TouchableOpacity
+                      onPress={() => {
+                        setActiveMenu(null);
+                        openDeleteModal(badge.id);
+                      }}
+                    >
+                      <Text style={[styles.menuText, styles.menuDeleteText]}>Delete</Text>
+                    </TouchableOpacity>
+                  </View>
+                )}
 
-              <Image
-                source={{ uri: 'https://cdn-icons-png.flaticon.com/512/16779/16779402.png' }}
-                style={[styles.badgeIcon, { opacity: badge.unlocked ? 1 : 0.35 }]}
-              />
+                <Image
+                  source={{ uri: badge.image || 'https://cdn-icons-png.flaticon.com/512/16779/16779402.png' }}
+                  style={[styles.badgeIcon, { opacity: badge.unlocked ? 1 : 0.35 }]}
+                />
 
-              <Text style={styles.badgeText}>{badge.name}</Text>
-            </View>
-          ))}
-        </View>
+                <Text style={styles.badgeText}>{badge.name}</Text>
+              </View>
+            ))}
+          </View>
+        )}
       </View>
 
       <Modal
@@ -239,6 +263,20 @@ const styles = StyleSheet.create({
   },
   gridWrapper: {
     alignItems: 'center',
+  },
+  loadingWrap: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E8ECE3',
+    borderRadius: 12,
+    paddingVertical: 30,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: '#4E5D53',
+    fontSize: 13,
   },
   grid: {
     flexDirection: 'row',

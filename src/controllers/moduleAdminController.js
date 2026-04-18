@@ -1,9 +1,17 @@
+const fs = require("fs/promises");
 const { pool, query } = require("../config/db");
 const {
   ensureModuleUiSchema,
   getDefaultQualificationId,
+  normalizeModuleCoverImageUrl,
   resolveModuleCoverImage,
 } = require("../services/moduleUiService");
+
+const moduleCoverPathPrefix = "/uploads/module-covers/";
+
+function createModuleCoverImageUrl(fileName) {
+  return `${moduleCoverPathPrefix}${fileName}`;
+}
 
 function normalizeSectionsInput(sectionsInput) {
   let parsedSections = sectionsInput;
@@ -157,11 +165,54 @@ async function getModuleById(req, res) {
 }
 
 /**
+ * Admin: upload module cover image and return persistent server URL.
+ */
+async function uploadModuleCoverImage(req, res) {
+  const uploadedFile = req.file;
+
+  if (!uploadedFile) {
+    return res.status(400).json({
+      success: false,
+      message: "Cover image file is required.",
+    });
+  }
+
+  if (!uploadedFile.mimetype || !uploadedFile.mimetype.startsWith("image/")) {
+    await fs.unlink(uploadedFile.path).catch(() => {});
+
+    return res.status(400).json({
+      success: false,
+      message: "Only image files are allowed.",
+    });
+  }
+
+  try {
+    const moduleImageUrl = createModuleCoverImageUrl(uploadedFile.filename);
+
+    return res.status(201).json({
+      success: true,
+      message: "Module cover uploaded successfully.",
+      data: {
+        moduleImageUrl,
+      },
+    });
+  } catch (error) {
+    await fs.unlink(uploadedFile.path).catch(() => {});
+
+    console.error("Upload module cover image error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload module cover image.",
+    });
+  }
+}
+
+/**
  * Admin: create module and section content.
  */
 async function createModule(req, res) {
   const title = String(req.body.title || "").trim();
-  const moduleImageUrl = String(req.body.moduleImageUrl || "").trim();
+  const moduleImageUrl = normalizeModuleCoverImageUrl(req.body.moduleImageUrl);
   const requestedQualificationId = Number.parseInt(req.body.qualificationId, 10);
   const sections = normalizeSectionsInput(req.body.sections);
 
@@ -261,7 +312,7 @@ async function createModule(req, res) {
 async function updateModule(req, res) {
   const { moduleId } = req.params;
   const title = String(req.body.title || "").trim();
-  const moduleImageUrl = String(req.body.moduleImageUrl || "").trim();
+  const moduleImageUrl = normalizeModuleCoverImageUrl(req.body.moduleImageUrl);
   const sections = normalizeSectionsInput(req.body.sections);
 
   if (!title) {
@@ -384,6 +435,7 @@ async function deleteModule(req, res) {
 module.exports = {
   listModules,
   getModuleById,
+  uploadModuleCoverImage,
   createModule,
   updateModule,
   deleteModule,

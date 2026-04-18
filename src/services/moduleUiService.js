@@ -25,6 +25,17 @@ async function ensureModuleUiSchema() {
             ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
       );
+
+      await query(
+        `UPDATE ModuleUiMeta
+            SET CoverImageUrl = NULL
+          WHERE CoverImageUrl IS NOT NULL
+            AND (
+              LOWER(CoverImageUrl) LIKE 'blob:%'
+              OR LOWER(CoverImageUrl) LIKE 'data:%'
+              OR LOWER(CoverImageUrl) LIKE 'file:%'
+            )`
+      );
     })().catch((error) => {
       moduleUiSchemaPromise = null;
       throw error;
@@ -51,9 +62,35 @@ async function getDefaultQualificationId() {
   return insertResult.insertId;
 }
 
-function resolveModuleCoverImage(moduleId, coverImageUrl) {
+function normalizeModuleCoverImageUrl(coverImageUrl) {
   const normalizedCover =
-    typeof coverImageUrl === "string" ? coverImageUrl.trim() : "";
+    typeof coverImageUrl === "string" ? coverImageUrl.trim().replace(/\\/g, "/") : "";
+
+  if (!normalizedCover) {
+    return "";
+  }
+
+  if (/^(blob:|data:|file:)/i.test(normalizedCover)) {
+    return "";
+  }
+
+  if (/^https?:\/\//i.test(normalizedCover)) {
+    return normalizedCover;
+  }
+
+  if (/^\/uploads\/module-covers\/[a-zA-Z0-9._-]+$/i.test(normalizedCover)) {
+    return normalizedCover;
+  }
+
+  if (/^uploads\/module-covers\/[a-zA-Z0-9._-]+$/i.test(normalizedCover)) {
+    return `/${normalizedCover}`;
+  }
+
+  return "";
+}
+
+function resolveModuleCoverImage(moduleId, coverImageUrl) {
+  const normalizedCover = normalizeModuleCoverImageUrl(coverImageUrl);
 
   if (normalizedCover.length > 0) {
     return normalizedCover;
@@ -66,5 +103,6 @@ function resolveModuleCoverImage(moduleId, coverImageUrl) {
 module.exports = {
   ensureModuleUiSchema,
   getDefaultQualificationId,
+  normalizeModuleCoverImageUrl,
   resolveModuleCoverImage,
 };

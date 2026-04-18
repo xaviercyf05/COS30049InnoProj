@@ -1,6 +1,7 @@
 const express = require("express");
 const { body, param } = require("express-validator");
 const { authenticateAdminOnly } = require("../../middleware/authUser");
+const moduleCoverUpload = require("../../middleware/moduleCoverUpload");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const adminController = require("../../controllers/adminManagementController");
@@ -238,6 +239,16 @@ router.get(
   [param("moduleId").isInt().withMessage("Invalid module ID.")],
   validate,
   asyncHandler(moduleAdminController.getModuleById)
+);
+
+/**
+ * POST /admin/modules/cover-image - Upload module cover image
+ * Body: multipart/form-data with file field coverImage
+ */
+router.post(
+  "/modules/cover-image",
+  moduleCoverUpload.single("coverImage"),
+  asyncHandler(moduleAdminController.uploadModuleCoverImage)
 );
 
 /**

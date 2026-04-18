@@ -2,6 +2,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS
   Notifications,
+  Badges,
   Announcements,
   Schedules,
   Certificates,
@@ -12,7 +13,9 @@ DROP TABLE IF EXISTS
   AssessmentQuestions,
   Assessments,
   Subtitles,
+  ModuleUiMeta,
   Modules,
+  RegistrationRequests,
   Users,
   Qualifications,
   Roles,
@@ -68,11 +71,38 @@ INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID) VALUES
 
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
 
+CREATE TABLE IF NOT EXISTS RegistrationRequests (
+  RegistrationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  Username VARCHAR(100) NOT NULL,
+  PasswordHash VARCHAR(255) NOT NULL,
+  FullName VARCHAR(150) NOT NULL,
+  PhoneNumber VARCHAR(50) NOT NULL,
+  Email VARCHAR(150) NOT NULL,
+  ResumeFilePath VARCHAR(500) NOT NULL,
+  ResumeOriginalName VARCHAR(255) NULL,
+  Status VARCHAR(20) NOT NULL DEFAULT 'Pending',
+  ReviewedBy INT UNSIGNED NULL,
+  ReviewedAt TIMESTAMP NULL,
+  ReviewRemark VARCHAR(255) NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT chk_registration_requests_status CHECK (Status IN ('Pending', 'Approved', 'Rejected')),
+  CONSTRAINT fk_registration_requests_reviewer FOREIGN KEY (ReviewedBy) REFERENCES Users (UserID) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_registration_requests_status_created ON RegistrationRequests (Status, CreatedAt);
+
 CREATE TABLE IF NOT EXISTS Modules (
   ModuleID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   QualificationID INT UNSIGNED NOT NULL,
   ModuleTitle VARCHAR(160) NOT NULL,
   CONSTRAINT fk_modules_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ModuleUiMeta (
+  ModuleID INT UNSIGNED NOT NULL PRIMARY KEY,
+  CoverImageUrl VARCHAR(500) NULL,
+  UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_module_ui_meta_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Subtitles (
@@ -173,8 +203,21 @@ CREATE TABLE IF NOT EXISTS Announcements (
   TargetRole VARCHAR(50) NOT NULL,
   ExpiryDate DATE NULL,
   CreatedBy INT UNSIGNED NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_announcements_created_by FOREIGN KEY (CreatedBy) REFERENCES Users (UserID) ON DELETE SET NULL,
   CONSTRAINT chk_announcements_target_role CHECK (TargetRole IN ('Admin', 'User', 'All'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS Badges (
+  BadgeID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  BadgeName VARCHAR(160) NOT NULL,
+  IconUrl VARCHAR(500) NULL,
+  UnlockThreshold INT UNSIGNED NOT NULL DEFAULT 0,
+  IsActive TINYINT(1) NOT NULL DEFAULT 1,
+  CreatedBy INT UNSIGNED NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_badges_created_by FOREIGN KEY (CreatedBy) REFERENCES Users (UserID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Notifications (

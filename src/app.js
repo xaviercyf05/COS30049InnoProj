@@ -9,12 +9,14 @@ const { ping } = require("./config/db");
 const { errorHandler } = require("./middleware/errorHandler");
 
 // Route imports
+const publicRoutes = require("./routes/v1/publicRoutes");
 const authRoutes = require("./routes/v1/authRoutes");
 const userRoutes = require("./routes/v1/userRoutes");
 const qualificationRoutes = require("./routes/v1/qualificationRoutes");
 const moduleRoutes = require("./routes/v1/moduleRoutes");
 const assessmentRoutes = require("./routes/v1/assessmentRoutes");
 const notificationRoutes = require("./routes/v1/notificationRoutes");
+const badgeRoutes = require("./routes/v1/badgeRoutes");
 const adminRoutes = require("./routes/v1/adminRoutes");
 const richContentModule = require("../feature_modules/rich-content/backend");
 
@@ -61,8 +63,8 @@ app.use(
   })
 );
 app.use(morgan("combined"));
-app.use(express.json({ limit: "10kb" }));
-app.use(express.urlencoded({ limit: "10kb", extended: true }));
+app.use(express.json({ limit: "1mb" }));
+app.use(express.urlencoded({ limit: "1mb", extended: true }));
 fs.mkdirSync(uploadsDir, { recursive: true });
 app.use(express.static(publicDir));
 app.use("/public", express.static(publicDir));
@@ -107,6 +109,9 @@ app.get("/api/health", healthHandler);
  */
 const apiV1 = express.Router();
 
+// Public non-authenticated routes
+apiV1.use("/public", publicRoutes);
+
 // Authentication routes (public)
 apiV1.use("/auth", authRoutes);
 
@@ -124,6 +129,9 @@ apiV1.use("/assessments", assessmentRoutes);
 
 // Notification, announcement, schedule routes (protected)
 apiV1.use("/notifications", notificationRoutes);
+
+// Badge routes (protected)
+apiV1.use("/badges", badgeRoutes);
 
 // Admin management routes (admin only)
 apiV1.use("/admin", adminRoutes);

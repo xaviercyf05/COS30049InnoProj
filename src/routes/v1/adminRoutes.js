@@ -4,6 +4,9 @@ const { authenticateAdminOnly } = require("../../middleware/authUser");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const adminController = require("../../controllers/adminManagementController");
+const registrationController = require("../../controllers/registrationController");
+const moduleAdminController = require("../../controllers/moduleAdminController");
+const badgeController = require("../../controllers/badgeController");
 
 const router = express.Router();
 
@@ -55,6 +58,60 @@ router.post(
   ],
   validate,
   asyncHandler(adminController.createAnnouncement)
+);
+
+/**
+ * GET /admin/announcements - Get all announcements for admin management
+ */
+router.get(
+  "/announcements",
+  asyncHandler(adminController.getAllAnnouncements)
+);
+
+/**
+ * PUT /admin/announcements/:announcementId - Update announcement
+ */
+router.put(
+  "/announcements/:announcementId",
+  [
+    param("announcementId").isInt().withMessage("Invalid announcement ID."),
+    body("title")
+      .trim()
+      .isLength({ min: 3, max: 160 })
+      .withMessage("Title must be between 3 and 160 characters."),
+    body().custom((_, { req }) => {
+      const hasContent =
+        (typeof req.body.fullDesc === "string" && req.body.fullDesc.trim().length > 0) ||
+        (typeof req.body.content === "string" && req.body.content.trim().length > 0) ||
+        (typeof req.body.teaser === "string" && req.body.teaser.trim().length > 0);
+
+      if (!hasContent) {
+        throw new Error("Content is required.");
+      }
+
+      return true;
+    }),
+    body("targetRole")
+      .optional()
+      .isIn(["Admin", "User", "All"])
+      .withMessage("Target role must be Admin, User, or All."),
+    body("expiryDate")
+      .optional({ values: "falsy" })
+      .isISO8601()
+      .withMessage("Expiry date must be a valid date."),
+  ],
+  validate,
+  asyncHandler(adminController.updateAnnouncement)
+);
+
+/**
+ * DELETE /admin/announcements/:announcementId - Delete announcement
+ */
+router.delete(
+  "/announcements/:announcementId",
+  [param("announcementId").isInt().withMessage("Invalid announcement ID.")],
+  validate,
+  asyncHandler(adminController.deleteAnnouncement)
 );
 
 /**
@@ -123,6 +180,199 @@ router.get(
   [param("userId").isInt().withMessage("Invalid user ID.")],
   validate,
   asyncHandler(adminController.getUserEnrollmentDetails)
+);
+
+/**
+ * GET /admin/registrations - List registration requests
+ */
+router.get(
+  "/registrations",
+  asyncHandler(registrationController.getRegistrationRequests)
+);
+
+/**
+ * PUT /admin/registrations/:registrationId/status - Approve/reject request
+ */
+router.put(
+  "/registrations/:registrationId/status",
+  [
+    param("registrationId").isInt().withMessage("Invalid registration ID."),
+    body("status")
+      .trim()
+      .custom((value) => {
+        const normalized = String(value || "").toLowerCase();
+        if (!["pending", "approved", "rejected"].includes(normalized)) {
+          throw new Error("Status must be pending, approved, or rejected.");
+        }
+        return true;
+      }),
+    body("remark")
+      .optional({ values: "falsy" })
+      .isLength({ max: 255 })
+      .withMessage("Remark must be at most 255 characters."),
+  ],
+  validate,
+  asyncHandler(registrationController.updateRegistrationStatus)
+);
+
+/**
+ * GET /admin/registrations/:registrationId/resume - Stream applicant resume
+ */
+router.get(
+  "/registrations/:registrationId/resume",
+  [param("registrationId").isInt().withMessage("Invalid registration ID.")],
+  validate,
+  asyncHandler(registrationController.getRegistrationResume)
+);
+
+/**
+ * GET /admin/modules - List module library for admin management
+ */
+router.get("/modules", asyncHandler(moduleAdminController.listModules));
+
+/**
+ * GET /admin/modules/:moduleId - Get module details for editing
+ */
+router.get(
+  "/modules/:moduleId",
+  [param("moduleId").isInt().withMessage("Invalid module ID.")],
+  validate,
+  asyncHandler(moduleAdminController.getModuleById)
+);
+
+/**
+ * POST /admin/modules - Create module
+ */
+router.post(
+  "/modules",
+  [
+    body("title")
+      .trim()
+      .isLength({ min: 1, max: 160 })
+      .withMessage("Module title is required and must be at most 160 characters."),
+    body("qualificationId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Qualification ID must be a positive integer."),
+    body("sections")
+      .custom((value) => {
+        let parsed = value;
+
+        if (typeof value === "string") {
+          try {
+            parsed = JSON.parse(value);
+          } catch (_error) {
+            parsed = null;
+          }
+        }
+
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          throw new Error("At least one section is required.");
+        }
+
+        return true;
+      }),
+  ],
+  validate,
+  asyncHandler(moduleAdminController.createModule)
+);
+
+/**
+ * PUT /admin/modules/:moduleId - Update module
+ */
+router.put(
+  "/modules/:moduleId",
+  [
+    param("moduleId").isInt().withMessage("Invalid module ID."),
+    body("title")
+      .trim()
+      .isLength({ min: 1, max: 160 })
+      .withMessage("Module title is required and must be at most 160 characters."),
+    body("sections")
+      .custom((value) => {
+        let parsed = value;
+
+        if (typeof value === "string") {
+          try {
+            parsed = JSON.parse(value);
+          } catch (_error) {
+            parsed = null;
+          }
+        }
+
+        if (!Array.isArray(parsed) || parsed.length === 0) {
+          throw new Error("At least one section is required.");
+        }
+
+        return true;
+      }),
+  ],
+  validate,
+  asyncHandler(moduleAdminController.updateModule)
+);
+
+/**
+ * DELETE /admin/modules/:moduleId - Delete module
+ */
+router.delete(
+  "/modules/:moduleId",
+  [param("moduleId").isInt().withMessage("Invalid module ID.")],
+  validate,
+  asyncHandler(moduleAdminController.deleteModule)
+);
+
+/**
+ * GET /admin/badges - List badges for admin management
+ */
+router.get("/badges", asyncHandler(badgeController.getAllBadges));
+
+/**
+ * POST /admin/badges - Create badge
+ */
+router.post(
+  "/badges",
+  [
+    body("name")
+      .trim()
+      .isLength({ min: 1, max: 160 })
+      .withMessage("Badge name is required and must be at most 160 characters."),
+    body("unlockThreshold")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0, max: 100 })
+      .withMessage("Unlock threshold must be between 0 and 100."),
+  ],
+  validate,
+  asyncHandler(badgeController.createBadge)
+);
+
+/**
+ * PUT /admin/badges/:badgeId - Update badge
+ */
+router.put(
+  "/badges/:badgeId",
+  [
+    param("badgeId").isInt().withMessage("Invalid badge ID."),
+    body("name")
+      .trim()
+      .isLength({ min: 1, max: 160 })
+      .withMessage("Badge name is required and must be at most 160 characters."),
+    body("unlockThreshold")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0, max: 100 })
+      .withMessage("Unlock threshold must be between 0 and 100."),
+  ],
+  validate,
+  asyncHandler(badgeController.updateBadge)
+);
+
+/**
+ * DELETE /admin/badges/:badgeId - Delete badge
+ */
+router.delete(
+  "/badges/:badgeId",
+  [param("badgeId").isInt().withMessage("Invalid badge ID.")],
+  validate,
+  asyncHandler(badgeController.deleteBadge)
 );
 
 module.exports = router;

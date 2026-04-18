@@ -10,7 +10,7 @@ const { query } = require("../config/db");
 async function getModuleMaterials(userId, moduleId) {
   try {
     const [materials] = await query(
-      `SELECT MaterialID, Chapter, Title, ContentType
+      `SELECT MaterialID, Chapter, Title, ContentType, ContentText
        FROM LearningMaterials
        WHERE ModuleID = ?
        ORDER BY MaterialID ASC`,
@@ -34,6 +34,7 @@ async function getModuleMaterials(userId, moduleId) {
         chapter: mat.Chapter,
         title: mat.Title,
         contentType: mat.ContentType,
+        content: mat.ContentText,
         isCompleted: progress.length > 0 ? progress[0].IsCompleted === 1 : false,
       });
     }

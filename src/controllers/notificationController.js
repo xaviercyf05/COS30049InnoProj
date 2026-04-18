@@ -48,9 +48,18 @@ async function getAnnouncements(req, res) {
       success: true,
       data: announcements.map((a) => ({
         announcementId: a.AnnouncementID,
+        id: a.AnnouncementID,
         title: a.Title,
+        teaser: String(a.Content || "").length > 95
+          ? `${String(a.Content || "").slice(0, 92)}...`
+          : String(a.Content || ""),
+        fullDesc: a.Content,
         content: a.Content,
         expiryDate: a.ExpiryDate,
+        posted: a.ExpiryDate ? `Expires on ${a.ExpiryDate}` : "Recently",
+        avatarLabel: (String(a.Title || "").match(/\bL\s*(\d+)\b/i) || [])[1]
+          ? `L${String(a.Title || "").match(/\bL\s*(\d+)\b/i)[1]}`
+          : "AN",
       })),
     });
   } catch (error) {

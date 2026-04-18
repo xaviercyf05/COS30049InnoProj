@@ -11,6 +11,11 @@ const router = express.Router();
 router.use(authenticateUser);
 
 /**
+ * GET /modules/dashboard - Get modules and progress summary for dashboard cards
+ */
+router.get("/dashboard", asyncHandler(materialController.getDashboardModules));
+
+/**
  * GET /modules/:qualificationId/all - Get all modules for a qualification
  */
 router.get(

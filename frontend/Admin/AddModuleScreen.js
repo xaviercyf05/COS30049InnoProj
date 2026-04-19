@@ -37,6 +37,7 @@ function AddModuleScreen({ navigation }) {
   const [moduleLocalImageUri, setModuleLocalImageUri] = useState('');
   const [moduleLocalImageAsset, setModuleLocalImageAsset] = useState(null);
   const [savedCount, setSavedCount] = useState(0);
+  const [isSaving, setIsSaving] = useState(false);
   const [sections, setSections] = useState([
     {
       id: createId(),
@@ -49,6 +50,53 @@ function AddModuleScreen({ navigation }) {
     moduleLocalImageUri ||
     resolveApiAssetUri(moduleImageUrl.trim()) ||
     moduleImageUrl.trim();
+
+  const navigateToHome = () => {
+    navigation.navigate('Home');
+  };
+
+  const navigateToPreviousScreen = () => {
+    if (navigation.canGoBack()) {
+      navigation.goBack();
+      return;
+    }
+
+    navigateToHome();
+  };
+
+  const showNotice = (title, message) => {
+    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
+      window.alert(`${title}\n\n${message}`);
+      return;
+    }
+
+    Alert.alert(title, message);
+  };
+
+  const showSaveSuccessPrompt = (message) => {
+    if (
+      Platform.OS === 'web' &&
+      typeof window !== 'undefined' &&
+      typeof window.confirm === 'function'
+    ) {
+      const goHome = window.confirm(
+        `${message}\n\nPress OK to go to Homepage.\nPress Cancel to go back to previous page.`
+      );
+
+      if (goHome) {
+        navigateToHome();
+      } else {
+        navigateToPreviousScreen();
+      }
+
+      return;
+    }
+
+    Alert.alert('Save successful', message, [
+      { text: 'Previous Page', onPress: navigateToPreviousScreen },
+      { text: 'Homepage', onPress: navigateToHome },
+    ]);
+  };
 
   useEffect(() => {
     let active = true;
@@ -153,15 +201,19 @@ function AddModuleScreen({ navigation }) {
   };
 
   const handleSave = async () => {
+    if (isSaving) {
+      return;
+    }
+
     if (!moduleTitle.trim()) {
-      Alert.alert('Missing details', 'Please provide a module title before saving.');
+      showNotice('Missing details', 'Please provide a module title before saving.');
       return;
     }
 
     const token = await AsyncStorage.getItem('innopapp_auth_token');
 
     if (!token) {
-      Alert.alert('Session expired', 'Please log in again to continue.');
+      showNotice('Session expired', 'Please log in again to continue.');
       return;
     }
 
@@ -182,11 +234,13 @@ function AddModuleScreen({ navigation }) {
       .filter(Boolean);
 
     if (normalizedSections.length === 0) {
-      Alert.alert('Missing details', 'Please add at least one section with content.');
+      showNotice('Missing details', 'Please add at least one section with content.');
       return;
     }
 
     try {
+      setIsSaving(true);
+
       let normalizedModuleImageUrl = moduleImageUrl.trim();
 
       if (moduleLocalImageAsset) {
@@ -211,9 +265,13 @@ function AddModuleScreen({ navigation }) {
       setModuleLocalImageUri('');
       setModuleLocalImageAsset(null);
 
-      Alert.alert('Saved', 'Module saved to backend. You can edit it from Manage Modules.');
+      showSaveSuccessPrompt(
+        'Module created successfully. You can edit it later from Manage Modules.'
+      );
     } catch (error) {
-      Alert.alert('Save failed', error?.message || 'Unable to save module right now.');
+      showNotice('Save failed', error?.message || 'Unable to save module right now.');
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -222,7 +280,11 @@ function AddModuleScreen({ navigation }) {
       behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
       style={styles.screen}
     >
-      <ScrollView contentContainerStyle={styles.container}>
+      <ScrollView
+        contentContainerStyle={styles.container}
+        nestedScrollEnabled
+        keyboardShouldPersistTaps="handled"
+      >
         <Text style={styles.header}>Create Module</Text>
 
         <View style={styles.headerActionsRow}>
@@ -308,8 +370,12 @@ function AddModuleScreen({ navigation }) {
           </View>
         ))}
 
-        <TouchableOpacity style={styles.saveBtn} onPress={handleSave}>
-          <Text style={styles.saveText}>Save Module</Text>
+        <TouchableOpacity
+          style={[styles.saveBtn, isSaving && styles.saveBtnDisabled]}
+          onPress={handleSave}
+          disabled={isSaving}
+        >
+          <Text style={styles.saveText}>{isSaving ? 'Saving Module...' : 'Save Module'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -466,6 +532,9 @@ const styles = StyleSheet.create({
     borderRadius: 12,
     marginTop: 10,
     marginBottom: 30,
+  },
+  saveBtnDisabled: {
+    opacity: 0.7,
   },
   saveText: {
     color: '#FFFFFF',

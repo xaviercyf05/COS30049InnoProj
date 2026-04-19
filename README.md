@@ -56,6 +56,7 @@ Create a file named .env in the project root.
 - DB_NAME
 - JWT_SECRET
 - TRUST_PROXY
+- REQUEST_BODY_LIMIT (optional, default 15mb)
 
 4. Initialize database (MariaDB):
 

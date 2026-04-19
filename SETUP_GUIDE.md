@@ -133,6 +133,9 @@ DB_NAME=digital_park_guide
 # JWT
 JWT_SECRET=your_super_secret_jwt_key_change_this_in_production
 JWT_EXPIRES_IN=12h
+
+# Optional: increase payload limit for large rich-content module saves
+REQUEST_BODY_LIMIT=15mb
 ```
 
 Replace:

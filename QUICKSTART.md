@@ -47,6 +47,7 @@ DB_USER=root
 DB_PASSWORD=your_password
 DB_NAME=digital_park_guide
 JWT_SECRET=change_this_in_production
+REQUEST_BODY_LIMIT=15mb
 ```
 
 ### Step 3: Install & Seed

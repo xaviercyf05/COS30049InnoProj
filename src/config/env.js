@@ -36,6 +36,28 @@ function parseCorsOrigins(value, fallback = []) {
     .filter(Boolean);
 }
 
+function parseSizeLimit(value, fallback = "15mb") {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
+
+  const normalized = String(value)
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, "");
+
+  if (/^\d+(b|kb|mb|gb)$/.test(normalized)) {
+    return normalized;
+  }
+
+  const parsed = Number(normalized);
+  if (Number.isInteger(parsed) && parsed > 0) {
+    return `${parsed}mb`;
+  }
+
+  return fallback;
+}
+
 // Define environment variables with defaults and parsing
 const env = {
   nodeEnv: process.env.NODE_ENV || "development",
@@ -54,6 +76,7 @@ const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "12h",
   richContentStorageDir: process.env.RICH_CONTENT_STORAGE_DIR || "",
   richContentMaxFileSizeMb: parsePositiveInt(process.env.RICH_CONTENT_MAX_FILE_SIZE_MB, 10),
+  requestBodyLimit: parseSizeLimit(process.env.REQUEST_BODY_LIMIT, "15mb"),
 };
 
 if (env.nodeEnv === "production" && env.jwtSecret === "change-this-in-production") {

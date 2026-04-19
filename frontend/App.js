@@ -6,6 +6,7 @@ import {
 	ImageBackground,
 	Platform,
 	ScrollView,
+	StatusBar,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
@@ -93,11 +94,20 @@ function AssessmentScreen({ route, navigation }) {
 
 function HomeScreen({ navigation }) {
 	const insets = useSafeAreaInsets();
+	const isMobile = Platform.OS !== 'web';
+	const statusBarInset =
+		Platform.OS === 'android'
+			? StatusBar.currentHeight || insets.top || 0
+			: insets.top;
+	const headerTopPadding = isMobile
+		? Math.max(12, statusBarInset + 6)
+		: Math.max(10, statusBarInset + 4);
 	const [menuVisible, setMenuVisible] = useState(false);
 	const [notificationVisible, setNotificationVisible] = useState(false);
 	const [showAllNotifications, setShowAllNotifications] = useState(false);
 	const [profile, setProfile] = useState(null);
 	const [profileLoading, setProfileLoading] = useState(true);
+	const [modulesLoading, setModulesLoading] = useState(true);
 	const [notifications, setNotifications] = useState([
 		{
 			id: 1,
@@ -128,47 +138,12 @@ function HomeScreen({ navigation }) {
 			read: true,
 		},
 	]);
-	const [userModules, setUserModules] = useState([
-		{
-			id: 'general',
-			title: 'General',
-			image: 'https://images.unsplash.com/photo-1469474968028-56623f02e42e?auto=format&fit=crop&w=1200&q=80',
-			progressPercent: 55,
-		},
-		{
-			id: 'park-1',
-			title: 'Park 1',
-			image: 'https://imgs.mongabay.com/wp-content/uploads/sites/20/2018/03/09165734/20171123-153037-4-2.jpg',
-			progressPercent: 40,
-		},
-		{
-			id: 'park-2',
-			title: 'Park 2',
-			image: 'https://mongabay-images.s3.amazonaws.com/780/malaysia/sabah_sepilok_0337.jpg',
-			progressPercent: 65,
-		},
-		{
-			id: 'park-3',
-			title: 'Park 3',
-			image: 'https://gofbonline.com/wp-content/uploads/2017/06/sustainability-sarawak-banner.jpg',
-			progressPercent: 20,
-		},
-		{
-			id: 'park-4',
-			title: 'Park 4',
-			image: 'https://images.unsplash.com/photo-1472396961693-142e6e269027?auto=format&fit=crop&w=1200&q=80',
-			progressPercent: 10,
-		},
-		{
-			id: 'park-5',
-			title: 'Park 5',
-			image: 'https://images.unsplash.com/photo-1501785888041-af3ef285b470?auto=format&fit=crop&w=1200&q=80',
-			progressPercent: 5,
-		},
-	]);
+	const [userModules, setUserModules] = useState([]);
 
 	const loadProfile = useCallback(async () => {
 		setProfileLoading(true);
+		setModulesLoading(true);
+		setUserModules([]);
 
 		try {
 			const token = await AsyncStorage.getItem('innopapp_auth_token');
@@ -224,15 +199,19 @@ function HomeScreen({ navigation }) {
 						progressPercent: Number(module.progressPercent || 0),
 					}))
 				);
+			} else {
+				setUserModules([]);
 			}
 		} catch (error) {
 			await AsyncStorage.multiRemove(SESSION_STORAGE_KEYS);
 			setProfile(null);
+			setUserModules([]);
 			navigation.reset({
 				index: 0,
 				routes: [{ name: 'Login' }],
 			});
 		} finally {
+			setModulesLoading(false);
 			setProfileLoading(false);
 		}
 	}, [navigation]);
@@ -343,13 +322,14 @@ function HomeScreen({ navigation }) {
 			<View
 				style={[
 					styles.header,
-					{ paddingTop: Math.max(14, insets.top + 8) },
+					{ paddingTop: headerTopPadding },
+					isMobile && styles.headerMobile,
 				]}
 			>
-				<Text style={styles.headerTitle}>SFC Training</Text>
+				<Text style={[styles.headerTitle, isMobile && styles.headerTitleMobile]}>SFC Training</Text>
 
 				<View style={styles.headerOverlayWrapper}>
-					<View style={styles.headerRight}>
+					<View style={[styles.headerRight, isMobile && styles.headerRightMobile]}>
 						<TouchableOpacity
 							onPress={() => {
 								setNotificationVisible((previous) => {
@@ -365,7 +345,7 @@ function HomeScreen({ navigation }) {
 							<View>
 								<Image
 									source={{ uri: 'https://cdn-icons-png.flaticon.com/512/1827/1827312.png' }}
-									style={styles.icon}
+									style={[styles.icon, isMobile && styles.iconMobile]}
 								/>
 								{unreadCount > 0 && (
 									<View style={styles.badge}>
@@ -388,7 +368,7 @@ function HomeScreen({ navigation }) {
 						>
 							<Image
 								source={profileImageSource}
-								style={styles.userImage}
+								style={[styles.userImage, isMobile && styles.userImageMobile]}
 							/>
 						</TouchableOpacity>
 					</View>
@@ -527,17 +507,17 @@ function HomeScreen({ navigation }) {
 			<Text style={styles.pageTitle}>{isAdmin ? 'Admin Dashboard' : 'Dashboard'}</Text>
 
 			{isAdmin && (
-				<View style={styles.headerRow}>
+				<View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
 					<Text style={styles.sectionLabel}>Module Management</Text>
-					<View style={styles.adminActions}>
+					<View style={[styles.adminActions, isMobile && styles.adminActionsMobile]}>
 						<TouchableOpacity
-							style={styles.secondaryAddButton}
+							style={[styles.secondaryAddButton, isMobile && styles.secondaryAddButtonMobile]}
 							onPress={() => navigation.navigate('AdminModules')}
 						>
 							<Text style={styles.secondaryAddButtonText}>Manage Modules</Text>
 						</TouchableOpacity>
 						<TouchableOpacity
-							style={styles.addButton}
+							style={[styles.addButton, isMobile && styles.addButtonMobile]}
 							onPress={() => navigation.navigate('AddModule')}
 						>
 							<Text style={styles.addButtonText}>Add Module</Text>
@@ -547,32 +527,46 @@ function HomeScreen({ navigation }) {
 			)}
 
 			<View style={styles.cardContainer}>
-				{userModules.map((module) => (
-					<TouchableOpacity
-						key={module.id}
-						onPress={() =>
-							navigation.navigate('Module', {
-								moduleName: module.title,
-								moduleId: module.moduleId,
-							})
-						}
-						style={styles.cardWrapper}
-					>
-						<ImageBackground
-							source={{ uri: module.image }}
-							style={styles.card}
-							imageStyle={{ borderRadius: 20 }}
+				{modulesLoading ? (
+					<View style={styles.modulesStatusCard}>
+						<ActivityIndicator size="small" color="#2E6B4D" />
+						<Text style={styles.modulesStatusText}>Loading modules...</Text>
+					</View>
+				) : userModules.length === 0 ? (
+					<View style={styles.modulesStatusCard}>
+						<Text style={styles.modulesStatusTitle}>No modules available yet</Text>
+						<Text style={styles.modulesStatusText}>
+							Your training modules will appear here after they are published.
+						</Text>
+					</View>
+				) : (
+					userModules.map((module) => (
+						<TouchableOpacity
+							key={module.id}
+							onPress={() =>
+								navigation.navigate('Module', {
+									moduleName: module.title,
+									moduleId: module.moduleId,
+								})
+							}
+							style={styles.cardWrapper}
 						>
-							<View style={styles.overlay} />
-							<Text style={styles.cardTitle}>{module.title}</Text>
+							<ImageBackground
+								source={{ uri: module.image }}
+								style={styles.card}
+								imageStyle={{ borderRadius: 20 }}
+							>
+								<View style={styles.overlay} />
+								<Text style={styles.cardTitle}>{module.title}</Text>
 
-							<View style={styles.progressBar}>
-								<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
-								<Text style={styles.progressText}>{module.progressPercent}%</Text>
-							</View>
-						</ImageBackground>
-					</TouchableOpacity>
-				))}
+								<View style={styles.progressBar}>
+									<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
+									<Text style={styles.progressText}>{module.progressPercent}%</Text>
+								</View>
+							</ImageBackground>
+						</TouchableOpacity>
+					))
+				)}
 			</View>
 		</View>
 	);
@@ -672,16 +666,26 @@ const styles = StyleSheet.create({
 		borderBottomColor: '#F0F0E8',
 		zIndex: 100,
 	},
+	headerMobile: {
+		paddingHorizontal: 16,
+		paddingBottom: 12,
+	},
 	headerTitle: {
 		fontSize: 22,
 		fontWeight: '700',
 		color: '#3A4D39',
 		letterSpacing: -0.5,
 	},
+	headerTitleMobile: {
+		fontSize: 20,
+	},
 	headerRight: {
 		flexDirection: 'row',
 		alignItems: 'center',
 		gap: 18,
+	},
+	headerRightMobile: {
+		gap: 12,
 	},
 	headerOverlayWrapper: {
 		position: 'relative',
@@ -691,6 +695,10 @@ const styles = StyleSheet.create({
 		height: 24,
 		tintColor: '#3A4D39',
 		opacity: 0.7,
+	},
+	iconMobile: {
+		width: 23,
+		height: 23,
 	},
 	badge: {
 		position: 'absolute',
@@ -715,6 +723,12 @@ const styles = StyleSheet.create({
 		borderRadius: 20,
 		borderWidth: 1.5,
 		borderColor: '#E8E8E0',
+	},
+	userImageMobile: {
+		width: 38,
+		height: 38,
+		borderRadius: 19,
+		marginLeft: 6,
 	},
 	notificationDropdown: {
 		position: 'absolute',
@@ -870,6 +884,11 @@ const styles = StyleSheet.create({
 		marginHorizontal: 20,
 		marginBottom: 8,
 	},
+	headerRowMobile: {
+		flexDirection: 'column',
+		alignItems: 'flex-start',
+		marginBottom: 14,
+	},
 	sectionLabel: {
 		fontSize: 16,
 		fontWeight: '700',
@@ -880,11 +899,25 @@ const styles = StyleSheet.create({
 		alignItems: 'center',
 		gap: 8,
 	},
+	adminActionsMobile: {
+		width: '100%',
+		marginTop: 12,
+		justifyContent: 'space-between',
+		gap: 0,
+	},
 	secondaryAddButton: {
 		backgroundColor: '#EAF2E3',
 		paddingVertical: 8,
 		paddingHorizontal: 12,
 		borderRadius: 8,
+	},
+	secondaryAddButtonMobile: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		minHeight: 40,
+		paddingHorizontal: 10,
+		paddingVertical: 10,
 	},
 	secondaryAddButtonText: {
 		color: '#2E6B4D',
@@ -895,6 +928,16 @@ const styles = StyleSheet.create({
 		paddingVertical: 8,
 		paddingHorizontal: 12,
 		borderRadius: 8,
+		marginLeft: 10,
+	},
+	addButtonMobile: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		minHeight: 40,
+		paddingHorizontal: 10,
+		paddingVertical: 10,
+		marginLeft: 12,
 	},
 	addButtonText: {
 		color: '#fff',
@@ -905,6 +948,32 @@ const styles = StyleSheet.create({
 		flexWrap: 'wrap',
 		paddingHorizontal: 10,
 		zIndex: 1,
+	},
+	modulesStatusCard: {
+		width: '100%',
+		backgroundColor: '#FFFFFF',
+		borderWidth: 1,
+		borderColor: '#E7ECE1',
+		borderRadius: 14,
+		paddingVertical: 22,
+		paddingHorizontal: 18,
+		marginHorizontal: 8,
+		alignItems: 'center',
+		justifyContent: 'center',
+		gap: 8,
+	},
+	modulesStatusTitle: {
+		fontSize: 16,
+		fontWeight: '700',
+		color: '#2B4334',
+		textAlign: 'center',
+	},
+	modulesStatusText: {
+		fontSize: 14,
+		lineHeight: 20,
+		fontWeight: '600',
+		color: '#5D715D',
+		textAlign: 'center',
 	},
 	cardWrapper: {
 		flexBasis: '30%',

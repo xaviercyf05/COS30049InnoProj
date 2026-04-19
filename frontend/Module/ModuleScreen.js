@@ -10,112 +10,41 @@ import {
   View,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { WebView } from 'react-native-webview';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { requestProfileApi } from '../Profile/profileApi.js';
 import withRoleGuard from '../auth/withRoleGuard';
 
-const MODULE_TOPICS = [
+const MODULE_SECTIONS = [
   {
-    id: '1.1',
+    id: 'section-1',
     title: '1.1 Conservation',
-    subs: [
-      {
-        id: '1.1.1',
-        title: '1.1.1 Introduction to Conservation',
-        content:
-          'Conservation protects natural resources, biodiversity, and ecosystems in Sarawak parks. Guides help visitors understand low-impact behavior and why protection matters for future generations.',
-      },
-      {
-        id: '1.1.2',
-        title: '1.1.2 Protected Species in Sarawak',
-        content:
-          'Protected wildlife includes the Proboscis Monkey, Bornean Orangutan, and Rafflesia. This topic covers species awareness, legal protections, and visitor education points.',
-      },
-      {
-        id: '1.1.3',
-        title: '1.1.3 Sustainable Practices',
-        content:
-          'Apply waste reduction, trail-care habits, and low-impact guiding methods that preserve habitats while supporting eco-tourism.',
-      },
-    ],
+    contentHtml:
+      '<p>Conservation protects natural resources, biodiversity, and ecosystems in Sarawak parks. Guides help visitors understand low-impact behavior and why protection matters for future generations.</p>',
   },
   {
-    id: '1.2',
+    id: 'section-2',
     title: '1.2 Biodiversity',
-    subs: [
-      {
-        id: '1.2.1',
-        title: '1.2.1 Understanding Biodiversity',
-        content:
-          'Biodiversity is the variety of life across habitats and species. Strong biodiversity improves ecosystem resilience and visitor learning outcomes.',
-      },
-      {
-        id: '1.2.2',
-        title: '1.2.2 Key Ecosystems in National Parks',
-        content:
-          'Sarawak ecosystems include mangrove forests, dipterocarp forests, and peat swamps. Each ecosystem has different guide responsibilities and risk factors.',
-      },
-    ],
+    contentHtml:
+      '<p>Biodiversity is the variety of life across habitats and species. Strong biodiversity improves ecosystem resilience and visitor learning outcomes.</p>',
   },
   {
-    id: '1.3',
+    id: 'section-3',
     title: '1.3 Eco-tourism',
-    subs: [
-      {
-        id: '1.3.1',
-        title: '1.3.1 Principles of Eco-tourism',
-        content:
-          'Eco-tourism balances visitor experience, local community benefit, and conservation outcomes through responsible travel practices.',
-      },
-      {
-        id: '1.3.2',
-        title: '1.3.2 Visitor Engagement Techniques',
-        content:
-          'Use storytelling, interpretation cues, and safety-led communication to keep groups engaged while reinforcing conservation behavior.',
-      },
-    ],
+    contentHtml:
+      '<p>Eco-tourism balances visitor experience, local community benefit, and conservation outcomes through responsible travel practices.</p>',
   },
   {
-    id: '1.4',
+    id: 'section-4',
     title: '1.4 Legislation',
-    subs: [
-      {
-        id: '1.4.1',
-        title: '1.4.1 National Park Laws',
-        content:
-          'Guides should understand major legal frameworks, park rules, and protected-area ordinances relevant to visitor control.',
-      },
-      {
-        id: '1.4.2',
-        title: '1.4.2 Enforcement and Penalties',
-        content:
-          'Learn the reporting process, escalation steps, and penalties tied to non-compliance in protected areas.',
-      },
-    ],
+    contentHtml:
+      '<p>Guides should understand major legal frameworks, park rules, and protected-area ordinances relevant to visitor control.</p>',
   },
   {
-    id: '1.5',
+    id: 'section-5',
     title: '1.5 Safety',
-    subs: [
-      {
-        id: '1.5.1',
-        title: '1.5.1 Emergency Procedures',
-        content:
-          'Follow incident response SOPs for lost hikers, injuries, weather shifts, and wildlife encounters.',
-      },
-      {
-        id: '1.5.2',
-        title: '1.5.2 First Aid for Guides',
-        content:
-          'Review first-aid priorities, stabilization basics, and transport escalation for common field incidents.',
-      },
-      {
-        id: '1.5.3',
-        title: '1.5.3 Risk Assessment',
-        content:
-          'Assess terrain, weather, group readiness, and route complexity before and during guided tours.',
-      },
-    ],
+    contentHtml:
+      '<p>Follow incident response SOPs for lost hikers, injuries, weather shifts, and wildlife encounters.</p>',
   },
 ];
 
@@ -142,6 +71,64 @@ function stripHtmlContent(value) {
     .trim();
 }
 
+function sanitizeRichHtml(value) {
+  return String(value || '')
+    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/\son[a-z]+="[^"]*"/gi, '')
+    .replace(/\son[a-z]+='[^']*'/gi, '');
+}
+
+function buildRichContentDocument(title, contentHtml) {
+  const normalizedTitle = String(title || 'Section').trim();
+  const safeHtml = sanitizeRichHtml(contentHtml).trim();
+  const bodyContent = safeHtml || '<p>No content available for this section.</p>';
+
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body {
+        margin: 0;
+        padding: 0;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif;
+        color: #2f4a3d;
+        line-height: 1.6;
+        font-size: 15px;
+        background: #ffffff;
+      }
+      h1, h2, h3, h4, h5, h6 {
+        color: #1f3a2a;
+        margin: 0 0 10px;
+      }
+      p, ul, ol, blockquote, pre {
+        margin: 0 0 12px;
+      }
+      img {
+        max-width: 100%;
+        height: auto;
+        border-radius: 8px;
+      }
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+      table, th, td {
+        border: 1px solid #e3eadf;
+      }
+      th, td {
+        padding: 8px;
+      }
+    </style>
+    <title>${normalizedTitle}</title>
+  </head>
+  <body>
+    ${bodyContent}
+  </body>
+</html>`;
+}
+
 function ModuleScreen({ route, navigation, currentProfile }) {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
@@ -150,21 +137,19 @@ function ModuleScreen({ route, navigation, currentProfile }) {
   const userLabel = currentProfile?.fullName || currentProfile?.username || 'Guide';
   const moduleSummary = TRACK_SUMMARY[moduleName] || TRACK_SUMMARY.General;
 
-  const [topics, setTopics] = useState(MODULE_TOPICS);
-  const [expandedMain, setExpandedMain] = useState(MODULE_TOPICS[0].id);
-  const [selectedContent, setSelectedContent] = useState(MODULE_TOPICS[0].subs[0]);
+  const [sections, setSections] = useState(MODULE_SECTIONS);
+  const [selectedSectionId, setSelectedSectionId] = useState(MODULE_SECTIONS[0].id);
   const [loading, setLoading] = useState(Boolean(routeModuleId));
 
-  const moduleMap = useMemo(() => {
-    return topics.reduce((result, topic) => {
-      result[topic.id] = topic;
-      return result;
-    }, {});
-  }, [topics]);
+  const selectedSection = useMemo(
+    () => sections.find((section) => section.id === selectedSectionId) || null,
+    [sections, selectedSectionId]
+  );
 
   useEffect(() => {
     if (!routeModuleId) {
-      setTopics(MODULE_TOPICS);
+      setSections(MODULE_SECTIONS);
+      setSelectedSectionId(MODULE_SECTIONS[0]?.id || null);
       setLoading(false);
       return;
     }
@@ -191,42 +176,33 @@ function ModuleScreen({ route, navigation, currentProfile }) {
 
         if (!materials.length) {
           if (active) {
-            setTopics(MODULE_TOPICS);
+            setSections([]);
+            setSelectedSectionId(null);
           }
           return;
         }
 
-        const groupedByChapter = new Map();
+        const formattedSections = materials.map((material, index) => {
+          const sectionTitle =
+            String(material.chapter || material.title || '').trim() || `Section ${index + 1}`;
+          const contentHtml = String(material.content || '').trim();
 
-        materials.forEach((material) => {
-          const chapterTitle = String(material.chapter || 'General').trim() || 'General';
-
-          if (!groupedByChapter.has(chapterTitle)) {
-            groupedByChapter.set(chapterTitle, []);
-          }
-
-          const chapterMaterials = groupedByChapter.get(chapterTitle);
-          chapterMaterials.push({
-            id: String(material.materialId || `${chapterTitle}-${chapterMaterials.length + 1}`),
-            title: material.title || chapterTitle,
-            content: stripHtmlContent(material.content || ''),
-          });
+          return {
+            id: String(material.materialId || `section-${index + 1}`),
+            title: sectionTitle,
+            contentHtml,
+            contentText: stripHtmlContent(contentHtml),
+          };
         });
 
-        const formattedTopics = Array.from(groupedByChapter.entries()).map(
-          ([chapterTitle, subTopics], index) => ({
-            id: `${index + 1}.${index + 1}`,
-            title: /^\d/.test(chapterTitle) ? chapterTitle : `${index + 1}. ${chapterTitle}`,
-            subs: subTopics,
-          })
-        );
-
         if (active) {
-          setTopics(formattedTopics.length ? formattedTopics : MODULE_TOPICS);
+          setSections(formattedSections);
+          setSelectedSectionId(formattedSections[0]?.id || null);
         }
       } catch (_error) {
         if (active) {
-          setTopics(MODULE_TOPICS);
+          setSections([]);
+          setSelectedSectionId(null);
         }
       } finally {
         if (active) {
@@ -243,31 +219,18 @@ function ModuleScreen({ route, navigation, currentProfile }) {
   }, [routeModuleId]);
 
   useEffect(() => {
-    if (!topics.length) {
-      setExpandedMain(null);
-      setSelectedContent(null);
+    if (!sections.length) {
+      setSelectedSectionId(null);
       return;
     }
 
-    setExpandedMain((previousExpandedMain) => {
-      const hasExisting = topics.some((topic) => topic.id === previousExpandedMain);
-      return hasExisting ? previousExpandedMain : topics[0].id;
+    setSelectedSectionId((previousSelectedSectionId) => {
+      const hasExisting = sections.some(
+        (section) => section.id === previousSelectedSectionId
+      );
+      return hasExisting ? previousSelectedSectionId : sections[0].id;
     });
-
-    setSelectedContent((previousSelectedContent) => {
-      if (previousSelectedContent) {
-        const existingTopic = topics.find((topic) =>
-          topic.subs.some((subTopic) => subTopic.id === previousSelectedContent.id)
-        );
-
-        if (existingTopic) {
-          return previousSelectedContent;
-        }
-      }
-
-      return topics[0]?.subs?.[0] || null;
-    });
-  }, [topics]);
+  }, [sections]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -278,20 +241,54 @@ function ModuleScreen({ route, navigation, currentProfile }) {
     navigation.navigate('Home');
   };
 
-  const toggleMain = (topicId) => {
-    if (expandedMain === topicId) {
-      setExpandedMain(null);
-      return;
+  const renderSectionBody = (section, variant = 'desktop') => {
+    if (!section) {
+      return (
+        <Text style={styles.contentText}>No section content available.</Text>
+      );
     }
 
-    setExpandedMain(topicId);
+    const richDocumentHtml = buildRichContentDocument(section.title, section.contentHtml || '');
 
-    if (!selectedContent?.id?.startsWith(topicId)) {
-      const firstSub = moduleMap[topicId]?.subs?.[0];
-      if (firstSub) {
-        setSelectedContent(firstSub);
-      }
+    if (isWeb) {
+      const iframeHeight = variant === 'mobile' ? 300 : 560;
+
+      return React.createElement('iframe', {
+        title: `section-content-${section.id}`,
+        srcDoc: richDocumentHtml,
+        style: {
+          width: '100%',
+          height: `${iframeHeight}px`,
+          border: '0',
+          borderRadius: '10px',
+          backgroundColor: '#ffffff',
+        },
+        allow:
+          'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen',
+        allowFullScreen: true,
+        loading: 'lazy',
+      });
     }
+
+    const webViewHeight = variant === 'mobile' ? 300 : 560;
+
+    return (
+      <WebView
+        originWhitelist={['*']}
+        source={{ html: richDocumentHtml }}
+        style={[styles.contentWebView, { height: webViewHeight }]}
+        javaScriptEnabled
+        domStorageEnabled
+        scrollEnabled
+        nestedScrollEnabled
+        allowsInlineMediaPlayback
+        mediaPlaybackRequiresUserAction={false}
+        allowsFullscreenVideo
+        mixedContentMode="always"
+        setSupportMultipleWindows={false}
+        automaticallyAdjustContentInsets={false}
+      />
+    );
   };
 
   const goToAssessment = () => {
@@ -347,51 +344,37 @@ function ModuleScreen({ route, navigation, currentProfile }) {
         ) : (
         <View style={[styles.mainArea, !isWeb && styles.mainAreaMobile]}>
           <View style={[styles.leftNav, !isWeb && styles.leftNavMobile]}>
-            {topics.map((topic) => {
-              const isExpanded = expandedMain === topic.id;
+            {sections.length === 0 ? (
+              <View style={styles.emptySectionCard}>
+                <Text style={styles.emptySectionText}>
+                  No sections are available for this module yet.
+                </Text>
+              </View>
+            ) : (
+              sections.map((section) => {
+                const isSelected = selectedSection?.id === section.id;
 
-              return (
-                <View key={topic.id}>
-                  <TouchableOpacity
-                    style={[styles.mainTopic, isExpanded && styles.mainTopicActive]}
-                    onPress={() => toggleMain(topic.id)}
-                  >
-                    <Text style={[styles.mainTopicText, isExpanded && styles.mainTopicTextActive]}>
-                      {topic.title}
-                    </Text>
-                    <Text style={[styles.mainArrow, isExpanded && styles.mainArrowExpanded]}>{'>'}</Text>
-                  </TouchableOpacity>
+                return (
+                  <View key={section.id}>
+                    <TouchableOpacity
+                      style={[styles.mainTopic, isSelected && styles.mainTopicActive]}
+                      onPress={() => setSelectedSectionId(section.id)}
+                    >
+                      <Text style={[styles.mainTopicText, isSelected && styles.mainTopicTextActive]}>
+                        {section.title}
+                      </Text>
+                    </TouchableOpacity>
 
-                  {isExpanded && (
-                    <View style={styles.subList}>
-                      {topic.subs.map((sub) => {
-                        const isSelected = selectedContent?.id === sub.id;
-
-                        return (
-                          <View key={sub.id}>
-                            <TouchableOpacity
-                              style={[styles.subTopic, isSelected && styles.subTopicActive]}
-                              onPress={() => setSelectedContent(sub)}
-                            >
-                              <Text style={[styles.subTopicText, isSelected && styles.subTopicTextActive]}>
-                                {sub.title}
-                              </Text>
-                            </TouchableOpacity>
-
-                            {!isWeb && isSelected && (
-                              <View style={styles.mobileContentCard}>
-                                <Text style={styles.contentTitle}>{sub.title}</Text>
-                                <Text style={styles.contentText}>{sub.content}</Text>
-                              </View>
-                            )}
-                          </View>
-                        );
-                      })}
-                    </View>
-                  )}
-                </View>
-              );
-            })}
+                    {!isWeb && isSelected && (
+                      <View style={styles.mobileContentCard}>
+                        <Text style={styles.contentTitle}>{section.title}</Text>
+                        {renderSectionBody(section, 'mobile')}
+                      </View>
+                    )}
+                  </View>
+                );
+              })
+            )}
 
             <TouchableOpacity style={styles.assessmentButton} onPress={goToAssessment}>
               <Text style={styles.assessmentButtonText}>Take Assessment</Text>
@@ -401,15 +384,15 @@ function ModuleScreen({ route, navigation, currentProfile }) {
 
           {isWeb && (
             <View style={styles.rightContent}>
-              {selectedContent ? (
+              {selectedSection ? (
                 <>
-                  <Text style={styles.contentTitle}>{selectedContent.title}</Text>
-                  <Text style={styles.contentText}>{selectedContent.content}</Text>
+                  <Text style={styles.contentTitle}>{selectedSection.title}</Text>
+                  {renderSectionBody(selectedSection, 'desktop')}
                 </>
               ) : (
                 <View style={styles.placeholder}>
                   <Text style={styles.placeholderText}>
-                    Select a sub-topic from the left panel to view content.
+                    Select a section from the left panel to view content.
                   </Text>
                 </View>
               )}
@@ -562,36 +545,19 @@ const styles = StyleSheet.create({
   mainTopicTextActive: {
     color: '#FFFFFF',
   },
-  mainArrow: {
-    color: '#5A715F',
-    fontSize: 16,
-    fontWeight: '700',
+  emptySectionCard: {
+    backgroundColor: '#F7FAF3',
+    borderWidth: 1,
+    borderColor: '#E3EBDD',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 14,
+    marginBottom: 10,
   },
-  mainArrowExpanded: {
-    transform: [{ rotate: '90deg' }],
-    color: '#FFFFFF',
-  },
-  subList: {
-    paddingLeft: 10,
-    paddingBottom: 8,
-  },
-  subTopic: {
-    borderRadius: 8,
-    paddingHorizontal: 10,
-    paddingVertical: 10,
-    marginBottom: 4,
-  },
-  subTopicActive: {
-    backgroundColor: '#EEF4E8',
-  },
-  subTopicText: {
-    color: '#425946',
+  emptySectionText: {
+    color: '#5C6F5F',
     fontSize: 14,
     lineHeight: 20,
-  },
-  subTopicTextActive: {
-    color: '#1F3A2A',
-    fontWeight: '700',
   },
   mobileContentCard: {
     backgroundColor: '#FFFFFF',
@@ -625,6 +591,10 @@ const styles = StyleSheet.create({
     color: '#3E5648',
     fontSize: 15,
     lineHeight: 23,
+  },
+  contentWebView: {
+    width: '100%',
+    backgroundColor: '#FFFFFF',
   },
   placeholder: {
     flex: 1,

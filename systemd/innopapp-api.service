@@ -7,7 +7,7 @@ Wants=network-online.target
 [Service]
 Type=simple
 User=xavier
-WorkingDirectory=/home/xavier/COS30049InnoProj
+WorkingDirectory=/home/xavier/COS30049InnoProj/COS30049InnoProj
 Environment=NODE_ENV=production
 ExecStart=/usr/bin/env pm2-runtime start src/server.js --name innopapp-api --update-env
 Restart=always

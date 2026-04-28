@@ -31,17 +31,28 @@ function resolveSunEditorInstance() {
 }
 
 function getEditorHtml(editor) {
+  if (editor?.$?.html?.get) {
+    return editor.$.html.get();
+  }
+
   return editor?.$?.frameContext?.get('wysiwyg')?.innerHTML || '';
 }
 
 function setEditorHtml(editor, html) {
+  const sanitizedHtml = sanitizeEditorHtml(html) || '<p><br></p>';
+
+  if (editor?.$?.html?.set) {
+    editor.$.html.set(sanitizedHtml);
+    return true;
+  }
+
   const wysiwyg = editor?.$?.frameContext?.get('wysiwyg');
 
   if (!wysiwyg) {
     return false;
   }
 
-  wysiwyg.innerHTML = sanitizeEditorHtml(html) || '<p><br></p>';
+  wysiwyg.innerHTML = sanitizedHtml;
   return true;
 }
 

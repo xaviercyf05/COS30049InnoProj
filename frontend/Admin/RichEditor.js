@@ -116,12 +116,23 @@ export default function RichEditor({ value, onChange }) {
             }
 
             function getEditorHtml(editor) {
+              if (editor && editor.$ && editor.$.html && editor.$.html.get) {
+                return editor.$.html.get();
+              }
+
               return editor && editor.$ && editor.$.frameContext && editor.$.frameContext.get('wysiwyg')
                 ? editor.$.frameContext.get('wysiwyg').innerHTML
                 : '';
             }
 
             function setEditorHtml(editor, html) {
+              var sanitizedHtml = sanitizeEditorHtml(html) || '<p><br></p>';
+
+              if (editor && editor.$ && editor.$.html && editor.$.html.set) {
+                editor.$.html.set(sanitizedHtml);
+                return true;
+              }
+
               if (!editor || !editor.$ || !editor.$.frameContext) {
                 return false;
               }
@@ -132,7 +143,7 @@ export default function RichEditor({ value, onChange }) {
                 return false;
               }
 
-              wysiwyg.innerHTML = sanitizeEditorHtml(html) || '<p><br></p>';
+              wysiwyg.innerHTML = sanitizedHtml;
               return true;
             }
 

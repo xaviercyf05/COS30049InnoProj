@@ -9,7 +9,7 @@ Type=simple
 User=xavier
 WorkingDirectory=/home/xavier/COS30049InnoProj/COS30049InnoProj
 Environment=NODE_ENV=production
-ExecStart=/usr/bin/env pm2-runtime start src/server.js --name innopapp-api --update-env
+ExecStart=/usr/bin/env pm2-runtime src/server.js
 Restart=always
 RestartSec=5
 StandardOutput=journal

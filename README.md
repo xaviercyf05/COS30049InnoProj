@@ -210,16 +210,18 @@ sudo apt update
 sudo apt install -y cloudflared
 ~~~
 
-### 2. Run app with PM2
+### 2. Run app with PM2 and systemd
 
 ~~~bash
 sudo npm install -g pm2
-cd /home/pi/your-app-folder
+cd /home/xavier/COS30049InnoProj
 npm install
-pm2 start src/server.js --name innopapp-api
-pm2 save
-pm2 startup
+sudo install -Dm644 systemd/innopapp-api.service /etc/systemd/system/innopapp-api.service
+sudo systemctl daemon-reload
+sudo systemctl enable --now innopapp-api.service
 ~~~
+
+This service runs PM2 in the foreground with `pm2-runtime`, so systemd keeps the API alive across reboots and restarts it if the process exits.
 
 ### 3. Configure .env for proxy/tunnel mode
 

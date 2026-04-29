@@ -524,7 +524,7 @@ const styles = StyleSheet.create({
     borderColor: '#E6E6E6',
     backgroundColor: '#FFFFFF',
     borderRadius: 10,
-    overflow: 'hidden',
+    overflow: 'visible',
   },
   saveBtn: {
     backgroundColor: '#3A4D39',

@@ -48,7 +48,7 @@ export default function RichEditor({ value, onChange }) {
           .sun-editor {
             border: 1px solid #dce7d3;
             border-radius: 12px;
-            overflow: hidden;
+            overflow: visible;
             background: #ffffff;
           }
 
@@ -89,6 +89,14 @@ export default function RichEditor({ value, onChange }) {
             max-width: 100%;
             height: auto;
             border-radius: 8px;
+          }
+
+          .sun-editor .se-resizing-container .se-resize-dot > span.tl,
+          .sun-editor .se-resizing-container .se-resize-dot > span.tr,
+          .sun-editor .se-resizing-container .se-resize-dot > span.bl,
+          .sun-editor .se-resizing-container .se-resize-dot > span.br {
+            width: 10px;
+            height: 10px;
           }
 
           .sun-editor .se-resizing-bar {

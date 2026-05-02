@@ -414,11 +414,56 @@ async function resetAssessmentAttemptAdmin(req, res) {
   }
 }
 
+/**
+ * Get assessment details for a specific assessment ID
+ */
+async function getAssessmentDetails(req, res) {
+  try {
+    const { assessmentId } = req.params;
+
+    const [rows] = await query(
+      `SELECT AssessmentID, ModuleID, Title, PassingScore, AttemptLimit
+       FROM Assessments
+       WHERE AssessmentID = ?
+       LIMIT 1`,
+      [assessmentId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Assessment not found.",
+      });
+    }
+
+    const assessment = rows[0];
+
+    return res.json({
+      success: true,
+      data: {
+        AssessmentID: assessment.AssessmentID,
+        ModuleID: assessment.ModuleID,
+        Title: assessment.Title,
+        PassingScore: assessment.PassingScore,
+        AttemptLimit: assessment.AttemptLimit,
+        DurationMinutes: 120,
+      },
+    });
+  } catch (error) {
+    console.error("Get assessment details error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch assessment details.",
+    });
+  }
+}
+
 module.exports = {
   getAssessmentQuestions,
   checkAttemptEligibility,
   submitAssessmentAttempt,
   getAssessmentHistory,
+  getAssessmentDetails,
   listAssessments,
   createAssessment,
   updateAssessmentSettings,

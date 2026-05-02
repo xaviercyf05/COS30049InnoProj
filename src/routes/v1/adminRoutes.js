@@ -8,6 +8,7 @@ const adminController = require("../../controllers/adminManagementController");
 const registrationController = require("../../controllers/registrationController");
 const moduleAdminController = require("../../controllers/moduleAdminController");
 const badgeController = require("../../controllers/badgeController");
+const assessmentController = require("../../controllers/assessmentController");
 
 const router = express.Router();
 
@@ -336,6 +337,148 @@ router.delete(
  * GET /admin/badges - List badges for admin management
  */
 router.get("/badges", asyncHandler(badgeController.getAllBadges));
+
+/**
+ * GET /admin/assessments - List assessments for admin management
+ */
+router.get(
+  "/assessments",
+  asyncHandler(assessmentController.listAssessments)
+);
+
+/**
+ * POST /admin/assessments - Create assessment
+ */
+router.post(
+  "/assessments",
+  [
+    body("moduleId").isInt().withMessage("Valid module ID is required."),
+    body("title")
+      .trim()
+      .isLength({ min: 1, max: 160 })
+      .withMessage("Assessment title is required and must be at most 160 characters."),
+    body("passingScore")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0, max: 100 })
+      .withMessage("Passing score must be between 0 and 100."),
+    body("durationMinutes")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Duration must be a positive number of minutes."),
+    body("attemptLimit")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Attempt limit must be at least 1."),
+  ],
+  validate,
+  asyncHandler(assessmentController.createAssessment)
+);
+
+/**
+ * PUT /admin/assessments/:assessmentId/settings - Update assessment settings
+ */
+router.put(
+  "/assessments/:assessmentId/settings",
+  [
+    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
+    body("passingScore")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0, max: 100 })
+      .withMessage("Passing score must be between 0 and 100."),
+    body("durationMinutes")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Duration must be a positive number of minutes."),
+    body("attemptLimit")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Attempt limit must be at least 1."),
+  ],
+  validate,
+  asyncHandler(assessmentController.updateAssessmentSettings)
+);
+
+/**
+ * DELETE /admin/assessments/:assessmentId - Delete assessment
+ */
+router.delete(
+  "/assessments/:assessmentId",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID."),],
+  validate,
+  asyncHandler(assessmentController.deleteAssessment)
+);
+
+/**
+ * GET /admin/assessments/:assessmentId/questions - Get assessment questions
+ */
+router.get(
+  "/assessments/:assessmentId/questions",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID."),],
+  validate,
+  asyncHandler(assessmentController.getAssessmentQuestionsAdmin)
+);
+
+/**
+ * POST /admin/assessments/:assessmentId/questions - Add assessment question
+ */
+router.post(
+  "/assessments/:assessmentId/questions",
+  [
+    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
+    body("questionText")
+      .trim()
+      .isLength({ min: 1 })
+      .withMessage("Question text is required."),
+    body("questionType")
+      .isIn(["mcq", "fill"])
+      .withMessage("Question type must be mcq or fill."),
+  ],
+  validate,
+  asyncHandler(assessmentController.addAssessmentQuestionAdmin)
+);
+
+/**
+ * PUT /admin/assessments/questions/:questionId - Update assessment question
+ */
+router.put(
+  "/assessments/questions/:questionId",
+  [param("questionId").isInt().withMessage("Invalid question ID."),],
+  validate,
+  asyncHandler(assessmentController.updateAssessmentQuestionAdmin)
+);
+
+/**
+ * DELETE /admin/assessments/questions/:questionId - Delete assessment question
+ */
+router.delete(
+  "/assessments/questions/:questionId",
+  [param("questionId").isInt().withMessage("Invalid question ID."),],
+  validate,
+  asyncHandler(assessmentController.deleteAssessmentQuestionAdmin)
+);
+
+/**
+ * GET /admin/assessments/:assessmentId/attempts - List assessment attempts
+ */
+router.get(
+  "/assessments/:assessmentId/attempts",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID."),],
+  validate,
+  asyncHandler(assessmentController.getAssessmentAttemptsAdmin)
+);
+
+/**
+ * POST /admin/assessments/:assessmentId/attempts/:attemptId/reset - Reset a user attempt
+ */
+router.post(
+  "/assessments/:assessmentId/attempts/:attemptId/reset",
+  [
+    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
+    param("attemptId").isInt().withMessage("Invalid attempt ID."),
+  ],
+  validate,
+  asyncHandler(assessmentController.resetAssessmentAttemptAdmin)
+);
 
 /**
  * POST /admin/badges - Create badge

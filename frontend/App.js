@@ -22,6 +22,9 @@ import LoadingScreen from './Login/LoadingScreen.js';
 import RegisterScreen from './Register/RegisterScreen.js';
 import SubmissionScreen from './Register/SubmissionScreen.js';
 import ModuleScreen from './Module/ModuleScreen.js';
+import GuideAssessment from './Assessment/GuideAssessment.js';
+import AssessmentSubmittedPage from './Assessment/SubmittedPage.js';
+import AdminAssessment from './Assessment/AdminAssessment.js';
 import AnnouncementScreen from './Announcement/AnnouncementScreen.js';
 import BadgeScreen from './Badge/BadgePage.js';
 import AddModuleScreen from './Admin/AddModuleScreen.js';
@@ -58,36 +61,6 @@ function AdminFeatureScreen({ route }) {
 		<View style={styles.adminFeatureContainer}>
 			<Text style={styles.adminFeatureTitle}>{title}</Text>
 			<Text style={styles.adminFeatureText}>{description}</Text>
-		</View>
-	);
-}
-
-function AssessmentScreen({ route, navigation }) {
-	const moduleName = route?.params?.moduleName || 'General Module';
-
-	return (
-		<View style={styles.assessmentContainer}>
-			<View style={styles.assessmentCard}>
-				<Text style={styles.assessmentTitle}>Assessment</Text>
-				<Text style={styles.assessmentSubtitle}>{moduleName}</Text>
-				<Text style={styles.assessmentText}>
-					Assessment content can be connected later. Navigation is enabled now so the
-					training flow is complete on frontend.
-				</Text>
-				<TouchableOpacity
-					style={styles.assessmentBackButton}
-					onPress={() => {
-						if (navigation.canGoBack()) {
-							navigation.goBack();
-							return;
-						}
-
-						navigation.navigate('Home');
-					}}
-				>
-					<Text style={styles.assessmentBackText}>Back To Module</Text>
-				</TouchableOpacity>
-			</View>
 		</View>
 	);
 }
@@ -543,12 +516,28 @@ function HomeScreen({ navigation }) {
 					userModules.map((module) => (
 						<TouchableOpacity
 							key={module.id}
-							onPress={() =>
+							onPress={() => {
+								const moduleIndex = userModules.findIndex((item) => item.id === module.id);
+								const hasIncompletePreviousModule = userModules
+									.slice(0, Math.max(0, moduleIndex))
+									.some((item) => Number(item.progressPercent || 0) < 100);
+
+								if (hasIncompletePreviousModule) {
+									Alert.alert(
+										'Module Locked',
+										'Please complete earlier modules before opening this one.'
+									);
+									return;
+								}
+
 								navigation.navigate('Module', {
 									moduleName: module.title,
 									moduleId: module.moduleId,
-								})
-							}
+									moduleOrder: moduleIndex + 1,
+									totalModules: userModules.length,
+									moduleProgressPercent: module.progressPercent,
+								});
+							}}
 							style={styles.cardWrapper}
 						>
 							<ImageBackground
@@ -566,8 +555,8 @@ function HomeScreen({ navigation }) {
 							</ImageBackground>
 						</TouchableOpacity>
 					))
-				)}
-			</View>
+					)}
+		</View>
 		</View>
 	);
 }
@@ -590,9 +579,19 @@ export default function App() {
 				/>
 				<Stack.Screen name="Home" component={HomeScreen} />
 				<Stack.Screen name="Module" component={ModuleScreen} />
-				<Stack.Screen name="Assessment" component={AssessmentScreen} />
+				<Stack.Screen name="Assessment" component={GuideAssessment} />
+				<Stack.Screen
+					name="SubmittedPage"
+					component={AssessmentSubmittedPage}
+					options={{ headerShown: false, title: 'Assessment Submitted' }}
+				/>
 				<Stack.Screen name="Announcements" component={AnnouncementScreen} />
 				<Stack.Screen name="AdminAnnouncements" component={AdminAnnouncementScreen} />
+				<Stack.Screen
+					name="AdminAssessment"
+					component={AdminAssessment}
+					options={{ headerShown: true, title: 'Assessments' }}
+				/>
 				<Stack.Screen
 					name="Badges"
 					component={BadgeScreen}

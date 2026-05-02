@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   ImageBackground,
   Platform,
   ScrollView,
@@ -139,6 +140,7 @@ function ModuleScreen({ route, navigation, currentProfile }) {
 
   const [sections, setSections] = useState(MODULE_SECTIONS);
   const [selectedSectionId, setSelectedSectionId] = useState(MODULE_SECTIONS[0].id);
+  const [visitedSectionIds, setVisitedSectionIds] = useState(new Set());
   const [loading, setLoading] = useState(Boolean(routeModuleId));
 
   const selectedSection = useMemo(
@@ -150,6 +152,7 @@ function ModuleScreen({ route, navigation, currentProfile }) {
     if (!routeModuleId) {
       setSections(MODULE_SECTIONS);
       setSelectedSectionId(MODULE_SECTIONS[0]?.id || null);
+      setVisitedSectionIds(MODULE_SECTIONS[0]?.id ? new Set([MODULE_SECTIONS[0].id]) : new Set());
       setLoading(false);
       return;
     }
@@ -158,6 +161,7 @@ function ModuleScreen({ route, navigation, currentProfile }) {
 
     const loadModuleContent = async () => {
       setLoading(true);
+      setVisitedSectionIds(new Set());
 
       try {
         const token = await AsyncStorage.getItem('innopapp_auth_token');
@@ -178,6 +182,7 @@ function ModuleScreen({ route, navigation, currentProfile }) {
           if (active) {
             setSections([]);
             setSelectedSectionId(null);
+            setVisitedSectionIds(new Set());
           }
           return;
         }
@@ -198,6 +203,7 @@ function ModuleScreen({ route, navigation, currentProfile }) {
         if (active) {
           setSections(formattedSections);
           setSelectedSectionId(formattedSections[0]?.id || null);
+          setVisitedSectionIds(formattedSections[0]?.id ? new Set([formattedSections[0].id]) : new Set());
         }
       } catch (_error) {
         if (active) {
@@ -240,6 +246,17 @@ function ModuleScreen({ route, navigation, currentProfile }) {
 
     navigation.navigate('Home');
   };
+
+  const selectSection = (sectionId) => {
+    setSelectedSectionId(sectionId);
+    setVisitedSectionIds((previousVisitedSectionIds) => {
+      const nextVisitedSectionIds = new Set(previousVisitedSectionIds);
+      nextVisitedSectionIds.add(sectionId);
+      return nextVisitedSectionIds;
+    });
+  };
+
+  const assessmentUnlocked = sections.length > 0 && sections.every((section) => visitedSectionIds.has(section.id));
 
   const renderSectionBody = (section, variant = 'desktop') => {
     if (!section) {
@@ -292,7 +309,22 @@ function ModuleScreen({ route, navigation, currentProfile }) {
   };
 
   const goToAssessment = () => {
-    navigation.navigate('Assessment', { moduleName });
+    if (!assessmentUnlocked) {
+      Alert.alert(
+        'Assessment Locked',
+        'Please review every module section before starting the assessment.'
+      );
+      return;
+    }
+
+    navigation.navigate('Assessment', {
+      moduleName,
+      moduleId: routeModuleId,
+      moduleOrder: route?.params?.moduleOrder || null,
+      totalModules: route?.params?.totalModules || null,
+      moduleProgressPercent: route?.params?.moduleProgressPercent || 0,
+      sectionCount: sections.length,
+    });
   };
 
   return (
@@ -358,7 +390,7 @@ function ModuleScreen({ route, navigation, currentProfile }) {
                   <View key={section.id}>
                     <TouchableOpacity
                       style={[styles.mainTopic, isSelected && styles.mainTopicActive]}
-                      onPress={() => setSelectedSectionId(section.id)}
+                      onPress={() => selectSection(section.id)}
                     >
                       <Text style={[styles.mainTopicText, isSelected && styles.mainTopicTextActive]}>
                         {section.title}
@@ -376,10 +408,19 @@ function ModuleScreen({ route, navigation, currentProfile }) {
               })
             )}
 
-            <TouchableOpacity style={styles.assessmentButton} onPress={goToAssessment}>
-              <Text style={styles.assessmentButtonText}>Take Assessment</Text>
+            <TouchableOpacity
+              style={[styles.assessmentButton, !assessmentUnlocked && styles.assessmentButtonDisabled]}
+              onPress={goToAssessment}
+              disabled={!assessmentUnlocked}
+            >
+              <Text style={[styles.assessmentButtonText, !assessmentUnlocked && styles.assessmentButtonTextDisabled]}>
+                {assessmentUnlocked ? 'Take Assessment' : 'Review Sections First'}
+              </Text>
               <Text style={styles.assessmentArrow}>{'>'}</Text>
             </TouchableOpacity>
+            {!assessmentUnlocked && sections.length > 0 ? (
+              <Text style={styles.assessmentHintText}>Open each section once to unlock the assessment.</Text>
+            ) : null}
           </View>
 
           {isWeb && (
@@ -617,15 +658,28 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
   },
+  assessmentButtonDisabled: {
+    backgroundColor: '#F1F4EC',
+    opacity: 0.85,
+  },
   assessmentButtonText: {
     color: '#2A5A40',
     fontWeight: '800',
     fontSize: 14,
   },
+  assessmentButtonTextDisabled: {
+    color: '#788773',
+  },
   assessmentArrow: {
     color: '#2A5A40',
     fontWeight: '800',
     fontSize: 16,
+  },
+  assessmentHintText: {
+    marginTop: 8,
+    color: '#6A7A67',
+    fontSize: 12,
+    fontWeight: '600',
   },
 });
 

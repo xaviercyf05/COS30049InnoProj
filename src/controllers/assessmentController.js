@@ -14,7 +14,7 @@ async function getAssessmentQuestions(req, res) {
   try {
     const { moduleId } = req.params;
 
-    const assessment = await assessmentService.getAssessmentQuestions(moduleId);
+    const assessment = await assessmentService.getAssessmentQuestions(moduleId, false, 'module');
 
     return res.json({
       success: true,
@@ -228,9 +228,205 @@ async function getAssessmentHistory(req, res) {
   }
 }
 
+async function listAssessments(req, res) {
+  try {
+    const moduleId = req.query.moduleId ? Number(req.query.moduleId) : null;
+    const assessments = await assessmentService.listAssessments(moduleId);
+
+    return res.json({
+      success: true,
+      data: { assessments },
+    });
+  } catch (error) {
+    console.error('List assessments error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch assessments.',
+    });
+  }
+}
+
+async function createAssessment(req, res) {
+  try {
+    const { moduleId, title, passingScore, durationMinutes, attemptLimit } = req.body;
+    const assessment = await assessmentService.createAssessment(
+      Number(moduleId),
+      title,
+      Number(passingScore),
+      Number(durationMinutes),
+      Number(attemptLimit || 3)
+    );
+
+    return res.status(201).json({ success: true, data: assessment });
+  } catch (error) {
+    console.error('Create assessment error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create assessment.',
+    });
+  }
+}
+
+async function updateAssessmentSettings(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const { passingScore, durationMinutes, attemptLimit } = req.body;
+
+    const result = await assessmentService.updateAssessmentSettings(
+      Number(assessmentId),
+      Number(passingScore),
+      Number(durationMinutes),
+      Number(attemptLimit)
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Update assessment settings error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update assessment settings.',
+    });
+  }
+}
+
+async function deleteAssessment(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    await assessmentService.deleteAssessment(Number(assessmentId));
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete assessment error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to delete assessment.',
+    });
+  }
+}
+
+async function getAssessmentQuestionsAdmin(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const assessment = await assessmentService.getAssessmentQuestions(assessmentId, true, 'assessment');
+
+    return res.json({
+      success: true,
+      data: assessment,
+    });
+  } catch (error) {
+    console.error('Get admin assessment questions error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch assessment questions.',
+    });
+  }
+}
+
+async function addAssessmentQuestionAdmin(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const { questionText, questionType, options, correctAnswer } = req.body;
+    const result = await assessmentService.addAssessmentQuestion(
+      Number(assessmentId),
+      questionText,
+      questionType,
+      options,
+      correctAnswer
+    );
+
+    return res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Add assessment question error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to add assessment question.',
+    });
+  }
+}
+
+async function updateAssessmentQuestionAdmin(req, res) {
+  try {
+    const { questionId } = req.params;
+    const { questionText, questionType, options, correctAnswer } = req.body;
+    const result = await assessmentService.updateAssessmentQuestion(
+      Number(questionId),
+      questionText,
+      questionType,
+      options,
+      correctAnswer
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Update assessment question error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update assessment question.',
+    });
+  }
+}
+
+async function deleteAssessmentQuestionAdmin(req, res) {
+  try {
+    const { questionId } = req.params;
+    const result = await assessmentService.deleteAssessmentQuestion(Number(questionId));
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Delete assessment question error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to delete assessment question.',
+    });
+  }
+}
+
+async function getAssessmentAttemptsAdmin(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const attempts = await assessmentService.getAssessmentAttempts(Number(assessmentId));
+
+    return res.json({
+      success: true,
+      data: { attempts },
+    });
+  } catch (error) {
+    console.error('Get assessment attempts error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch assessment attempts.',
+    });
+  }
+}
+
+async function resetAssessmentAttemptAdmin(req, res) {
+  try {
+    const { assessmentId, attemptId } = req.params;
+    const result = await assessmentService.resetUserAttempt(Number(assessmentId), Number(attemptId));
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Reset assessment attempt error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to reset assessment attempt.',
+    });
+  }
+}
+
 module.exports = {
   getAssessmentQuestions,
   checkAttemptEligibility,
   submitAssessmentAttempt,
   getAssessmentHistory,
+  listAssessments,
+  createAssessment,
+  updateAssessmentSettings,
+  deleteAssessment,
+  getAssessmentQuestionsAdmin,
+  addAssessmentQuestionAdmin,
+  updateAssessmentQuestionAdmin,
+  deleteAssessmentQuestionAdmin,
+  getAssessmentAttemptsAdmin,
+  resetAssessmentAttemptAdmin,
 };

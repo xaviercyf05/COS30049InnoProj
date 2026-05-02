@@ -13,7 +13,6 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
 	checkAttemptEligibility,
-	fetchAssessmentDetails,
 	fetchAssessmentQuestions,
 	submitAssessmentAttempt,
 } from './assessmentApi.js';
@@ -67,24 +66,17 @@ function GuideAssessment({ navigation, route }) {
 			}
 
 			// Fetch questions
-			const { error: questionsError, questions: fetchedQuestions } =
+			const { error: questionsError, questions: fetchedQuestions, assessmentId: fetchedAssessmentId } =
 				await fetchAssessmentQuestions(moduleId);
 
 			if (questionsError) {
 				throw new Error(questionsError);
 			}
 
-			// Fetch assessment details
-			const detailsKey = `assessment_${moduleId}`;
-			const { assessment } = await fetchAssessmentDetails(detailsKey);
-
-			if (assessment) {
-				setDurationSeconds(assessment.durationSeconds);
-				setAssessmentId(assessment.id);
-			}
+			setAssessmentId(fetchedAssessmentId || moduleId);
 
 			setQuestions(fetchedQuestions);
-			setTimeLeft(durationSeconds);
+			setTimeLeft(7200);
 			setAnswers({});
 		} catch (err) {
 			setError(err.message || 'Failed to load assessment');
@@ -92,7 +84,7 @@ function GuideAssessment({ navigation, route }) {
 		} finally {
 			setLoading(false);
 		}
-	}, [moduleId, durationSeconds]);
+	}, [moduleId]);
 
 	useEffect(() => {
 		loadAssessment();

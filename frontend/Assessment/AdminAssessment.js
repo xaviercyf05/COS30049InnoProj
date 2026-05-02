@@ -1,495 +1,874 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+	ActivityIndicator,
 	Alert,
 	ScrollView,
 	StyleSheet,
 	Text,
 	TextInput,
 	TouchableOpacity,
-	useWindowDimensions,
 	View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
-import { assessmentTopics, buildAssessmentQuestions } from './questionBank.js';
+import {
+	addAssessmentQuestion,
+	createAssessment,
+	deleteAssessment,
+	deleteAssessmentQuestion,
+	fetchAllAssessments,
+	fetchAssessmentAttempts,
+	fetchAssessmentQuestionsAdmin,
+	resetUserAttempt,
+	updateAssessmentQuestion,
+	updateAssessmentSettings,
+} from './assessmentApi.js';
 
-const gradeMetadata = {
-	grade1: { label: 'Grade 1', editorTitle: 'Edit Grade 1 Assessment' },
-	grade2: { label: 'Grade 2', editorTitle: 'Edit Grade 2 Assessment' },
-	grade3: { label: 'Grade 3', editorTitle: 'Edit Grade 3 Assessment' },
-};
-
-const createBlankQuestion = (nextIndex) => ({
-	id: `new-${Date.now()}-${nextIndex}`,
+const createBlankQuestion = () => ({
+	id: `new-${Date.now()}`,
 	type: 'mcq',
-	topic: 'Conservation',
+	topic: 'General Knowledge',
 	question: '',
 	options: ['Option 1', 'Option 2', 'Option 3', 'Option 4'],
-	correctAnswer: '',
-	correctAnswers: '',
+	correctAnswer: 0,
+	isNew: true,
 });
 
-const buildInitialAssessments = () => ({
-	grade1: { countdownMinutes: '120', questions: buildAssessmentQuestions() },
-	grade2: { countdownMinutes: '120', questions: buildAssessmentQuestions() },
-	grade3: { countdownMinutes: '120', questions: buildAssessmentQuestions() },
-});
+function AdminAssessment({ route }) {
+	const defaultAssessmentId = route?.params?.assessmentId || null;
+	const defaultModuleId = route?.params?.moduleId ? String(route.params.moduleId) : '';
 
-function AdminAssessment() {
-	const { width } = useWindowDimensions();
-	const isCompact = width < 720;
-	const [selectedGradeKey, setSelectedGradeKey] = useState('grade1');
-	const [assessmentsByGrade, setAssessmentsByGrade] = useState(buildInitialAssessments);
-	const [selectedQuestionByGrade, setSelectedQuestionByGrade] = useState({
-		grade1: 'q1',
-		grade2: 'q1',
-		grade3: 'q1',
-	});
-	const [isExpanded, setIsExpanded] = useState(false);
-	const [isTopicDropdownOpen, setIsTopicDropdownOpen] = useState(false);
+	// Tab management
+	const [currentTab, setCurrentTab] = useState('assessments'); // 'assessments', 'questions', 'attempts'
+
+	// Assessment state
+	const [assessments, setAssessments] = useState([]);
+	const [selectedAssessmentId, setSelectedAssessmentId] = useState(defaultAssessmentId);
+	const [assessmentModuleId, setAssessmentModuleId] = useState(defaultModuleId);
+	const [assessmentTitle, setAssessmentTitle] = useState('');
+	const [assessmentDuration, setAssessmentDuration] = useState('120');
+	const [assessmentPassingScore, setAssessmentPassingScore] = useState('60');
+	const [assessmentAttemptLimit, setAssessmentAttemptLimit] = useState('3');
+
+	// Questions state
+	const [questions, setQuestions] = useState([]);
+	const [selectedQuestionId, setSelectedQuestionId] = useState(null);
+
+	// Attempts state
+	const [attempts, setAttempts] = useState([]);
+
+	// UI state
+	const [loading, setLoading] = useState(true);
+	const [saving, setSaving] = useState(false);
 	const [statusMessage, setStatusMessage] = useState('');
 	const [statusType, setStatusType] = useState('');
+	const [error, setError] = useState('');
 
-	const activeAssessment = assessmentsByGrade[selectedGradeKey];
-	const questions = activeAssessment.questions;
-	const selectedQuestionId = selectedQuestionByGrade[selectedGradeKey] || questions[0]?.id;
-	const selectedQuestion = questions.find((question) => question.id === selectedQuestionId) || questions[0];
-	const selectedGradeLabel = `${gradeMetadata[selectedGradeKey].label} Assessment`;
+	const selectedQuestion = selectedQuestionId
+		? questions.find((q) => q.id === selectedQuestionId)
+		: questions[0];
 
-	useEffect(() => {
-		setIsTopicDropdownOpen(false);
-	}, [selectedGradeKey, selectedQuestionId]);
+	// Load questions from backend
+	const loadQuestions = useCallback(async () => {
+		setLoading(true);
+		setError('');
+		setStatusMessage('');
+
+		try {
+			const { error: fetchError, questions: fetchedQuestions } =
+				await fetchAssessmentQuestionsAdmin(selectedAssessmentId);
+
+			if (fetchError) {
+				throw new Error(fetchError);
+			}
+
+			setQuestions(fetchedQuestions || []);
+			if (fetchedQuestions && fetchedQuestions.length > 0) {
+				setSelectedQuestionId(fetchedQuestions[0].id);
+			}
+		} catch (err) {
+			setError(err.message);
+			Alert.alert('Error Loading Questions', err.message);
+		} finally {
+			setLoading(false);
+		}
+	}, [selectedAssessmentId]);
 
 	const clearStatus = () => {
 		setStatusMessage('');
 		setStatusType('');
 	};
 
-	const updateActiveAssessment = (updater) => {
-		setAssessmentsByGrade((previousAssessments) => ({
-			...previousAssessments,
-			[selectedGradeKey]: updater(previousAssessments[selectedGradeKey]),
-		}));
+	const updateQuestion = (field, value) => {
+		clearStatus();
+		if (!selectedQuestion) return;
+
+		const updated = {
+			...selectedQuestion,
+			[field]: value,
+		};
+
+		setQuestions((prev) =>
+			prev.map((q) => (q.id === selectedQuestion.id ? updated : q))
+		);
 	};
 
-	const updateSelectedQuestionForCurrentGrade = (questionId) => {
-		setSelectedQuestionByGrade((previousSelection) => ({
-			...previousSelection,
-			[selectedGradeKey]: questionId,
-		}));
+	const updateOption = (index, value) => {
+		clearStatus();
+		if (!selectedQuestion) return;
+
+		const newOptions = [...selectedQuestion.options];
+		newOptions[index] = value;
+
+		updateQuestion('options', newOptions);
 	};
 
-	const answeredQuestionCount = useMemo(
-		() => questions.filter((question) => question.question.trim().length > 0).length,
-		[questions]
-	);
+	const updateCorrectAnswer = (value) => {
+		clearStatus();
+		if (selectedQuestion?.type === 'mcq') {
+			updateQuestion('correctAnswer', parseInt(value, 10));
+		} else {
+			updateQuestion('correctAnswer', value);
+		}
+	};
 
 	const addQuestion = () => {
 		clearStatus();
-		updateActiveAssessment((previousAssessment) => {
-			const nextQuestion = createBlankQuestion(previousAssessment.questions.length + 1);
-			updateSelectedQuestionForCurrentGrade(nextQuestion.id);
-			return {
-				...previousAssessment,
-				questions: [...previousAssessment.questions, nextQuestion],
-			};
-		});
+		const newQuestion = createBlankQuestion();
+		setQuestions((prev) => [...prev, newQuestion]);
+		setSelectedQuestionId(newQuestion.id);
+		setStatusType('info');
+		setStatusMessage('New question added. Fill in details and save.');
 	};
 
-	const deleteSelectedQuestion = () => {
-		clearStatus();
+	const deleteQuestion = async () => {
+		if (!selectedQuestion) return;
 
 		if (questions.length <= 1) {
-			setStatusType('error');
-			setStatusMessage('At least one question must remain.');
+			Alert.alert('Error', 'Assessment must have at least one question.');
 			return;
 		}
 
-		const selectedIndex = questions.findIndex((question) => question.id === selectedQuestionId);
-		const nextQuestions = questions.filter((question) => question.id !== selectedQuestionId);
-		const nextSelectedQuestion = nextQuestions[selectedIndex] || nextQuestions[selectedIndex - 1] || nextQuestions[0];
+		Alert.alert('Delete Question', 'Are you sure you want to delete this question?', [
+			{ text: 'Cancel', style: 'cancel' },
+			{
+				text: 'Delete',
+				style: 'destructive',
+				onPress: async () => {
+					setSaving(true);
+					try {
+						if (!selectedQuestion.isNew) {
+							const { error: deleteError } = await deleteAssessmentQuestion(
+								selectedQuestion.id
+							);
+							if (deleteError) throw new Error(deleteError);
+						}
 
-		updateActiveAssessment((previousAssessment) => ({
-			...previousAssessment,
-			questions: nextQuestions,
-		}));
-		updateSelectedQuestionForCurrentGrade(nextSelectedQuestion.id);
-		setStatusType('success');
-		setStatusMessage(`Question ${selectedIndex + 1} deleted successfully.`);
-	};
-
-	const updateQuestion = (questionId, field, value) => {
-		clearStatus();
-		updateActiveAssessment((previousAssessment) => ({
-			...previousAssessment,
-			questions: previousAssessment.questions.map((question) => {
-				if (question.id !== questionId) {
-					return question;
-				}
-
-				if (field === 'type' && value !== question.type) {
-					if (value === 'fill') {
-						return {
-							...question,
-							type: value,
-							options: [],
-							correctAnswer: '',
-						};
+						const updatedQuestions = questions.filter(
+							(q) => q.id !== selectedQuestion.id
+						);
+						setQuestions(updatedQuestions);
+						setSelectedQuestionId(updatedQuestions[0]?.id);
+						setStatusType('success');
+						setStatusMessage('Question deleted successfully.');
+					} catch (err) {
+						Alert.alert('Error', err.message);
+					} finally {
+						setSaving(false);
 					}
-
-					return {
-						...question,
-						type: value,
-						options: question.options.length ? [...question.options] : ['Option 1', 'Option 2', 'Option 3', 'Option 4'],
-						correctAnswers: '',
-					};
-				}
-
-				return {
-					...question,
-					[field]: value,
-				};
-			}),
-		}));
+				},
+			},
+		]);
 	};
 
-	const updateQuestionOption = (questionId, optionIndex, value) => {
-		clearStatus();
-		updateActiveAssessment((previousAssessment) => ({
-			...previousAssessment,
-			questions: previousAssessment.questions.map((question) => {
-				if (question.id !== questionId) {
-					return question;
-				}
-
-				const options = [...question.options];
-				const previousOptionValue = options[optionIndex];
-				options[optionIndex] = value;
-
-				return {
-					...question,
-					options,
-					correctAnswer: question.correctAnswer === previousOptionValue ? value : question.correctAnswer,
-				};
-			}),
-		}));
-	};
-
-	const onUpdateAssessment = () => {
-		if (!activeAssessment.countdownMinutes.trim()) {
-			setStatusType('error');
-			setStatusMessage('Please fill in the countdown timer before updating.');
-			Alert.alert('Missing Information', 'Please fill in the countdown timer before updating.');
-			return;
-		}
-
-		if (!selectedQuestion) {
-			setStatusType('error');
-			setStatusMessage('Please select a question first.');
-			return;
-		}
+	const saveQuestion = async () => {
+		if (!selectedQuestion) return;
 
 		if (!selectedQuestion.question.trim()) {
-			setStatusType('error');
-			setStatusMessage('Question text must be filled before updating.');
+			Alert.alert('Validation Error', 'Question text is required.');
 			return;
 		}
 
 		if (selectedQuestion.type === 'mcq') {
-			if (selectedQuestion.options.some((option) => !option.trim())) {
-				setStatusType('error');
-				setStatusMessage('All MCQ options must be filled before updating.');
+			if (selectedQuestion.options.some((opt) => !opt.trim())) {
+				Alert.alert('Validation Error', 'All options must be filled in.');
 				return;
 			}
-
-			if (!selectedQuestion.correctAnswer.trim()) {
-				setStatusType('error');
-				setStatusMessage('Please set the correct answer before updating this MCQ.');
+			if (selectedQuestion.correctAnswer === '' || selectedQuestion.correctAnswer === -1) {
+				Alert.alert('Validation Error', 'Please select the correct answer.');
 				return;
 			}
-		}
-
-		if (selectedQuestion.type === 'fill' && !selectedQuestion.correctAnswers.trim()) {
-			setStatusType('error');
-			setStatusMessage('Please fill in Correct Answers before updating this fill-in-the-blank question.');
+		} else if (!selectedQuestion.correctAnswer.trim()) {
+			Alert.alert('Validation Error', 'Correct answer is required.');
 			return;
 		}
 
-		const selectedQuestionNumber = questions.findIndex((question) => question.id === selectedQuestion.id) + 1;
-		const successMsg = `${selectedGradeLabel}: Question ${selectedQuestionNumber} updated successfully.`;
-		setStatusType('success');
-		setStatusMessage(successMsg);
-		Alert.alert('Updated', successMsg);
+		setSaving(true);
+		try {
+			if (selectedQuestion.isNew) {
+				const { error: addError } = await addAssessmentQuestion(
+					selectedAssessmentId,
+					selectedQuestion.question,
+					selectedQuestion.type,
+					selectedQuestion.type === 'mcq' ? selectedQuestion.options : [],
+					selectedQuestion.correctAnswer
+				);
+
+				if (addError) throw new Error(addError);
+			} else {
+				const { error: updateError } = await updateAssessmentQuestion(
+					selectedQuestion.id,
+					selectedQuestion.question,
+					selectedQuestion.type,
+					selectedQuestion.type === 'mcq' ? selectedQuestion.options : [],
+					selectedQuestion.correctAnswer
+				);
+
+				if (updateError) throw new Error(updateError);
+			}
+
+			// Remove isNew flag if it was a new question
+			const updated = { ...selectedQuestion };
+			delete updated.isNew;
+			setQuestions((prev) =>
+				prev.map((q) => (q.id === selectedQuestion.id ? updated : q))
+			);
+
+			setStatusType('success');
+			setStatusMessage('Question saved successfully.');
+		} catch (err) {
+			Alert.alert('Save Error', err.message);
+		} finally {
+			setSaving(false);
+		}
 	};
 
-	const expandedGridItems = [
-		...questions.map((question, index) => ({
-			id: question.id,
-			index,
-			question,
-			isPlaceholder: false,
-		})),
-		...Array.from({ length: (10 - (questions.length % 10)) % 10 }, (_, index) => ({
-			id: `placeholder-${index}`,
-			index: questions.length + index,
-			question: null,
-			isPlaceholder: true,
-		})),
-	];
+	// Load assessments for the module
+	const loadAssessments = useCallback(async () => {
+		setLoading(true);
+		setError('');
+		try {
+			const { error: fetchError, assessments: fetchedAssessments } =
+				await fetchAllAssessments();
+			if (fetchError) throw new Error(fetchError);
+
+			setAssessments(fetchedAssessments || []);
+			if (fetchedAssessments && fetchedAssessments.length > 0) {
+				const selected =
+					fetchedAssessments.find((a) => String(a.id) === String(selectedAssessmentId)) ||
+					fetchedAssessments[0];
+				setSelectedAssessmentId(selected.id);
+				setAssessmentModuleId(String(selected.moduleId || ''));
+				setAssessmentTitle(selected.title);
+				setAssessmentDuration(String(selected.durationMinutes || 120));
+				setAssessmentPassingScore(String(selected.passingScore || 60));
+				setAssessmentAttemptLimit(String(selected.attemptLimit || 3));
+			} else {
+				setSelectedAssessmentId(null);
+				setAssessmentModuleId(defaultModuleId);
+				setQuestions([]);
+				setAttempts([]);
+			}
+		} catch (err) {
+			setError(err.message);
+		} finally {
+			setLoading(false);
+		}
+	}, [defaultModuleId, selectedAssessmentId]);
+
+	// Load questions for selected assessment
+	const loadQuestionsHandler = useCallback(async () => {
+		if (!selectedAssessmentId) {
+			setQuestions([]);
+			return;
+		}
+
+		setError('');
+		try {
+			const { error: fetchError, questions: fetchedQuestions } =
+				await fetchAssessmentQuestionsAdmin(selectedAssessmentId);
+			if (fetchError) throw new Error(fetchError);
+
+			setQuestions(fetchedQuestions || []);
+			if (fetchedQuestions && fetchedQuestions.length > 0) {
+				setSelectedQuestionId(fetchedQuestions[0].id);
+			}
+		} catch (err) {
+			setError(err.message);
+			Alert.alert('Error Loading Questions', err.message);
+		}
+	}, [selectedAssessmentId]);
+
+	// Load attempts for selected assessment
+	const loadAttempts = useCallback(async () => {
+		setError('');
+		try {
+			const { error: fetchError, attempts: fetchedAttempts } =
+				await fetchAssessmentAttempts(selectedAssessmentId);
+			if (fetchError) throw new Error(fetchError);
+
+			setAttempts(fetchedAttempts || []);
+		} catch (err) {
+			setError(err.message);
+		}
+	}, [selectedAssessmentId]);
+
+	// Load initial data based on active tab
+	useEffect(() => {
+		if (currentTab === 'assessments') {
+			loadAssessments();
+		} else if (currentTab === 'questions' && selectedAssessmentId) {
+			loadQuestionsHandler();
+		} else if (currentTab === 'attempts' && selectedAssessmentId) {
+			loadAttempts();
+		}
+	}, [currentTab, loadAssessments, loadQuestionsHandler, loadAttempts, selectedAssessmentId]);
+
+	const createNewAssessment = async () => {
+		if (!assessmentTitle.trim()) {
+			Alert.alert('Validation Error', 'Assessment title is required.');
+			return;
+		}
+
+		if (!assessmentModuleId.trim()) {
+			Alert.alert('Validation Error', 'Module ID is required.');
+			return;
+		}
+
+		setSaving(true);
+		try {
+			const { error: createError, assessmentId: newAssessmentId } =
+				await createAssessment(
+					parseInt(assessmentModuleId, 10),
+					assessmentTitle,
+					parseInt(assessmentPassingScore, 10),
+					parseInt(assessmentDuration, 10)
+				);
+
+			if (createError) throw new Error(createError);
+
+			setStatusType('success');
+			setStatusMessage('Assessment created successfully!');
+			setAssessmentTitle('');
+			setAssessmentModuleId(defaultModuleId);
+			setAssessmentDuration('120');
+			setAssessmentPassingScore('60');
+			loadAssessments();
+		} catch (err) {
+			Alert.alert('Error Creating Assessment', err.message);
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	// Update assessment settings
+	const updateSettings = async () => {
+		if (!selectedAssessmentId) return;
+
+		setSaving(true);
+		try {
+			const { error: updateError } = await updateAssessmentSettings(
+				selectedAssessmentId,
+				parseInt(assessmentPassingScore, 10),
+				parseInt(assessmentDuration, 10),
+				parseInt(assessmentAttemptLimit, 10)
+			);
+
+			if (updateError) throw new Error(updateError);
+
+			setStatusType('success');
+			setStatusMessage('Assessment settings updated successfully!');
+		} catch (err) {
+			Alert.alert('Error Updating Settings', err.message);
+		} finally {
+			setSaving(false);
+		}
+	};
+
+	// Reset user attempt
+	const resetAttemptConfirm = (attemptId, userName) => {
+		Alert.alert(
+			'Reset Attempt',
+			`Reset attempt for ${userName}? They will be able to retake the assessment.`,
+			[
+				{ text: 'Cancel', style: 'cancel' },
+				{
+					text: 'Reset',
+					style: 'destructive',
+					onPress: async () => {
+						setSaving(true);
+						try {
+							const { error: resetError } = await resetUserAttempt(
+								selectedAssessmentId,
+								attemptId
+							);
+
+							if (resetError) throw new Error(resetError);
+
+							setStatusType('success');
+							setStatusMessage(`Attempt reset for ${userName}.`);
+							loadAttempts();
+						} catch (err) {
+							Alert.alert('Error Resetting Attempt', err.message);
+						} finally {
+							setSaving(false);
+						}
+					},
+				},
+			]
+		);
+	};
+
+	// Delete assessment
+	const deleteAssessmentConfirm = () => {
+		const assessment = assessments.find((a) => a.id === selectedAssessmentId);
+		if (!assessment) return;
+
+		Alert.alert(
+			'Delete Assessment',
+			`Are you sure you want to delete "${assessment.title}"? This cannot be undone.`,
+			[
+				{ text: 'Cancel', style: 'cancel' },
+				{
+					text: 'Delete',
+					style: 'destructive',
+					onPress: async () => {
+						setSaving(true);
+						try {
+							const { error: deleteError } = await deleteAssessment(
+								selectedAssessmentId
+							);
+
+							if (deleteError) throw new Error(deleteError);
+
+							setStatusType('success');
+							setStatusMessage('Assessment deleted successfully.');
+							loadAssessments();
+						} catch (err) {
+							Alert.alert('Error Deleting Assessment', err.message);
+						} finally {
+							setSaving(false);
+						}
+					},
+				},
+			]
+		);
+	};
+
+	const answeredQuestionCount = useMemo(
+		() => questions.filter((q) => q.question.trim().length > 0).length,
+		[questions]
+	);
+
+	if (loading) {
+		return (
+			<SafeAreaView style={styles.container}>
+				<View style={styles.centerContainer}>
+					<ActivityIndicator size="large" color="#2E6B4D" />
+					<Text style={styles.loadingText}>Loading assessment questions...</Text>
+				</View>
+			</SafeAreaView>
+		);
+	}
+
+	if (error) {
+		return (
+			<SafeAreaView style={styles.container}>
+				<View style={styles.centerContainer}>
+					<Text style={styles.errorTitle}>Failed to Load Assessment</Text>
+					<Text style={styles.errorText}>{error}</Text>
+					<TouchableOpacity style={styles.retryButton} onPress={loadQuestions}>
+						<Text style={styles.retryButtonText}>Try Again</Text>
+					</TouchableOpacity>
+				</View>
+			</SafeAreaView>
+		);
+	}
 
 	return (
 		<SafeAreaView style={styles.container}>
+			<View style={styles.tabBar}>
+				<TouchableOpacity
+					style={[styles.tab, currentTab === 'assessments' && styles.tabActive]}
+					onPress={() => setCurrentTab('assessments')}
+				>
+					<Text style={[styles.tabText, currentTab === 'assessments' && styles.tabTextActive]}>Assessments</Text>
+				</TouchableOpacity>
+				<TouchableOpacity
+					style={[styles.tab, currentTab === 'questions' && styles.tabActive]}
+					onPress={() => setCurrentTab('questions')}
+				>
+					<Text style={[styles.tabText, currentTab === 'questions' && styles.tabTextActive]}>Questions</Text>
+				</TouchableOpacity>
+				<TouchableOpacity
+					style={[styles.tab, currentTab === 'attempts' && styles.tabActive]}
+					onPress={() => setCurrentTab('attempts')}
+				>
+					<Text style={[styles.tabText, currentTab === 'attempts' && styles.tabTextActive]}>Attempts</Text>
+				</TouchableOpacity>
+			</View>
+
 			<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-				<View style={styles.heroCard}>
-					<Text style={styles.kicker}>Admin Panel</Text>
-					<Text style={styles.title}>Assessment Management</Text>
-					<Text style={styles.subtitle}>Edit assessment pages without touching backend data yet.</Text>
-				</View>
-
-				<View style={styles.card}>
-					<Text style={styles.sectionTitle}>Countdown Timer ({gradeMetadata[selectedGradeKey].label})</Text>
-					<Text style={styles.label}>Edit countdown timer in minutes</Text>
-					<TextInput
-						style={styles.input}
-						value={activeAssessment.countdownMinutes}
-						onChangeText={(value) => {
-							clearStatus();
-							updateActiveAssessment((previousAssessment) => ({
-								...previousAssessment,
-								countdownMinutes: value,
-							}));
-						}}
-						keyboardType="numeric"
-						placeholder="e.g. 120"
-						placeholderTextColor="#8A8A8A"
-					/>
-				</View>
-
-				<View style={styles.card}>
-					<Text style={styles.sectionTitle}>Choose Assessment to Edit</Text>
-					<View style={styles.gradeRow}>
-						{Object.entries(gradeMetadata).map(([gradeKey, grade]) => {
-							const isSelected = gradeKey === selectedGradeKey;
-							return (
-								<TouchableOpacity
-									key={gradeKey}
-									style={[styles.gradeButton, isSelected && styles.gradeButtonSelected]}
-									onPress={() => {
-										clearStatus();
-										setSelectedGradeKey(gradeKey);
-									}}
-									activeOpacity={0.9}
-								>
-									<Text style={isSelected ? styles.gradeButtonTextSelected : styles.gradeButtonText}>{grade.label}</Text>
-								</TouchableOpacity>
-							);
-						})}
-					</View>
-				</View>
-
-				<View style={styles.card}>
-					<Text style={styles.sectionTitle}>{gradeMetadata[selectedGradeKey].editorTitle}</Text>
-					<Text style={styles.smallText}>Questions: {answeredQuestionCount} / {questions.length}</Text>
-
-					<TouchableOpacity style={styles.addButtonCompact} onPress={addQuestion} activeOpacity={0.9}>
-						<Text style={styles.addButtonIconCompact}>+</Text>
-						<Text style={styles.addButtonTextCompact}>Add Question</Text>
-					</TouchableOpacity>
-
-					<View style={styles.sectionHeaderRow}>
-						<Text style={styles.questionsHeaderText}>Questions</Text>
-						<TouchableOpacity
-							style={styles.expandToggleButton}
-							onPress={() => {
-								clearStatus();
-								setIsExpanded((previousExpanded) => !previousExpanded);
-							}}
-							activeOpacity={0.9}
-						>
-							<Text style={styles.toggleText}>Toggle</Text>
-							<Text style={styles.expandIconText}>{isExpanded ? 'v' : '>'}</Text>
-						</TouchableOpacity>
-					</View>
-
-					{isExpanded ? (
-						<View style={styles.questionGridExpanded}>
-							{expandedGridItems.map((item) => {
-								if (item.isPlaceholder) {
-									return <View key={item.id} style={[styles.questionTile, isCompact && styles.questionTileCompact, styles.questionTilePlaceholder]} />;
-								}
-
-								const isSelected = item.question.id === selectedQuestionId;
-								return (
-									<TouchableOpacity
-										key={item.id}
-										style={[styles.questionTile, isCompact && styles.questionTileCompact, isSelected && styles.questionTileSelected]}
-										onPress={() => {
-											clearStatus();
-											updateSelectedQuestionForCurrentGrade(item.question.id);
-										}}
-										activeOpacity={0.9}
-									>
-										<Text style={[styles.questionTileNumber, isSelected && styles.questionTileNumberSelected]}>Q{item.index + 1}</Text>
-									</TouchableOpacity>
-								);
-							})}
+				{currentTab === 'assessments' && (
+					<>
+						<View style={styles.headerSection}>
+							<Text style={styles.headerKicker}>Admin Panel</Text>
+							<Text style={styles.headerTitle}>Assessment Management</Text>
+							<Text style={styles.headerSubtitle}>Create and manage assessments</Text>
+							<Text style={styles.statsText}>Total: {assessments.length} assessment(s)</Text>
 						</View>
-					) : (
-						<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.questionGridHorizontal}>
-							{questions.map((question, index) => {
-								const isSelected = question.id === selectedQuestionId;
-								return (
-									<TouchableOpacity
-										key={question.id}
-										style={[styles.questionTile, isSelected && styles.questionTileSelected]}
-										onPress={() => {
-											clearStatus();
-											updateSelectedQuestionForCurrentGrade(question.id);
-										}}
-										activeOpacity={0.9}
-									>
-										<Text style={[styles.questionTileNumber, isSelected && styles.questionTileNumberSelected]}>Q{index + 1}</Text>
-									</TouchableOpacity>
-								);
-							})}
-						</ScrollView>
-					)}
 
-					{selectedQuestion ? (
-						<View style={styles.questionCard}>
-							<View style={styles.questionCardHeader}>
-								<Text style={styles.questionCardTitle}>Question {questions.findIndex((question) => question.id === selectedQuestion.id) + 1}</Text>
-								<TouchableOpacity style={styles.deleteIconButton} onPress={deleteSelectedQuestion} activeOpacity={0.9}>
-									<Text style={styles.deleteIconText}>Delete</Text>
-								</TouchableOpacity>
+						{statusMessage && (
+							<View style={[styles.statusBox, statusType === 'success' ? styles.statusSuccess : statusType === 'error' ? styles.statusError : styles.statusInfo]}>
+								<Text style={styles.statusText}>{statusMessage}</Text>
 							</View>
+						)}
 
-							<Text style={styles.label}>Question Type</Text>
-							<View style={styles.typeRow}>
-								<TouchableOpacity
-									style={[styles.typeButton, selectedQuestion.type === 'mcq' && styles.typeButtonSelected]}
-									onPress={() => updateQuestion(selectedQuestion.id, 'type', 'mcq')}
-									activeOpacity={0.9}
-								>
-									<Text style={[styles.typeButtonText, selectedQuestion.type === 'mcq' && styles.typeButtonTextSelected]}>MCQ</Text>
-								</TouchableOpacity>
-								<TouchableOpacity
-									style={[styles.typeButton, selectedQuestion.type === 'fill' && styles.typeButtonSelected]}
-									onPress={() => updateQuestion(selectedQuestion.id, 'type', 'fill')}
-									activeOpacity={0.9}
-								>
-									<Text style={[styles.typeButtonText, selectedQuestion.type === 'fill' && styles.typeButtonTextSelected]}>Fill in the Blank</Text>
-								</TouchableOpacity>
-							</View>
-
-							<Text style={styles.label}>Question Topic</Text>
-							<View style={styles.dropdownWrapper}>
-								<TouchableOpacity
-									style={styles.dropdownButton}
-									onPress={() => {
-										clearStatus();
-										setIsTopicDropdownOpen((previousOpen) => !previousOpen);
-									}}
-									activeOpacity={0.9}
-								>
-									<Text style={styles.dropdownButtonText}>{selectedQuestion.topic || 'Select topic'}</Text>
-									<Text style={styles.dropdownArrow}>{isTopicDropdownOpen ? 'v' : '>'}</Text>
-								</TouchableOpacity>
-
-								{isTopicDropdownOpen ? (
-									<View style={styles.dropdownMenu}>
-										{assessmentTopics.map((topic) => {
-											const isSelected = selectedQuestion.topic === topic;
-											return (
-												<TouchableOpacity
-													key={topic}
-													style={[styles.dropdownItem, isSelected && styles.dropdownItemSelected]}
-													onPress={() => {
-														updateQuestion(selectedQuestion.id, 'topic', topic);
-														setIsTopicDropdownOpen(false);
-													}}
-													activeOpacity={0.9}
-												>
-													<Text style={[styles.dropdownItemText, isSelected && styles.dropdownItemTextSelected]}>{topic}</Text>
-												</TouchableOpacity>
-											);
-										})}
-									</View>
-								) : null}
-							</View>
-
-							<Text style={styles.label}>Question</Text>
+						<View style={styles.card}>
+							<Text style={styles.cardTitle}>Create New Assessment</Text>
+							<Text style={styles.label}>Module ID</Text>
 							<TextInput
-								style={[styles.input, styles.multilineInput]}
-								value={selectedQuestion.question}
-								onChangeText={(value) => updateQuestion(selectedQuestion.id, 'question', value)}
-								multiline
-								textAlignVertical="top"
-								placeholder="Enter question"
-								placeholderTextColor="#8A8A8A"
+								style={styles.input}
+								value={assessmentModuleId}
+								onChangeText={setAssessmentModuleId}
+								placeholder="Enter module ID"
+								placeholderTextColor="#AAA"
+								keyboardType="number-pad"
+							/>
+							<Text style={styles.label}>Title</Text>
+							<TextInput
+								style={styles.input}
+								value={assessmentTitle}
+								onChangeText={setAssessmentTitle}
+								placeholder="e.g. Module 1 Final Exam"
+								placeholderTextColor="#AAA"
 							/>
 
-							{selectedQuestion.type === 'mcq' ? (
-								<>
-									<Text style={styles.label}>Options</Text>
-									<View style={styles.optionList}>
-										{selectedQuestion.options.map((option, optionIndex) => (
-											<TextInput
-												key={`${selectedQuestion.id}-option-${optionIndex}`}
-												style={styles.optionInput}
-												value={option}
-												onChangeText={(value) => updateQuestionOption(selectedQuestion.id, optionIndex, value)}
-												placeholder={`Option ${optionIndex + 1}`}
-												placeholderTextColor="#8A8A8A"
-											/>
-										))}
-									</View>
+							<Text style={styles.label}>Duration (minutes)</Text>
+							<TextInput
+								style={styles.input}
+								value={assessmentDuration}
+								onChangeText={setAssessmentDuration}
+								placeholder="120"
+								placeholderTextColor="#AAA"
+								keyboardType="number-pad"
+							/>
 
-									<Text style={styles.label}>Set Correct Answer</Text>
-									<View style={styles.correctChoiceList}>
-										{selectedQuestion.options.map((option, optionIndex) => {
-											const isSelected = selectedQuestion.correctAnswer === option;
-											return (
-												<TouchableOpacity
-													key={`${selectedQuestion.id}-correct-${optionIndex}`}
-													style={[styles.correctChoiceButton, isSelected && styles.correctChoiceButtonSelected]}
-													onPress={() => updateQuestion(selectedQuestion.id, 'correctAnswer', option)}
-													activeOpacity={0.9}
-												>
-													<Text style={[styles.correctChoiceText, isSelected && styles.correctChoiceTextSelected]}>{option || `Option ${optionIndex + 1}`}</Text>
-												</TouchableOpacity>
-											);
-										})}
-									</View>
-								</>
-							) : (
-								<>
-									<Text style={styles.label}>Correct Answers</Text>
-									<TextInput
-										style={[styles.input, styles.multilineInput]}
-										value={selectedQuestion.correctAnswers}
-										onChangeText={(value) => updateQuestion(selectedQuestion.id, 'correctAnswers', value)}
-										placeholder="Enter multiple correct answers separated by commas"
-										placeholderTextColor="#8A8A8A"
-										multiline
-										textAlignVertical="top"
-									/>
-								</>
-							)}
+							<Text style={styles.label}>Passing Score (%)</Text>
+							<TextInput
+								style={styles.input}
+								value={assessmentPassingScore}
+								onChangeText={setAssessmentPassingScore}
+								placeholder="60"
+								placeholderTextColor="#AAA"
+								keyboardType="number-pad"
+							/>
 
-							<View style={styles.updateRow}>
-								<TouchableOpacity style={styles.updateButton} onPress={onUpdateAssessment} activeOpacity={0.9}>
-									<Text style={styles.updateButtonText}>Update</Text>
-								</TouchableOpacity>
-								{statusMessage ? (
-									<Text style={[styles.statusMessageInline, statusType === 'success' ? styles.statusSuccess : styles.statusError]}>
-										{statusMessage}
-									</Text>
-								) : null}
-							</View>
+							<TouchableOpacity
+								style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+								onPress={createNewAssessment}
+								disabled={saving}
+								activeOpacity={0.8}
+							>
+								{saving ? (
+									<ActivityIndicator color="#FFFFFF" size="small" />
+								) : (
+									<Text style={styles.saveButtonText}>Create Assessment</Text>
+								)}
+							</TouchableOpacity>
 						</View>
-					) : null}
-				</View>
+
+						{assessments.length > 0 && (
+							<View style={styles.card}>
+								<View style={styles.cardHeader}>
+									<Text style={styles.cardTitle}>Existing Assessments</Text>
+								</View>
+								{assessments.map((a) => (
+									<TouchableOpacity
+										key={a.id}
+										style={[styles.assessmentItem, selectedAssessmentId === a.id && styles.assessmentItemActive]}
+										onPress={() => {
+											setSelectedAssessmentId(a.id);
+											setAssessmentModuleId(String(a.moduleId || ''));
+											setAssessmentTitle(a.title);
+											setAssessmentDuration(String(a.durationMinutes));
+											setAssessmentPassingScore(String(a.passingScore));
+											setAssessmentAttemptLimit(String(a.attemptLimit));
+											clearStatus();
+										}}
+									>
+										<View style={{ flex: 1 }}>
+											<Text style={styles.assessmentItemTitle}>{a.title}</Text>
+											<Text style={styles.assessmentItemSubtitle}>
+												Module {a.moduleId} • {a.questionCount} questions • Pass: {a.passingScore}%
+											</Text>
+										</View>
+									</TouchableOpacity>
+								))}
+							</View>
+						)}
+
+						{selectedAssessmentId && assessments.find((a) => a.id === selectedAssessmentId) && (
+							<View style={styles.card}>
+								<View style={styles.cardHeader}>
+									<Text style={styles.cardTitle}>Assessment Settings</Text>
+									<TouchableOpacity
+										style={styles.deleteButton}
+										onPress={deleteAssessmentConfirm}
+										disabled={saving}
+									>
+										<Text style={styles.deleteButtonText}>Delete</Text>
+									</TouchableOpacity>
+								</View>
+
+								<Text style={styles.label}>Duration (minutes)</Text>
+								<TextInput
+									style={styles.input}
+									value={assessmentDuration}
+									onChangeText={setAssessmentDuration}
+									keyboardType="number-pad"
+								/>
+
+								<Text style={styles.label}>Passing Score (%)</Text>
+								<TextInput
+									style={styles.input}
+									value={assessmentPassingScore}
+									onChangeText={setAssessmentPassingScore}
+									keyboardType="number-pad"
+								/>
+
+								<Text style={styles.label}>Attempt Limit</Text>
+								<TextInput
+									style={styles.input}
+									value={assessmentAttemptLimit}
+									onChangeText={setAssessmentAttemptLimit}
+									keyboardType="number-pad"
+								/>
+
+								<TouchableOpacity
+									style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+									onPress={updateSettings}
+									disabled={saving}
+									activeOpacity={0.8}
+								>
+									{saving ? (
+										<ActivityIndicator color="#FFFFFF" size="small" />
+									) : (
+										<Text style={styles.saveButtonText}>Save Settings</Text>
+									)}
+								</TouchableOpacity>
+							</View>
+						)}
+					</>
+				)}
+
+				{currentTab === 'questions' && (
+					<>
+						<View style={styles.headerSection}>
+							<Text style={styles.headerKicker}>Admin Panel</Text>
+							<Text style={styles.headerTitle}>Question Management</Text>
+							<Text style={styles.headerSubtitle}>Edit and manage assessment questions</Text>
+							<Text style={styles.statsText}>Questions: {answeredQuestionCount} / {questions.length}</Text>
+						</View>
+
+						{statusMessage && (
+							<View style={[styles.statusBox, statusType === 'success' ? styles.statusSuccess : statusType === 'error' ? styles.statusError : styles.statusInfo]}>
+								<Text style={styles.statusText}>{statusMessage}</Text>
+							</View>
+						)}
+
+						<View style={styles.card}>
+							<View style={styles.cardHeader}>
+								<Text style={styles.cardTitle}>Questions</Text>
+								<TouchableOpacity
+									style={styles.addButton}
+									onPress={addQuestion}
+									disabled={saving}
+									activeOpacity={0.8}
+								>
+									<Text style={styles.addButtonText}>+ Add</Text>
+								</TouchableOpacity>
+							</View>
+
+							{questions.length === 0 ? (
+								<Text style={styles.emptyText}>No questions yet. Add one to get started.</Text>
+							) : (
+								<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.questionsList}>
+									{questions.map((q, index) => (
+										<TouchableOpacity
+											key={q.id}
+											style={[styles.questionTab, selectedQuestionId === q.id && styles.questionTabActive]}
+											onPress={() => {
+												clearStatus();
+												setSelectedQuestionId(q.id);
+											}}
+											activeOpacity={0.7}
+										>
+											<Text style={[styles.questionTabText, selectedQuestionId === q.id && styles.questionTabTextActive]}>
+												Q{index + 1}
+											</Text>
+										</TouchableOpacity>
+									))}
+								</ScrollView>
+							)}
+						</View>
+
+						{selectedQuestion && (
+							<View style={styles.card}>
+								<View style={styles.cardHeader}>
+									<Text style={styles.cardTitle}>Edit Question</Text>
+									<TouchableOpacity
+										style={styles.deleteButton}
+										onPress={deleteQuestion}
+										disabled={saving}
+										activeOpacity={0.8}
+									>
+										<Text style={styles.deleteButtonText}>Delete</Text>
+									</TouchableOpacity>
+								</View>
+
+								<Text style={styles.label}>Question Type</Text>
+								<View style={styles.typeSelector}>
+									<TouchableOpacity
+										style={[styles.typeOption, selectedQuestion.type === 'mcq' && styles.typeOptionActive]}
+										onPress={() => updateQuestion('type', 'mcq')}
+									>
+										<Text style={[styles.typeOptionText, selectedQuestion.type === 'mcq' && styles.typeOptionTextActive]}>
+											Multiple Choice
+										</Text>
+									</TouchableOpacity>
+									<TouchableOpacity
+										style={[styles.typeOption, selectedQuestion.type === 'fill' && styles.typeOptionActive]}
+										onPress={() => updateQuestion('type', 'fill')}
+									>
+										<Text style={[styles.typeOptionText, selectedQuestion.type === 'fill' && styles.typeOptionTextActive]}>
+											Fill Blank
+										</Text>
+									</TouchableOpacity>
+								</View>
+
+								<Text style={styles.label}>Question Topic</Text>
+								<TextInput
+									style={styles.input}
+									value={selectedQuestion.topic}
+									onChangeText={(value) => updateQuestion('topic', value)}
+									placeholder="e.g. Conservation"
+									placeholderTextColor="#AAA"
+								/>
+
+								<Text style={styles.label}>Question Text</Text>
+								<TextInput
+									style={[styles.input, styles.inputLarge]}
+									value={selectedQuestion.question}
+									onChangeText={(value) => updateQuestion('question', value)}
+									placeholder="Enter the question"
+									placeholderTextColor="#AAA"
+									multiline
+									numberOfLines={3}
+								/>
+
+								{selectedQuestion.type === 'mcq' ? (
+									<>
+										<Text style={styles.label}>Answer Options</Text>
+										{selectedQuestion.options.map((option, index) => (
+											<View key={index} style={styles.optionRow}>
+												<TextInput
+													style={[styles.input, styles.optionInput]}
+													value={option}
+													onChangeText={(value) => updateOption(index, value)}
+													placeholder={`Option ${index + 1}`}
+													placeholderTextColor="#AAA"
+												/>
+												<TouchableOpacity
+													style={[styles.correctCheckbox, selectedQuestion.correctAnswer === index && styles.correctCheckboxActive]}
+													onPress={() => updateCorrectAnswer(index)}
+												>
+													<Text style={styles.correctCheckboxText}>✓</Text>
+												</TouchableOpacity>
+											</View>
+										))}
+										<Text style={styles.helperText}>Tap ✓ to mark correct answer</Text>
+									</>
+								) : (
+									<>
+										<Text style={styles.label}>Correct Answer</Text>
+										<TextInput
+											style={[styles.input, styles.inputLarge]}
+											value={selectedQuestion.correctAnswer}
+											onChangeText={(value) => updateCorrectAnswer(value)}
+											placeholder="Enter the correct answer"
+											placeholderTextColor="#AAA"
+											multiline
+											numberOfLines={2}
+										/>
+									</>
+								)}
+
+								<TouchableOpacity
+									style={[styles.saveButton, saving && styles.saveButtonDisabled]}
+									onPress={saveQuestion}
+									disabled={saving}
+									activeOpacity={0.8}
+								>
+									{saving ? (
+										<ActivityIndicator color="#FFFFFF" size="small" />
+									) : (
+										<Text style={styles.saveButtonText}>Save Question</Text>
+									)}
+								</TouchableOpacity>
+							</View>
+						)}
+					</>
+				)}
+
+				{currentTab === 'attempts' && (
+					<>
+						<View style={styles.headerSection}>
+							<Text style={styles.headerKicker}>Admin Panel</Text>
+							<Text style={styles.headerTitle}>Student Attempts</Text>
+							<Text style={styles.headerSubtitle}>View and manage student submissions</Text>
+							<Text style={styles.statsText}>Total: {attempts.length} attempt(s)</Text>
+						</View>
+
+						{statusMessage && (
+							<View style={[styles.statusBox, statusType === 'success' ? styles.statusSuccess : statusType === 'error' ? styles.statusError : styles.statusInfo]}>
+								<Text style={styles.statusText}>{statusMessage}</Text>
+							</View>
+						)}
+
+						{attempts.length === 0 ? (
+							<View style={styles.card}>
+								<Text style={styles.emptyText}>No attempts yet.</Text>
+							</View>
+						) : (
+							attempts.map((attempt) => (
+								<View key={attempt.id} style={styles.card}>
+									<View style={styles.attemptHeader}>
+										<View style={{ flex: 1 }}>
+											<Text style={styles.attemptName}>{attempt.userName}</Text>
+											<Text style={styles.attemptEmail}>{attempt.userEmail}</Text>
+										</View>
+										<View style={[styles.attemptBadge, attempt.passed ? styles.attemptBadgePass : styles.attemptBadgeFail]}>
+											<Text style={styles.attemptBadgeText}>{attempt.score}%</Text>
+										</View>
+									</View>
+									<Text style={styles.attemptDetail}>
+										Submitted: {new Date(attempt.submittedAt).toLocaleDateString()} {new Date(attempt.submittedAt).toLocaleTimeString()}
+									</Text>
+									<Text style={styles.attemptDetail}>Time: {Math.round(attempt.timeUsedSeconds / 60)} min</Text>
+
+									<TouchableOpacity
+										style={[styles.resetButton, saving && styles.resetButtonDisabled]}
+										onPress={() => resetAttemptConfirm(attempt.id, attempt.userName)}
+										disabled={saving}
+									>
+										<Text style={styles.resetButtonText}>Reset Attempt</Text>
+									</TouchableOpacity>
+								</View>
+							))
+						)}
+					</>
+				)}
 			</ScrollView>
 		</SafeAreaView>
 	);
@@ -498,374 +877,389 @@ function AdminAssessment() {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: '#F7F8F4',
+		backgroundColor: '#FBFCF8',
+	},
+	centerContainer: {
+		flex: 1,
+		justifyContent: 'center',
+		alignItems: 'center',
+		paddingHorizontal: 24,
+	},
+	loadingText: {
+		marginTop: 12,
+		fontSize: 16,
+		color: '#3A4D39',
+		fontWeight: '600',
+	},
+	errorTitle: {
+		fontSize: 20,
+		fontWeight: '700',
+		color: '#D63F3F',
+		marginBottom: 8,
+	},
+	errorText: {
+		fontSize: 14,
+		color: '#5A5A5A',
+		marginBottom: 16,
+		textAlign: 'center',
+		lineHeight: 20,
+	},
+	retryButton: {
+		backgroundColor: '#4F772D',
+		paddingVertical: 10,
+		paddingHorizontal: 24,
+		borderRadius: 8,
+	},
+	retryButtonText: {
+		color: '#FFFFFF',
+		fontSize: 14,
+		fontWeight: '600',
 	},
 	content: {
-		padding: 20,
-		paddingBottom: 28,
+		paddingVertical: 12,
+		paddingHorizontal: 24,
+		paddingBottom: 24,
 	},
-	heroCard: {
-		backgroundColor: '#582F0E',
-		borderRadius: 0,
-		padding: 18,
-		marginHorizontal: -20,
-		marginTop: -20,
-		marginBottom: 14,
+	headerSection: {
+		marginBottom: 16,
 	},
-	kicker: {
-		color: '#DDB892',
+	headerKicker: {
+		fontSize: 11,
+		fontWeight: '700',
+		color: '#5A6B51',
+		letterSpacing: 0.8,
+		marginBottom: 4,
+	},
+	headerTitle: {
+		fontSize: 24,
+		fontWeight: '800',
+		color: '#1A1A1A',
+		marginBottom: 6,
+		letterSpacing: -0.3,
+	},
+	headerSubtitle: {
+		fontSize: 13,
+		fontWeight: '500',
+		color: '#666666',
+		marginBottom: 8,
+		lineHeight: 18,
+	},
+	statsText: {
 		fontSize: 12,
 		fontWeight: '700',
-		letterSpacing: 1,
-		textTransform: 'uppercase',
+		color: '#4F772D',
 	},
-	title: {
-		marginTop: 8,
-		color: '#FFFFFF',
-		fontSize: 27,
-		fontWeight: '800',
+	statusBox: {
+		borderRadius: 10,
+		paddingVertical: 11,
+		paddingHorizontal: 12,
+		marginBottom: 12,
+		borderLeftWidth: 4,
 	},
-	subtitle: {
-		marginTop: 8,
-		color: '#F3E9DC',
-		fontSize: 14,
-		lineHeight: 20,
-		fontWeight: '500',
+	statusSuccess: {
+		backgroundColor: '#E8F5E0',
+		borderLeftColor: '#4F772D',
+	},
+	statusError: {
+		backgroundColor: '#FFE8E8',
+		borderLeftColor: '#D63F3F',
+	},
+	statusInfo: {
+		backgroundColor: '#E8F2FF',
+		borderLeftColor: '#1E88E5',
+	},
+	statusText: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#333333',
 	},
 	card: {
 		backgroundColor: '#FFFFFF',
-		borderRadius: 16,
+		borderRadius: 12,
 		borderWidth: 1,
-		borderColor: '#E5E5DF',
-		padding: 16,
-		marginHorizontal: 30,
-		marginBottom: 12,
-	},
-	sectionTitle: {
-		color: '#3B2A1A',
-		fontSize: 18,
-		fontWeight: '800',
-		marginBottom: 12,
-	},
-	smallText: {
-		marginTop: -4,
-		marginBottom: 10,
-		color: '#6B4F3A',
-		fontSize: 12,
-		fontWeight: '600',
-	},
-	gradeRow: {
-		flexDirection: 'row',
-		gap: 10,
-	},
-	gradeButton: {
-		flex: 1,
-		backgroundColor: '#B08968',
-		borderRadius: 10,
-		paddingVertical: 10,
-		alignItems: 'center',
-	},
-	gradeButtonSelected: {
-		backgroundColor: '#7F4F24',
-	},
-	gradeButtonText: {
-		color: '#FFFFFF',
-		fontSize: 13,
-		fontWeight: '700',
-	},
-	gradeButtonTextSelected: {
-		color: '#FFFFFF',
-		fontSize: 13,
-		fontWeight: '800',
-	},
-	addButtonCompact: {
-		alignSelf: 'flex-start',
-		flexDirection: 'row',
-		alignItems: 'center',
-		gap: 6,
-		backgroundColor: '#7F4F24',
-		borderWidth: 1,
-		borderColor: '#B08968',
-		borderRadius: 999,
-		paddingVertical: 8,
+		borderColor: '#E8EDE2',
+		paddingVertical: 14,
 		paddingHorizontal: 14,
 		marginBottom: 12,
 	},
-	addButtonIconCompact: {
-		color: '#FFFFFF',
-		fontSize: 16,
-		fontWeight: '900',
-		lineHeight: 18,
-	},
-	addButtonTextCompact: {
-		color: '#FFFFFF',
-		fontSize: 12,
-		fontWeight: '800',
-	},
-	sectionHeaderRow: {
+	cardHeader: {
 		flexDirection: 'row',
 		justifyContent: 'space-between',
 		alignItems: 'center',
-		gap: 8,
+		marginBottom: 12,
 	},
-	questionsHeaderText: {
-		marginTop: 10,
-		marginBottom: 6,
-		color: '#5A4A3A',
-		fontSize: 13,
-		fontWeight: '700',
-	},
-	expandToggleButton: {
-		backgroundColor: '#EDE3D8',
-		borderRadius: 999,
-		paddingHorizontal: 12,
-		paddingVertical: 6,
-		alignItems: 'center',
-		justifyContent: 'center',
-		flexDirection: 'row',
-		gap: 6,
-		marginTop: 6,
-	},
-	toggleText: {
-		color: '#7A6652',
-		fontSize: 12,
-		fontWeight: '700',
-	},
-	expandIconText: {
-		color: '#5A4A3A',
-		fontSize: 14,
-		fontWeight: '800',
-	},
-	questionGridHorizontal: {
-		gap: 8,
-		paddingBottom: 8,
-	},
-	questionGridExpanded: {
-		flexDirection: 'row',
-		flexWrap: 'wrap',
-		justifyContent: 'space-between',
-		width: '100%',
-		paddingBottom: 8,
-	},
-	questionTile: {
-		width: 56,
-		height: 44,
-		borderRadius: 18,
-		backgroundColor: '#F8F4EF',
-		borderWidth: 1,
-		borderColor: '#D8C9BB',
-		alignItems: 'center',
-		justifyContent: 'center',
-	},
-	questionTileCompact: {
-		width: '18%',
-		marginBottom: 10,
-	},
-	questionTilePlaceholder: {
-		opacity: 0,
-	},
-	questionTileSelected: {
-		backgroundColor: '#7F4F24',
-		borderColor: '#7F4F24',
-	},
-	questionTileNumber: {
-		color: '#3B2A1A',
-		fontSize: 13,
-		fontWeight: '800',
-	},
-	questionTileNumberSelected: {
-		color: '#FFFFFF',
-	},
-	questionCard: {
-		marginTop: 10,
-		borderWidth: 1,
-		borderColor: '#E3DAD0',
-		borderRadius: 14,
-		backgroundColor: '#FBF9F6',
-		padding: 14,
-	},
-	questionCardHeader: {
-		flexDirection: 'row',
-		justifyContent: 'space-between',
-		alignItems: 'center',
-		gap: 8,
-	},
-	questionCardTitle: {
-		color: '#3B2A1A',
+	cardTitle: {
 		fontSize: 15,
-		fontWeight: '800',
-	},
-	deleteIconButton: {
-		backgroundColor: '#F4D7D7',
-		borderWidth: 1,
-		borderColor: '#E5A9A9',
-		borderRadius: 999,
-		paddingHorizontal: 12,
-		paddingVertical: 6,
-	},
-	deleteIconText: {
-		color: '#A52323',
-		fontSize: 12,
-		fontWeight: '800',
+		fontWeight: '700',
+		color: '#1A1A1A',
 	},
 	label: {
-		marginTop: 10,
-		marginBottom: 6,
-		color: '#5A4A3A',
-		fontSize: 13,
-		fontWeight: '700',
-	},
-	typeRow: {
-		flexDirection: 'row',
-		gap: 10,
-	},
-	typeButton: {
-		flex: 1,
-		borderWidth: 1,
-		borderColor: '#D8C9BB',
-		borderRadius: 10,
-		paddingVertical: 10,
-		alignItems: 'center',
-		backgroundColor: '#FFF',
-	},
-	typeButtonSelected: {
-		backgroundColor: '#7F4F24',
-		borderColor: '#7F4F24',
-	},
-	typeButtonText: {
-		color: '#5A4A3A',
 		fontSize: 12,
 		fontWeight: '700',
-	},
-	typeButtonTextSelected: {
-		color: '#FFFFFF',
-	},
-	dropdownWrapper: {
-		position: 'relative',
-	},
-	dropdownButton: {
-		borderWidth: 1,
-		borderColor: '#D8C9BB',
-		borderRadius: 10,
-		paddingHorizontal: 12,
-		paddingVertical: 10,
-		backgroundColor: '#FFF',
-		flexDirection: 'row',
-		justifyContent: 'space-between',
-		alignItems: 'center',
-	},
-	dropdownButtonText: {
-		color: '#3B2A1A',
-		fontSize: 13,
-		fontWeight: '700',
-	},
-	dropdownArrow: {
-		color: '#5A4A3A',
-		fontSize: 14,
-		fontWeight: '800',
-	},
-	dropdownMenu: {
-		marginTop: 8,
-		borderWidth: 1,
-		borderColor: '#E3DAD0',
-		borderRadius: 12,
-		overflow: 'hidden',
-		backgroundColor: '#FFF',
-	},
-	dropdownItem: {
-		paddingHorizontal: 12,
-		paddingVertical: 10,
-		borderBottomWidth: 1,
-		borderBottomColor: '#F0E9E1',
-	},
-	dropdownItemSelected: {
-		backgroundColor: '#F6EEE7',
-	},
-	dropdownItemText: {
-		color: '#4B3828',
-		fontSize: 13,
-		fontWeight: '600',
-	},
-	dropdownItemTextSelected: {
-		color: '#7F4F24',
-		fontWeight: '800',
+		color: '#3A4D39',
+		marginBottom: 6,
+		letterSpacing: 0.1,
 	},
 	input: {
 		borderWidth: 1,
-		borderColor: '#D8C9BB',
-		borderRadius: 10,
-		paddingHorizontal: 12,
+		borderColor: '#D8DCF0',
+		borderRadius: 8,
 		paddingVertical: 10,
-		backgroundColor: '#FFF',
-		color: '#2B1E13',
-	},
-	multilineInput: {
-		minHeight: 88,
-	},
-	optionList: {
-		gap: 8,
-	},
-	optionInput: {
-		borderWidth: 1,
-		borderColor: '#D8C9BB',
-		borderRadius: 10,
-		paddingHorizontal: 12,
-		paddingVertical: 10,
-		backgroundColor: '#FFF',
-		color: '#2B1E13',
-	},
-	correctChoiceList: {
-		gap: 8,
-	},
-	correctChoiceButton: {
-		borderWidth: 1,
-		borderColor: '#D8C9BB',
-		borderRadius: 10,
-		paddingHorizontal: 12,
-		paddingVertical: 10,
-		backgroundColor: '#FFF',
-	},
-	correctChoiceButtonSelected: {
-		backgroundColor: '#7F4F24',
-		borderColor: '#7F4F24',
-	},
-	correctChoiceText: {
-		color: '#3B2A1A',
+		paddingHorizontal: 11,
 		fontSize: 13,
-		fontWeight: '600',
+		color: '#1A1A1A',
+		backgroundColor: '#F9FAFC',
+		fontWeight: '500',
+		marginBottom: 12,
 	},
-	correctChoiceTextSelected: {
-		color: '#FFF',
-		fontWeight: '800',
+	inputLarge: {
+		textAlignVertical: 'top',
+		minHeight: 80,
 	},
-	updateRow: {
-		marginTop: 14,
-		flexDirection: 'row',
-		flexWrap: 'wrap',
-		gap: 10,
-		alignItems: 'center',
+	addButton: {
+		backgroundColor: '#4F772D',
+		borderRadius: 8,
+		paddingVertical: 8,
+		paddingHorizontal: 12,
 	},
-	updateButton: {
-		backgroundColor: '#7F4F24',
-		borderRadius: 10,
-		paddingHorizontal: 18,
-		paddingVertical: 10,
-	},
-	updateButtonText: {
-		color: '#FFF',
-		fontSize: 13,
-		fontWeight: '800',
-	},
-	statusMessageInline: {
-		flex: 1,
+	addButtonText: {
+		color: '#FFFFFF',
 		fontSize: 13,
 		fontWeight: '700',
 	},
-	statusSuccess: {
-		color: '#2C6A35',
+	emptyText: {
+		fontSize: 13,
+		fontWeight: '500',
+		color: '#999999',
+		fontStyle: 'italic',
+		textAlign: 'center',
+		paddingVertical: 16,
 	},
-	statusError: {
-		color: '#A52323',
+	questionsList: {
+		gap: 6,
+		paddingVertical: 8,
+	},
+	questionTab: {
+		backgroundColor: '#F5F8F2',
+		borderRadius: 8,
+		borderWidth: 1,
+		borderColor: '#D8DCF0',
+		paddingVertical: 9,
+		paddingHorizontal: 14,
+		minWidth: 50,
+		alignItems: 'center',
+	},
+	questionTabActive: {
+		backgroundColor: '#4F772D',
+		borderColor: '#4F772D',
+	},
+	questionTabText: {
+		fontSize: 12,
+		fontWeight: '700',
+		color: '#3A4D39',
+	},
+	questionTabTextActive: {
+		color: '#FFFFFF',
+	},
+	typeSelector: {
+		flexDirection: 'row',
+		gap: 8,
+		marginBottom: 12,
+	},
+	typeOption: {
+		flex: 1,
+		borderWidth: 1,
+		borderColor: '#D8DCF0',
+		borderRadius: 8,
+		paddingVertical: 10,
+		paddingHorizontal: 10,
+		alignItems: 'center',
+		backgroundColor: '#F9FAFC',
+	},
+	typeOptionActive: {
+		backgroundColor: '#4F772D',
+		borderColor: '#4F772D',
+	},
+	typeOptionText: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#3A4D39',
+	},
+	typeOptionTextActive: {
+		color: '#FFFFFF',
+	},
+	optionRow: {
+		flexDirection: 'row',
+		gap: 8,
+		marginBottom: 8,
+		alignItems: 'center',
+	},
+	optionInput: {
+		flex: 1,
+	},
+	correctCheckbox: {
+		width: 40,
+		height: 40,
+		borderRadius: 6,
+		borderWidth: 1.5,
+		borderColor: '#D8DCF0',
+		backgroundColor: '#F9FAFC',
+		justifyContent: 'center',
+		alignItems: 'center',
+	},
+	correctCheckboxActive: {
+		backgroundColor: '#4F772D',
+		borderColor: '#4F772D',
+	},
+	correctCheckboxText: {
+		fontSize: 16,
+		fontWeight: '700',
+		color: '#FFFFFF',
+	},
+	helperText: {
+		fontSize: 11,
+		fontWeight: '500',
+		color: '#999999',
+		marginBottom: 12,
+		marginTop: 4,
+	},
+	deleteButton: {
+		backgroundColor: '#FFE8E8',
+		borderRadius: 6,
+		paddingVertical: 6,
+		paddingHorizontal: 10,
+	},
+	deleteButtonText: {
+		color: '#D63F3F',
+		fontSize: 12,
+		fontWeight: '700',
+	},
+	saveButton: {
+		backgroundColor: '#4F772D',
+		borderRadius: 10,
+		paddingVertical: 12,
+		paddingHorizontal: 16,
+		marginTop: 12,
+		alignItems: 'center',
+		justifyContent: 'center',
+		minHeight: 44,
+	},
+	saveButtonDisabled: {
+		opacity: 0.6,
+	},
+	saveButtonText: {
+		color: '#FFFFFF',
+		fontSize: 14,
+		fontWeight: '700',
+		letterSpacing: 0.2,
+	},
+	tabBar: {
+		flexDirection: 'row',
+		borderBottomWidth: 1,
+		borderBottomColor: '#E8EDE2',
+		backgroundColor: '#FFFFFF',
+	},
+	tab: {
+		flex: 1,
+		paddingVertical: 12,
+		paddingHorizontal: 16,
+		alignItems: 'center',
+		borderBottomWidth: 3,
+		borderBottomColor: 'transparent',
+	},
+	tabActive: {
+		borderBottomColor: '#4F772D',
+	},
+	tabText: {
+		fontSize: 13,
+		fontWeight: '600',
+		color: '#999999',
+	},
+	tabTextActive: {
+		color: '#4F772D',
+	},
+	assessmentItem: {
+		flexDirection: 'row',
+		paddingVertical: 12,
+		paddingHorizontal: 12,
+		borderRadius: 8,
+		marginBottomVertical: 8,
+		borderWidth: 1,
+		borderColor: '#E8EDE2',
+		backgroundColor: '#FBFCF8',
+	},
+	assessmentItemActive: {
+		backgroundColor: '#E8F5E0',
+		borderColor: '#4F772D',
+	},
+	assessmentItemTitle: {
+		fontSize: 14,
+		fontWeight: '700',
+		color: '#1A1A1A',
+		marginBottom: 4,
+	},
+	assessmentItemSubtitle: {
+		fontSize: 12,
+		fontWeight: '500',
+		color: '#666666',
+	},
+	attemptHeader: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		marginBottom: 10,
+	},
+	attemptName: {
+		fontSize: 14,
+		fontWeight: '700',
+		color: '#1A1A1A',
+		marginBottom: 2,
+	},
+	attemptEmail: {
+		fontSize: 12,
+		fontWeight: '500',
+		color: '#666666',
+	},
+	attemptBadge: {
+		width: 60,
+		height: 60,
+		borderRadius: 30,
+		justifyContent: 'center',
+		alignItems: 'center',
+		marginLeft: 12,
+	},
+	attemptBadgePass: {
+		backgroundColor: '#E8F5E0',
+	},
+	attemptBadgeFail: {
+		backgroundColor: '#FFE8E8',
+	},
+	attemptBadgeText: {
+		fontSize: 16,
+		fontWeight: '700',
+		color: '#1A1A1A',
+	},
+	attemptDetail: {
+		fontSize: 12,
+		fontWeight: '500',
+		color: '#666666',
+		marginBottom: 6,
+	},
+	resetButton: {
+		backgroundColor: '#FFF3E0',
+		borderRadius: 8,
+		paddingVertical: 10,
+		paddingHorizontal: 12,
+		marginTop: 10,
+		alignItems: 'center',
+	},
+	resetButtonDisabled: {
+		opacity: 0.6,
+	},
+	resetButtonText: {
+		color: '#FF9800',
+		fontSize: 12,
+		fontWeight: '700',
 	},
 });
 

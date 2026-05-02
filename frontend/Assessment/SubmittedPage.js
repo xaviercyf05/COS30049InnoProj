@@ -8,27 +8,61 @@ function SubmittedPage({ navigation, route }) {
 	const timeUsed = route?.params?.timeUsed || '00:00:00';
 	const answeredCount = route?.params?.answeredCount || 0;
 	const totalQuestions = route?.params?.totalQuestions || 0;
+	const score = route?.params?.score !== undefined ? route?.params?.score : null;
+	const passed = route?.params?.passed === true;
+	const feedbackMessage = route?.params?.feedbackMessage || '';
+
+	// Calculate score percentage if score was provided
+	const scorePercentage = score !== null ? Math.round((score / totalQuestions) * 100) : null;
 
 	return (
 		<SafeAreaView style={styles.container}>
 			<View style={styles.card}>
+				<View style={[styles.statusBadge, passed ? styles.statusBadgePass : styles.statusBadgeFail]}>
+					<Text style={[styles.statusText, passed ? styles.statusTextPass : styles.statusTextFail]}>
+						{passed ? '✓ Passed' : '✗ Failed'}
+					</Text>
+				</View>
+
 				<Text style={styles.title}>Assessment Submitted</Text>
-				<Text style={styles.message}>
-					{moduleOrder ? `Module ${moduleOrder}: ` : ''}{moduleName} has been submitted successfully.
+				<Text style={styles.subtitle}>
+					{moduleOrder ? `Module ${moduleOrder}: ` : ''}{moduleName}
 				</Text>
 
-				<View style={styles.timeBox}>
-					<Text style={styles.timeLabel}>Total Time Used</Text>
-					<Text style={styles.timeValue}>{timeUsed}</Text>
+				{scorePercentage !== null && (
+					<View style={styles.scoreBox}>
+						<Text style={styles.scoreLabel}>Your Score</Text>
+						<View style={styles.scoreDisplay}>
+							<Text style={styles.scoreValue}>{scorePercentage}%</Text>
+							<Text style={styles.scoreDetail}>
+								{Math.round(score)} / {totalQuestions}
+							</Text>
+						</View>
+					</View>
+				)}
+
+				<View style={styles.statsGrid}>
+					<View style={styles.statCard}>
+						<Text style={styles.statLabel}>Time Used</Text>
+						<Text style={styles.statValue}>{timeUsed}</Text>
+					</View>
+					<View style={styles.statCard}>
+						<Text style={styles.statLabel}>Answered</Text>
+						<Text style={styles.statValue}>{answeredCount}/{totalQuestions}</Text>
+					</View>
 				</View>
 
-				<View style={styles.summaryRow}>
-					<Text style={styles.summaryLabel}>Answered</Text>
-					<Text style={styles.summaryValue}>{answeredCount}/{totalQuestions}</Text>
-				</View>
+				{feedbackMessage && (
+					<View style={styles.feedbackBox}>
+						<Text style={styles.feedbackTitle}>Feedback</Text>
+						<Text style={styles.feedbackText}>{feedbackMessage}</Text>
+					</View>
+				)}
 
 				<Text style={styles.notice}>
-					Your result needs to be verified by admin. After verification, you can receive your badge.
+					{passed
+						? 'Congratulations! You passed the assessment. Your progress has been recorded.'
+						: 'You did not pass this assessment. Please review the material and try again.'}
 				</Text>
 
 				<TouchableOpacity
@@ -36,7 +70,7 @@ function SubmittedPage({ navigation, route }) {
 					onPress={() => navigation.navigate('Home')}
 					activeOpacity={0.9}
 				>
-					<Text style={styles.buttonText}>Back to Modules</Text>
+					<Text style={styles.buttonText}>Back to Dashboard</Text>
 				</TouchableOpacity>
 			</View>
 		</SafeAreaView>
@@ -46,7 +80,7 @@ function SubmittedPage({ navigation, route }) {
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: '#F6F8F2',
+		backgroundColor: '#FBFCF8',
 		justifyContent: 'center',
 		alignItems: 'center',
 		paddingHorizontal: 24,
@@ -55,81 +89,157 @@ const styles = StyleSheet.create({
 		width: '100%',
 		maxWidth: 520,
 		backgroundColor: '#FFFFFF',
-		borderRadius: 20,
+		borderRadius: 16,
 		borderWidth: 1,
-		borderColor: '#DFE6D4',
-		padding: 22,
+		borderColor: '#E8EDE2',
+		padding: 20,
+		shadowColor: '#000000',
+		shadowOpacity: 0.08,
+		shadowRadius: 12,
+		elevation: 4,
 	},
-	title: {
-		fontSize: 28,
-		fontWeight: '800',
-		color: '#2B331E',
-	},
-	message: {
-		marginTop: 10,
-		fontSize: 15,
-		color: '#3E4A2D',
-		lineHeight: 22,
-		fontWeight: '500',
-	},
-	timeBox: {
-		marginTop: 16,
-		backgroundColor: '#EFF4E5',
-		borderRadius: 12,
-		paddingVertical: 12,
+	statusBadge: {
+		alignSelf: 'flex-start',
 		paddingHorizontal: 14,
+		paddingVertical: 8,
+		borderRadius: 999,
+		marginBottom: 16,
 	},
-	timeLabel: {
-		color: '#526342',
+	statusBadgePass: {
+		backgroundColor: '#E8F5E0',
+	},
+	statusBadgeFail: {
+		backgroundColor: '#FFE8E8',
+	},
+	statusText: {
 		fontSize: 13,
 		fontWeight: '700',
-	},
-	timeValue: {
-		marginTop: 4,
-		color: '#2E4B1D',
-		fontSize: 20,
-		fontWeight: '800',
 		letterSpacing: 0.3,
 	},
-	summaryRow: {
-		marginTop: 14,
-		flexDirection: 'row',
-		justifyContent: 'space-between',
-		alignItems: 'center',
-		backgroundColor: '#F7FAF2',
+	statusTextPass: {
+		color: '#4F772D',
+	},
+	statusTextFail: {
+		color: '#D63F3F',
+	},
+	title: {
+		fontSize: 26,
+		fontWeight: '800',
+		color: '#1A1A1A',
+		letterSpacing: -0.3,
+	},
+	subtitle: {
+		marginTop: 8,
+		fontSize: 14,
+		color: '#666666',
+		fontWeight: '500',
+		lineHeight: 20,
+	},
+	scoreBox: {
+		marginTop: 18,
+		backgroundColor: '#3A4D39',
 		borderRadius: 12,
-		paddingVertical: 12,
-		paddingHorizontal: 14,
+		paddingVertical: 18,
+		paddingHorizontal: 16,
 	},
-	summaryLabel: {
-		color: '#526342',
-		fontSize: 13,
+	scoreLabel: {
+		color: '#DFE8D8',
+		fontSize: 12,
 		fontWeight: '700',
+		letterSpacing: 0.2,
 	},
-	summaryValue: {
-		color: '#2E4B1D',
+	scoreDisplay: {
+		marginTop: 10,
+		flexDirection: 'row',
+		alignItems: 'baseline',
+		gap: 8,
+	},
+	scoreValue: {
+		color: '#FFFFFF',
+		fontSize: 36,
+		fontWeight: '800',
+		letterSpacing: -0.5,
+	},
+	scoreDetail: {
+		color: '#B8D4B0',
+		fontSize: 13,
+		fontWeight: '600',
+	},
+	statsGrid: {
+		marginTop: 16,
+		flexDirection: 'row',
+		gap: 12,
+	},
+	statCard: {
+		flex: 1,
+		backgroundColor: '#F5F8F2',
+		borderRadius: 10,
+		borderWidth: 1,
+		borderColor: '#E0E6D8',
+		paddingVertical: 12,
+		paddingHorizontal: 12,
+	},
+	statLabel: {
+		fontSize: 11,
+		fontWeight: '700',
+		color: '#5A6B51',
+		letterSpacing: 0.2,
+	},
+	statValue: {
+		marginTop: 6,
 		fontSize: 16,
 		fontWeight: '800',
+		color: '#2E4B1D',
+	},
+	feedbackBox: {
+		marginTop: 16,
+		backgroundColor: '#FEF8F0',
+		borderRadius: 10,
+		borderLeftWidth: 4,
+		borderLeftColor: '#FFB84D',
+		paddingVertical: 12,
+		paddingHorizontal: 12,
+	},
+	feedbackTitle: {
+		fontSize: 12,
+		fontWeight: '700',
+		color: '#8B5A00',
+		marginBottom: 6,
+	},
+	feedbackText: {
+		fontSize: 13,
+		fontWeight: '500',
+		color: '#6B4900',
+		lineHeight: 19,
 	},
 	notice: {
 		marginTop: 16,
-		fontSize: 14,
-		color: '#485A39',
-		lineHeight: 21,
+		fontSize: 13,
+		color: '#3A4D39',
+		lineHeight: 20,
 		fontWeight: '500',
+		backgroundColor: '#EFF5E9',
+		borderRadius: 8,
+		paddingVertical: 10,
+		paddingHorizontal: 12,
 	},
 	button: {
-		marginTop: 20,
-		alignSelf: 'flex-start',
-		backgroundColor: '#5F7446',
+		marginTop: 18,
+		backgroundColor: '#4F772D',
 		borderRadius: 10,
-		paddingVertical: 10,
-		paddingHorizontal: 16,
+		paddingVertical: 12,
+		paddingHorizontal: 20,
+		alignItems: 'center',
+		shadowColor: '#000000',
+		shadowOpacity: 0.1,
+		shadowRadius: 4,
+		elevation: 2,
 	},
 	buttonText: {
-		color: '#F7FAF3',
+		color: '#FFFFFF',
 		fontSize: 14,
 		fontWeight: '700',
+		letterSpacing: 0.2,
 	},
 });
 

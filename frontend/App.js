@@ -249,6 +249,12 @@ function HomeScreen({ navigation }) {
 	const openAdminFeature = (title, description) => {
 		setMenuVisible(false);
 		setNotificationVisible(false);
+
+		if (title === 'Assessments') {
+			navigation.navigate('AdminAssessment');
+			return;
+		}
+
 		navigation.navigate('AdminFeature', { title, description });
 	};
 

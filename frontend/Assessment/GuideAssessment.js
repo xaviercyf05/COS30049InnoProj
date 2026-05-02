@@ -1,5 +1,6 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
+	ActivityIndicator,
 	Alert,
 	ScrollView,
 	StyleSheet,
@@ -11,9 +12,11 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import {
-	assessmentQuestionBank,
-	defaultAssessmentDurationSeconds,
-} from './questionBank.js';
+	checkAttemptEligibility,
+	fetchAssessmentDetails,
+	fetchAssessmentQuestions,
+	submitAssessmentAttempt,
+} from './assessmentApi.js';
 
 const formatDuration = (seconds) => {
 	const safeSeconds = Math.max(0, seconds);
@@ -24,28 +27,78 @@ const formatDuration = (seconds) => {
 };
 
 function GuideAssessment({ navigation, route }) {
-	const moduleName = route?.params?.moduleName || 'General Module';
+	const moduleName = route?.params?.moduleName || 'Module';
+	const moduleId = route?.params?.moduleId;
 	const moduleOrder = route?.params?.moduleOrder;
 	const totalModules = route?.params?.totalModules;
-	const sectionCount = route?.params?.sectionCount || 0;
 	const moduleProgressPercent = Number(route?.params?.moduleProgressPercent || 0);
 
+	// State management
+	const [questions, setQuestions] = useState([]);
 	const [answers, setAnswers] = useState({});
-	const [timeLeft, setTimeLeft] = useState(defaultAssessmentDurationSeconds);
+	const [timeLeft, setTimeLeft] = useState(0);
+	const [loading, setLoading] = useState(true);
+	const [submitting, setSubmitting] = useState(false);
 	const [timeUpNotified, setTimeUpNotified] = useState(false);
 	const [warningMessage, setWarningMessage] = useState('');
+	const [durationSeconds, setDurationSeconds] = useState(7200); // 2 hours default
+	const [assessmentId, setAssessmentId] = useState(null);
+	const [error, setError] = useState('');
 
 	const answeredCount = useMemo(
 		() =>
-			assessmentQuestionBank.filter((question) => {
+			questions.filter((question) => {
 				const answer = answers[question.id];
 				return typeof answer === 'string' && answer.trim().length > 0;
 			}).length,
-		[answers]
+		[answers, questions]
 	);
 
 	const formattedTime = useMemo(() => formatDuration(timeLeft), [timeLeft]);
 
+	// Load assessment questions and details
+	const loadAssessment = useCallback(async () => {
+		setLoading(true);
+		setError('');
+
+		try {
+			if (!moduleId) {
+				throw new Error('Module ID is required');
+			}
+
+			// Fetch questions
+			const { error: questionsError, questions: fetchedQuestions } =
+				await fetchAssessmentQuestions(moduleId);
+
+			if (questionsError) {
+				throw new Error(questionsError);
+			}
+
+			// Fetch assessment details
+			const detailsKey = `assessment_${moduleId}`;
+			const { assessment } = await fetchAssessmentDetails(detailsKey);
+
+			if (assessment) {
+				setDurationSeconds(assessment.durationSeconds);
+				setAssessmentId(assessment.id);
+			}
+
+			setQuestions(fetchedQuestions);
+			setTimeLeft(durationSeconds);
+			setAnswers({});
+		} catch (err) {
+			setError(err.message || 'Failed to load assessment');
+			Alert.alert('Error', err.message || 'Could not load assessment. Please try again.');
+		} finally {
+			setLoading(false);
+		}
+	}, [moduleId, durationSeconds]);
+
+	useEffect(() => {
+		loadAssessment();
+	}, [loadAssessment]);
+
+	// Timer countdown
 	useEffect(() => {
 		if (timeLeft <= 0) {
 			return;
@@ -58,6 +111,7 @@ function GuideAssessment({ navigation, route }) {
 		return () => clearInterval(timer);
 	}, [timeLeft]);
 
+	// Time-up notification
 	useEffect(() => {
 		if (timeLeft === 0 && !timeUpNotified) {
 			Alert.alert('Time is up', 'The assessment timer has ended. Please submit your answers.');
@@ -75,8 +129,8 @@ function GuideAssessment({ navigation, route }) {
 		setAnswers((previousAnswers) => ({ ...previousAnswers, [questionId]: value }));
 	};
 
-	const onSubmit = () => {
-		const unansweredCount = assessmentQuestionBank.length - answeredCount;
+	const onSubmit = async () => {
+		const unansweredCount = questions.length - answeredCount;
 
 		if (unansweredCount > 0) {
 			const message = `You still have ${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''}. Please answer all questions before submitting.`;
@@ -85,18 +139,63 @@ function GuideAssessment({ navigation, route }) {
 			return;
 		}
 
+		setSubmitting(true);
 		setWarningMessage('');
-		const timeUsed = formatDuration(defaultAssessmentDurationSeconds - timeLeft);
-		navigation.navigate('SubmittedPage', {
-			moduleName,
-			moduleOrder,
-			timeUsed,
-			answeredCount,
-			totalQuestions: assessmentQuestionBank.length,
-		});
+
+		try {
+			const timeUsedSeconds = durationSeconds - timeLeft;
+			const { error: submitError, score, passed, feedbackMessage } =
+				await submitAssessmentAttempt(assessmentId || moduleId, answers, timeUsedSeconds);
+
+			if (submitError) {
+				Alert.alert('Submission Error', submitError);
+				return;
+			}
+
+			const timeUsed = formatDuration(timeUsedSeconds);
+			navigation.navigate('SubmittedPage', {
+				moduleName,
+				moduleOrder,
+				timeUsed,
+				answeredCount,
+				totalQuestions: questions.length,
+				score,
+				passed,
+				feedbackMessage,
+				moduleId,
+			});
+		} catch (err) {
+			Alert.alert('Error', 'Failed to submit assessment. Please try again.');
+		} finally {
+			setSubmitting(false);
+		}
 	};
 
-	return (
+	if (loading) {
+		return (
+			<SafeAreaView style={styles.container}>
+				<View style={styles.centerContainer}>
+					<ActivityIndicator size="large" color="#2E6B4D" />
+					<Text style={styles.loadingText}>Loading assessment...</Text>
+				</View>
+			</SafeAreaView>
+		);
+	}
+
+	if (error) {
+		return (
+			<SafeAreaView style={styles.container}>
+				<View style={styles.centerContainer}>
+					<Text style={styles.errorTitle}>Assessment Error</Text>
+					<Text style={styles.errorText}>{error}</Text>
+					<TouchableOpacity style={styles.retryButton} onPress={loadAssessment}>
+						<Text style={styles.retryButtonText}>Try Again</Text>
+					</TouchableOpacity>
+				</View>
+			</SafeAreaView>
+		);
+	}
+
 		<SafeAreaView style={styles.container}>
 			<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
 				<View style={styles.stickyHeaderWrap}>
@@ -113,15 +212,12 @@ function GuideAssessment({ navigation, route }) {
 						</View>
 						<Text style={styles.headerTitle}>Assessment</Text>
 						<Text style={styles.headerSubtitle}>{moduleName}</Text>
-						<Text style={styles.headerSubtitle}>Complete the module sections in order, then submit this assessment.</Text>
-						<Text style={styles.headerMeta}>Sections reviewed: {sectionCount}</Text>
-						<Text style={styles.headerMeta}>Module progress: {moduleProgressPercent}%</Text>
-						<Text style={styles.progressText}>Answered: {answeredCount}/{assessmentQuestionBank.length}</Text>
+						<Text style={styles.progressText}>Answered: {answeredCount}/{questions.length}</Text>
 						<Text style={styles.timerText}>Time Left: {formattedTime}</Text>
 					</View>
 				</View>
 
-				{assessmentQuestionBank.map((item, index) => (
+				{questions.map((item, index) => (
 					<View key={item.id} style={styles.questionCard}>
 						<View style={styles.questionTopRow}>
 							<Text style={styles.questionNumber}>Q{index + 1}</Text>
@@ -160,96 +256,130 @@ function GuideAssessment({ navigation, route }) {
 
 			<View style={styles.footerBar}>
 				{warningMessage ? <Text style={styles.warningText}>{warningMessage}</Text> : null}
-				<TouchableOpacity style={styles.submitButton} onPress={onSubmit} activeOpacity={0.9}>
-					<Text style={styles.submitButtonText}>Submit</Text>
+				<TouchableOpacity style={[styles.submitButton, submitting && styles.submitButtonDisabled]} onPress={onSubmit} disabled={submitting} activeOpacity={0.9}>
+					{submitting ? (
+						<ActivityIndicator color="#FFFFFF" size="small" />
+					) : (
+						<Text style={styles.submitButtonText}>Submit Assessment</Text>
+					)}
 				</TouchableOpacity>
 			</View>
 		</SafeAreaView>
-	);
 }
 
 const styles = StyleSheet.create({
 	container: {
 		flex: 1,
-		backgroundColor: '#F6F8F2',
+		backgroundColor: '#FBFCF8',
+	},
+	centerContainer: {
+		flex: 1,
+		justifyContent: 'center',
+		alignItems: 'center',
+		paddingHorizontal: 24,
+	},
+	loadingText: {
+		marginTop: 12,
+		fontSize: 16,
+		color: '#3A4D39',
+		fontWeight: '600',
+	},
+	errorTitle: {
+		fontSize: 20,
+		fontWeight: '700',
+		color: '#D63F3F',
+		marginBottom: 8,
+	},
+	errorText: {
+		fontSize: 14,
+		color: '#5A5A5A',
+		marginBottom: 16,
+		textAlign: 'center',
+		lineHeight: 20,
+	},
+	retryButton: {
+		backgroundColor: '#4F772D',
+		paddingVertical: 10,
+		paddingHorizontal: 24,
+		borderRadius: 8,
+	},
+	retryButtonText: {
+		color: '#FFFFFF',
+		fontSize: 14,
+		fontWeight: '600',
 	},
 	content: {
 		paddingTop: 16,
 		paddingBottom: 110,
+		paddingHorizontal: 24,
 	},
 	stickyHeaderWrap: {
-		backgroundColor: '#F6F8F2',
+		backgroundColor: '#FBFCF8',
 		paddingBottom: 12,
 		zIndex: 10,
+		marginHorizontal: -24,
+		paddingHorizontal: 24,
 	},
 	headerCard: {
-		backgroundColor: '#414833',
-		borderRadius: 18,
-		padding: 18,
-		marginHorizontal: 30,
-		position: 'relative',
+		backgroundColor: '#3A4D39',
+		borderRadius: 16,
+		padding: 16,
+		marginBottom: 8,
 	},
 	badgeRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
-		justifyContent: 'space-between',
-		gap: 12,
+		gap: 8,
 	},
 	gradeBadge: {
-		backgroundColor: '#A4AC86',
-		paddingHorizontal: 10,
+		backgroundColor: '#6F8A5A',
+		paddingHorizontal: 12,
 		paddingVertical: 6,
 		borderRadius: 999,
 	},
 	gradeBadgeText: {
-		color: '#243018',
-		fontSize: 13,
-		fontWeight: '800',
+		color: '#FFFFFF',
+		fontSize: 12,
+		fontWeight: '700',
 		letterSpacing: 0.2,
 	},
 	badgeMeta: {
-		color: '#E6EDD7',
-		fontSize: 12,
-		fontWeight: '700',
+		color: '#E8F0E3',
+		fontSize: 11,
+		fontWeight: '600',
 	},
 	headerTitle: {
-		marginTop: 14,
-		color: '#F5F8F0',
-		fontSize: 28,
+		marginTop: 12,
+		color: '#FFFFFF',
+		fontSize: 24,
 		fontWeight: '800',
+		letterSpacing: -0.3,
 	},
 	headerSubtitle: {
 		marginTop: 6,
-		color: '#DCE7D2',
-		fontSize: 14,
+		color: '#DFE8D8',
+		fontSize: 13,
 		fontWeight: '500',
-		lineHeight: 20,
-	},
-	headerMeta: {
-		marginTop: 6,
-		color: '#BED0B1',
-		fontSize: 12,
-		fontWeight: '700',
+		lineHeight: 18,
 	},
 	progressText: {
 		marginTop: 10,
-		color: '#A4C3A2',
+		color: '#B8D4B0',
 		fontSize: 13,
 		fontWeight: '700',
 	},
 	timerText: {
 		marginTop: 8,
-		color: '#F1E8A3',
+		color: '#FFE5A5',
 		fontSize: 14,
 		fontWeight: '800',
 	},
 	questionCard: {
 		backgroundColor: '#FFFFFF',
-		borderRadius: 14,
+		borderRadius: 12,
 		borderWidth: 1,
-		borderColor: '#E0E6D8',
+		borderColor: '#E8EDE2',
 		padding: 14,
-		marginHorizontal: 70,
 		marginBottom: 12,
 	},
 	questionTopRow: {
@@ -259,35 +389,35 @@ const styles = StyleSheet.create({
 		marginBottom: 8,
 	},
 	questionNumber: {
-		fontSize: 14,
-		fontWeight: '800',
-		color: '#4A513B',
+		fontSize: 13,
+		fontWeight: '700',
+		color: '#3A4D39',
 	},
 	topicTag: {
 		fontSize: 11,
-		fontWeight: '700',
-		color: '#5F6B49',
-		backgroundColor: '#EDF2E3',
+		fontWeight: '600',
+		color: '#4F772D',
+		backgroundColor: '#EDF5E7',
 		borderRadius: 999,
-		paddingVertical: 5,
+		paddingVertical: 4,
 		paddingHorizontal: 10,
 	},
 	questionText: {
-		fontSize: 15,
-		color: '#1F2914',
-		lineHeight: 21,
+		fontSize: 14,
+		color: '#1A1A1A',
+		lineHeight: 20,
 		fontWeight: '600',
 	},
 	optionList: {
-		marginTop: 10,
+		marginTop: 12,
 		gap: 8,
 	},
 	optionButton: {
-		borderWidth: 1,
-		borderColor: '#D6DECA',
-		backgroundColor: '#F9FBF6',
+		borderWidth: 1.5,
+		borderColor: '#D8DCF0',
+		backgroundColor: '#F9FAFC',
 		borderRadius: 10,
-		paddingVertical: 10,
+		paddingVertical: 11,
 		paddingHorizontal: 12,
 	},
 	optionButtonSelected: {
@@ -296,57 +426,66 @@ const styles = StyleSheet.create({
 	},
 	optionText: {
 		color: '#364225',
-		fontSize: 14,
+		fontSize: 13,
 		fontWeight: '500',
 	},
 	optionTextSelected: {
 		color: '#FFFFFF',
 		fontWeight: '700',
 	},
+	fillInput: {
+		marginTop: 12,
+		borderWidth: 1.5,
+		borderColor: '#D8DCF0',
+		borderRadius: 10,
+		paddingHorizontal: 12,
+		paddingVertical: 10,
+		color: '#1A1A1A',
+		backgroundColor: '#F9FAFC',
+		fontSize: 13,
+		fontWeight: '500',
+	},
 	footerBar: {
 		position: 'absolute',
 		left: 0,
 		right: 0,
 		bottom: 0,
-		backgroundColor: '#F6F8F2',
-		paddingTop: 10,
+		backgroundColor: '#FBFCF8',
+		borderTopWidth: 1,
+		borderTopColor: '#E8EDE2',
+		paddingTop: 12,
 		paddingBottom: 16,
 		paddingHorizontal: 24,
 	},
 	warningText: {
 		alignSelf: 'center',
-		marginBottom: 8,
-		color: '#A52323',
-		fontSize: 13,
+		marginBottom: 10,
+		color: '#D63F3F',
+		fontSize: 12,
 		fontWeight: '700',
 		textAlign: 'center',
 	},
-	fillInput: {
-		marginTop: 10,
-		borderWidth: 1,
-		borderColor: '#D4DDC8',
-		borderRadius: 10,
-		paddingHorizontal: 12,
-		paddingVertical: 10,
-		color: '#1C2611',
-		backgroundColor: '#FBFCF9',
-		fontSize: 14,
-	},
 	submitButton: {
-		alignSelf: 'center',
-		backgroundColor: '#656D4A',
-		borderRadius: 12,
+		backgroundColor: '#4F772D',
+		borderRadius: 10,
 		alignItems: 'center',
 		justifyContent: 'center',
-		paddingVertical: 11,
-		paddingHorizontal: 28,
-		minWidth: 140,
+		paddingVertical: 12,
+		paddingHorizontal: 24,
+		minWidth: 160,
+		shadowColor: '#000000',
+		shadowOpacity: 0.1,
+		shadowRadius: 4,
+		elevation: 3,
+	},
+	submitButtonDisabled: {
+		opacity: 0.6,
 	},
 	submitButtonText: {
-		color: '#F5F8F0',
-		fontSize: 16,
-		fontWeight: '800',
-		letterSpacing: 0.3,
+		color: '#FFFFFF',
+		fontSize: 15,
+		fontWeight: '700',
+		letterSpacing: 0.2,
 	},
 });
 

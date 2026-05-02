@@ -8,6 +8,7 @@ const adminController = require("../../controllers/adminManagementController");
 const registrationController = require("../../controllers/registrationController");
 const moduleAdminController = require("../../controllers/moduleAdminController");
 const badgeController = require("../../controllers/badgeController");
+const assessmentController = require("../../controllers/assessmentController");
 
 const router = express.Router();
 
@@ -230,6 +231,99 @@ router.get(
  * GET /admin/modules - List module library for admin management
  */
 router.get("/modules", asyncHandler(moduleAdminController.listModules));
+
+/**
+ * GET /admin/assessments - List assessments for admin management
+ */
+router.get("/assessments", asyncHandler(assessmentController.listAssessments));
+
+/**
+ * POST /admin/assessments - Create assessment
+ */
+router.post("/assessments", asyncHandler(assessmentController.createAssessment));
+
+/**
+ * PUT /admin/assessments/:assessmentId/settings - Update assessment settings
+ */
+router.put(
+  "/assessments/:assessmentId/settings",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.updateAssessmentSettings)
+);
+
+/**
+ * DELETE /admin/assessments/:assessmentId - Delete assessment
+ */
+router.delete(
+  "/assessments/:assessmentId",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.deleteAssessment)
+);
+
+/**
+ * GET /admin/assessments/:assessmentId/questions - Get questions with answers for admin editing
+ */
+router.get(
+  "/assessments/:assessmentId/questions",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.getAssessmentQuestionsAdmin)
+);
+
+/**
+ * POST /admin/assessments/:assessmentId/questions - Add question
+ */
+router.post(
+  "/assessments/:assessmentId/questions",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.addAssessmentQuestionAdmin)
+);
+
+/**
+ * PUT /admin/assessments/questions/:questionId - Update question
+ */
+router.put(
+  "/assessments/questions/:questionId",
+  [param("questionId").isInt().withMessage("Invalid question ID.")],
+  validate,
+  asyncHandler(assessmentController.updateAssessmentQuestionAdmin)
+);
+
+/**
+ * DELETE /admin/assessments/questions/:questionId - Delete question
+ */
+router.delete(
+  "/assessments/questions/:questionId",
+  [param("questionId").isInt().withMessage("Invalid question ID.")],
+  validate,
+  asyncHandler(assessmentController.deleteAssessmentQuestionAdmin)
+);
+
+/**
+ * GET /admin/assessments/:assessmentId/attempts - List assessment attempts
+ */
+router.get(
+  "/assessments/:assessmentId/attempts",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.getAssessmentAttemptsAdmin)
+);
+
+/**
+ * POST /admin/assessments/:assessmentId/attempts/:attemptId/reset - Reset attempt
+ */
+router.post(
+  "/assessments/:assessmentId/attempts/:attemptId/reset",
+  [
+    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
+    param("attemptId").isInt().withMessage("Invalid attempt ID."),
+  ],
+  validate,
+  asyncHandler(assessmentController.resetAssessmentAttemptAdmin)
+);
 
 /**
  * GET /admin/modules/:moduleId - Get module details for editing

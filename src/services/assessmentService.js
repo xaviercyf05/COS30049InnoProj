@@ -7,22 +7,39 @@ const { query } = require("../config/db");
 const ATTEMPT_LIMIT = 3;
 const COOLDOWN_HOURS = 1;
 
+function normalizeQuestionType(questionType) {
+  const normalized = String(questionType || '').toLowerCase();
+
+  if (['fill', 'fill_blank', 'fill-in-blank', 'fillinblank', 'short_answer'].includes(normalized)) {
+    return 'fill';
+  }
+
+  return 'mcq';
+}
+
+async function getAssessmentRow(identifier, lookupBy = 'module') {
+  const column = lookupBy === 'assessment' ? 'AssessmentID' : 'ModuleID';
+  const [assessments] = await query(
+    `SELECT AssessmentID, ModuleID, Title, PassingScore, AttemptLimit
+     FROM Assessments
+     WHERE ${column} = ?
+     LIMIT 1`,
+    [identifier]
+  );
+
+  if (assessments.length === 0) {
+    throw new Error('Assessment not found');
+  }
+
+  return assessments[0];
+}
+
 /**
  * Get all assessment questions for a module
  */
-async function getAssessmentQuestions(moduleId) {
+async function getAssessmentQuestions(identifier, includeCorrectAnswer = false, lookupBy = 'module') {
   try {
-    // Get assessment ID for module
-    const [assessments] = await query(
-      "SELECT AssessmentID, Title, PassingScore FROM Assessments WHERE ModuleID = ? LIMIT 1",
-      [moduleId]
-    );
-
-    if (assessments.length === 0) {
-      throw new Error("Assessment not found for this module");
-    }
-
-    const assessment = assessments[0];
+    const assessment = await getAssessmentRow(identifier, lookupBy);
 
     // Get all questions and options
     const [questions] = await query(
@@ -43,23 +60,35 @@ async function getAssessmentQuestions(moduleId) {
         [q.QuestionID]
       );
 
+      const correctOptionIndex = options.findIndex((opt) => Number(opt.IsCorrect) === 1);
+      const correctOption = options[correctOptionIndex] || null;
+      const questionType = normalizeQuestionType(q.QuestionType);
+
       questionsWithOptions.push({
         questionId: q.QuestionID,
         questionText: q.QuestionText,
-        questionType: q.QuestionType,
+        questionType,
         options: options.map((opt) => ({
           optionId: opt.OptionID,
           text: opt.OptionText,
-          // Don't expose isCorrect to client
         })),
+        ...(includeCorrectAnswer
+          ? {
+              correctAnswer:
+                questionType === 'mcq'
+                  ? correctOptionIndex
+                  : correctOption?.OptionText || '',
+            }
+          : {}),
       });
     }
 
     return {
       assessmentId: assessment.AssessmentID,
-      moduleId,
+      moduleId: assessment.ModuleID,
       title: assessment.Title,
       passingScore: assessment.PassingScore,
+      attemptLimit: assessment.AttemptLimit,
       totalQuestions: questionsWithOptions.length,
       questions: questionsWithOptions,
     };
@@ -223,9 +252,236 @@ async function getUserAssessmentAttempts(userId, moduleId) {
   }
 }
 
+function normalizeCorrectAnswerIndex(options, correctAnswer) {
+  if (typeof correctAnswer === 'number' && Number.isInteger(correctAnswer)) {
+    return Math.max(0, Math.min(correctAnswer, Math.max(0, options.length - 1)));
+  }
+
+  if (typeof correctAnswer === 'string') {
+    const numericAnswer = Number.parseInt(correctAnswer, 10);
+    if (!Number.isNaN(numericAnswer)) {
+      return Math.max(0, Math.min(numericAnswer, Math.max(0, options.length - 1)));
+    }
+
+    const matchedIndex = options.findIndex(
+      (option) => String(option).trim().toLowerCase() === String(correctAnswer).trim().toLowerCase()
+    );
+
+    if (matchedIndex >= 0) {
+      return matchedIndex;
+    }
+  }
+
+  return 0;
+}
+
+async function listAssessments(moduleId = null) {
+  const sql = moduleId
+    ? `SELECT a.AssessmentID, a.ModuleID, a.Title, a.PassingScore, a.AttemptLimit,
+              COUNT(q.QuestionID) AS QuestionCount
+       FROM Assessments a
+       LEFT JOIN AssessmentQuestions q ON q.AssessmentID = a.AssessmentID
+       WHERE a.ModuleID = ?
+       GROUP BY a.AssessmentID, a.ModuleID, a.Title, a.PassingScore, a.AttemptLimit
+       ORDER BY a.AssessmentID DESC`
+    : `SELECT a.AssessmentID, a.ModuleID, a.Title, a.PassingScore, a.AttemptLimit,
+              COUNT(q.QuestionID) AS QuestionCount
+       FROM Assessments a
+       LEFT JOIN AssessmentQuestions q ON q.AssessmentID = a.AssessmentID
+       GROUP BY a.AssessmentID, a.ModuleID, a.Title, a.PassingScore, a.AttemptLimit
+       ORDER BY a.AssessmentID DESC`;
+
+  const params = moduleId ? [moduleId] : [];
+  const [rows] = await query(sql, params);
+
+  return rows.map((assessment) => ({
+    id: assessment.AssessmentID,
+    moduleId: assessment.ModuleID,
+    title: assessment.Title,
+    passingScore: assessment.PassingScore,
+    attemptLimit: assessment.AttemptLimit,
+    durationMinutes: 120,
+    questionCount: Number(assessment.QuestionCount || 0),
+  }));
+}
+
+async function createAssessment(moduleId, title, passingScore, durationMinutes, attemptLimit = 3) {
+  const [result] = await query(
+    `INSERT INTO Assessments (ModuleID, Title, PassingScore, AttemptLimit)
+     VALUES (?, ?, ?, ?)`,
+    [moduleId, title, passingScore, attemptLimit]
+  );
+
+  return {
+    assessmentId: result.insertId,
+    moduleId,
+    title,
+    passingScore,
+    durationMinutes: durationMinutes || 120,
+    attemptLimit,
+  };
+}
+
+async function updateAssessmentSettings(assessmentId, passingScore, durationMinutes, attemptLimit) {
+  const [result] = await query(
+    `UPDATE Assessments
+     SET PassingScore = ?, AttemptLimit = ?
+     WHERE AssessmentID = ?`,
+    [passingScore, attemptLimit, assessmentId]
+  );
+
+  if (result.affectedRows === 0) {
+    throw new Error('Assessment not found');
+  }
+
+  return { assessmentId, passingScore, durationMinutes: durationMinutes || 120, attemptLimit };
+}
+
+async function deleteAssessment(assessmentId) {
+  const [result] = await query('DELETE FROM Assessments WHERE AssessmentID = ?', [assessmentId]);
+
+  if (result.affectedRows === 0) {
+    throw new Error('Assessment not found');
+  }
+
+  return { assessmentId };
+}
+
+async function addAssessmentQuestion(assessmentId, questionText, questionType, options, correctAnswer) {
+  const normalizedType = normalizeQuestionType(questionType);
+  const [questionResult] = await query(
+    `INSERT INTO AssessmentQuestions (AssessmentID, QuestionText, QuestionType)
+     VALUES (?, ?, ?)`,
+    [assessmentId, questionText, normalizedType]
+  );
+
+  const questionId = questionResult.insertId;
+  const optionList = Array.isArray(options) ? options : [];
+  const correctIndex = normalizedType === 'mcq'
+    ? normalizeCorrectAnswerIndex(optionList, correctAnswer)
+    : 0;
+
+  if (optionList.length > 0) {
+    for (let index = 0; index < optionList.length; index += 1) {
+      await query(
+        `INSERT INTO AssessmentOptions (QuestionID, OptionText, IsCorrect)
+         VALUES (?, ?, ?)`,
+        [questionId, optionList[index], normalizedType === 'mcq' ? (index === correctIndex ? 1 : 0) : 0]
+      );
+    }
+  } else if (normalizedType === 'fill') {
+    await query(
+      `INSERT INTO AssessmentOptions (QuestionID, OptionText, IsCorrect)
+       VALUES (?, ?, 1)`,
+      [questionId, String(correctAnswer || '')]
+    );
+  }
+
+  return { questionId };
+}
+
+async function updateAssessmentQuestion(questionId, questionText, questionType, options, correctAnswer) {
+  const normalizedType = normalizeQuestionType(questionType);
+  const [result] = await query(
+    `UPDATE AssessmentQuestions
+     SET QuestionText = ?, QuestionType = ?
+     WHERE QuestionID = ?`,
+    [questionText, normalizedType, questionId]
+  );
+
+  if (result.affectedRows === 0) {
+    throw new Error('Question not found');
+  }
+
+  await query('DELETE FROM AssessmentOptions WHERE QuestionID = ?', [questionId]);
+
+  const optionList = Array.isArray(options) ? options : [];
+  const correctIndex = normalizedType === 'mcq'
+    ? normalizeCorrectAnswerIndex(optionList, correctAnswer)
+    : 0;
+
+  if (optionList.length > 0) {
+    for (let index = 0; index < optionList.length; index += 1) {
+      await query(
+        `INSERT INTO AssessmentOptions (QuestionID, OptionText, IsCorrect)
+         VALUES (?, ?, ?)`,
+        [questionId, optionList[index], normalizedType === 'mcq' ? (index === correctIndex ? 1 : 0) : 0]
+      );
+    }
+  } else if (normalizedType === 'fill') {
+    await query(
+      `INSERT INTO AssessmentOptions (QuestionID, OptionText, IsCorrect)
+       VALUES (?, ?, 1)`,
+      [questionId, String(correctAnswer || '')]
+    );
+  }
+
+  return { questionId };
+}
+
+async function deleteAssessmentQuestion(questionId) {
+  const [result] = await query('DELETE FROM AssessmentQuestions WHERE QuestionID = ?', [questionId]);
+
+  if (result.affectedRows === 0) {
+    throw new Error('Question not found');
+  }
+
+  return { questionId };
+}
+
+async function getAssessmentAttempts(assessmentId) {
+  const [attempts] = await query(
+    `SELECT aa.AttemptID, aa.UserID, aa.AssessmentID, aa.Score, aa.Status, aa.SubmittedAt,
+            u.Username AS UserName, u.Email AS UserEmail, a.PassingScore
+     FROM AssessmentAttempts aa
+     INNER JOIN Users u ON u.UserID = aa.UserID
+     INNER JOIN Assessments a ON a.AssessmentID = aa.AssessmentID
+     WHERE aa.AssessmentID = ?
+     ORDER BY aa.SubmittedAt DESC`,
+    [assessmentId]
+  );
+
+  return attempts.map((attempt) => ({
+    id: attempt.AttemptID,
+    userId: attempt.UserID,
+    userName: attempt.UserName,
+    userEmail: attempt.UserEmail,
+    score: attempt.Score,
+    status: attempt.Status,
+    submittedAt: attempt.SubmittedAt,
+    timeUsedSeconds: 0,
+    passed: String(attempt.Status).toLowerCase() === 'passed',
+    passingScore: attempt.PassingScore,
+  }));
+}
+
+async function resetUserAttempt(assessmentId, attemptId) {
+  const [result] = await query(
+    `UPDATE AssessmentAttempts
+     SET Status = 'Pending', Score = NULL
+     WHERE AssessmentID = ? AND AttemptID = ?`,
+    [assessmentId, attemptId]
+  );
+
+  if (result.affectedRows === 0) {
+    throw new Error('Attempt not found');
+  }
+
+  return { attemptId, assessmentId };
+}
+
 module.exports = {
   getAssessmentQuestions,
   checkAttemptEligibility,
   submitAssessmentAttempt,
   getUserAssessmentAttempts,
+  listAssessments,
+  createAssessment,
+  updateAssessmentSettings,
+  deleteAssessment,
+  addAssessmentQuestion,
+  updateAssessmentQuestion,
+  deleteAssessmentQuestion,
+  getAssessmentAttempts,
+  resetUserAttempt,
 };

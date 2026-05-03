@@ -37,6 +37,10 @@ router.post(
     body("password")
       .isLength({ min: 8, max: 128 })
       .withMessage("Password must be between 8 and 128 characters."),
+    body("remember")
+      .optional()
+      .isBoolean()
+      .withMessage("Remember flag must be a boolean."),
     body().custom((_, { req }) => {
       const hasIdentifier =
         (typeof req.body.identifier === "string" && req.body.identifier.trim().length > 0) ||
@@ -54,6 +58,23 @@ router.post(
   ],
   validate,
   asyncHandler(userController.loginUser)
+);
+
+/**
+ * POST /auth/refresh - Refresh a valid JWT token
+ * Body: { refreshToken }
+ */
+router.post(
+  '/refresh',
+  [
+    body('refreshToken')
+      .notEmpty()
+      .withMessage('Refresh token is required.')
+      .isLength({ min: 1, max: 1000 })
+      .withMessage('Refresh token is too long.'),
+  ],
+  validate,
+  asyncHandler(userController.refreshToken)
 );
 
 /**

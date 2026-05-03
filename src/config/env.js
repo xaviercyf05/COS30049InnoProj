@@ -74,6 +74,8 @@ const env = {
   },
   jwtSecret: process.env.JWT_SECRET || "change-this-in-production",
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || "12h",
+  jwtRememberExpiresIn: process.env.JWT_REMEMBER_EXPIRES_IN || "7d",
+  jwtSessionRefreshExpiresIn: process.env.JWT_SESSION_REFRESH_EXPIRES_IN || "12h",
   richContentStorageDir: process.env.RICH_CONTENT_STORAGE_DIR || "",
   richContentMaxFileSizeMb: parsePositiveInt(process.env.RICH_CONTENT_MAX_FILE_SIZE_MB, 10),
   requestBodyLimit: parseSizeLimit(process.env.REQUEST_BODY_LIMIT, "15mb"),

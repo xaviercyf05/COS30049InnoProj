@@ -1,13 +1,13 @@
 const bcrypt = require("bcryptjs");
-const jwt = require("jsonwebtoken");
 const fs = require("fs/promises");
 const path = require("path");
 const { query } = require("../config/db");
-const env = require("../config/env");
 const emailVerificationService = require("../services/emailVerificationService");
+const { createAuthTokenService } = require("../services/authTokenService");
 
 const profileImagePrefix = "/uploads/profile-images/";
 const profileImageStorageDir = path.join(__dirname, "..", "..", "uploads", "profile-images");
+const authTokenService = createAuthTokenService();
 
 async function getUserProfileRow(userId) {
   const [rows] = await query(
@@ -108,7 +108,7 @@ async function removeStoredProfileImage(imageUrl) {
  */
 async function loginUser(req, res) {
   try {
-    const { identifier, username, userId, password } = req.body;
+    const { identifier, username, userId, password, remember } = req.body;
 
     const loginIdentifier =
       (typeof identifier === "string" && identifier.trim().length > 0
@@ -130,7 +130,6 @@ async function loginUser(req, res) {
       ? Number.parseInt(loginIdentifier, 10)
       : null;
 
-    // First, check if user exists (regardless of IsActive status)
     const [allUserRows] = await query(
       `SELECT u.UserID, u.Username, u.PasswordHash, u.Status, u.IsActive, r.RoleTitle
        FROM Users u
@@ -152,7 +151,6 @@ async function loginUser(req, res) {
 
     const user = allUserRows[0];
 
-    // Check if account is inactive and provide specific error message
     if (user.IsActive === 0) {
       return res.status(403).json({
         success: false,
@@ -161,7 +159,6 @@ async function loginUser(req, res) {
       });
     }
 
-    // Check account status (Suspended, etc.)
     if (user.Status !== "Active") {
       return res.status(403).json({
         success: false,
@@ -178,22 +175,21 @@ async function loginUser(req, res) {
       });
     }
 
-    const token = jwt.sign(
-      {
-        sub: user.UserID,
-        username: user.Username,
-        role: user.RoleTitle,
-      },
-      env.jwtSecret,
-      { expiresIn: env.jwtExpiresIn }
-    );
+    const tokenPair = await authTokenService.issueTokenPair({
+      user,
+      remember: !!remember,
+      userAgent: req.headers['user-agent'] || null,
+      ipAddress: req.ip || req.socket?.remoteAddress || null,
+    });
 
     return res.json({
       success: true,
       data: {
-        token,
+        token: tokenPair.accessToken,
+        refreshToken: tokenPair.refreshToken,
         tokenType: "Bearer",
-        expiresIn: env.jwtExpiresIn,
+        expiresIn: tokenPair.accessTokenExpiresIn,
+        refreshTokenExpiresIn: tokenPair.refreshTokenExpiresIn,
         user: {
           userId: user.UserID,
           username: user.Username,
@@ -206,6 +202,42 @@ async function loginUser(req, res) {
     return res.status(500).json({
       success: false,
       message: "Internal server error.",
+    });
+  }
+}
+
+/**
+ * Refresh refresh-token-bound session and return a new access/refresh token pair.
+ */
+async function refreshToken(req, res) {
+  try {
+    const refreshTokenValue = String(req.body?.refreshToken || '').trim();
+
+    if (!refreshTokenValue) {
+      return res.status(400).json({ success: false, message: 'Refresh token is required.' });
+    }
+
+    const refreshed = await authTokenService.rotateRefreshToken({
+      refreshToken: refreshTokenValue,
+      userAgent: req.headers['user-agent'] || null,
+      ipAddress: req.ip || req.socket?.remoteAddress || null,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        token: refreshed.accessToken,
+        refreshToken: refreshed.refreshToken,
+        expiresIn: refreshed.accessTokenExpiresIn,
+        refreshTokenExpiresIn: refreshed.refreshTokenExpiresIn,
+      },
+    });
+  } catch (error) {
+    const statusCode = error.statusCode || 500;
+    console.error('Refresh token error:', error);
+    return res.status(statusCode).json({
+      success: false,
+      message: statusCode === 401 ? error.message : 'Internal server error.',
     });
   }
 }

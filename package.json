@@ -13,7 +13,7 @@
     "mobile:android": "npm --prefix mobile run android",
     "mobile:ios": "npm --prefix mobile run ios",
     "mobile:web": "npm --prefix mobile run web",
-    "test": "echo \"No tests configured\""
+    "test": "node --test"
   },
   "repository": {
     "type": "git",

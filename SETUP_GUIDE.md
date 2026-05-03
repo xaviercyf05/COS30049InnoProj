@@ -133,6 +133,8 @@ DB_NAME=digital_park_guide
 # JWT
 JWT_SECRET=your_super_secret_jwt_key_change_this_in_production
 JWT_EXPIRES_IN=12h
+JWT_REMEMBER_EXPIRES_IN=7d
+JWT_SESSION_REFRESH_EXPIRES_IN=12h
 
 # Optional: increase payload limit for large rich-content module saves
 REQUEST_BODY_LIMIT=15mb
@@ -141,8 +143,18 @@ REQUEST_BODY_LIMIT=15mb
 Replace:
 - `your_mysql_password` with your actual MySQL root password (or the database user password if you created one)
 - `your_super_secret_jwt_key_change_this_in_production` with a secure random string
+- `JWT_REMEMBER_EXPIRES_IN` to change the persistent login duration
+- `JWT_SESSION_REFRESH_EXPIRES_IN` to change the non-persistent session refresh window
 
 ### Step 3: Verify File Was Created
+
+### Step 4: Create the refresh-token table
+
+Run the refresh-token migration after the base schema is installed:
+
+```bash
+node scripts/runAuthTokenMigration.js
+```
 
 ```bash
 ls -la .env    # Linux/macOS

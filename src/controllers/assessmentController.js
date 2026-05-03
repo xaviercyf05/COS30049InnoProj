@@ -74,7 +74,7 @@ async function checkAttemptEligibility(req, res) {
 async function submitAssessmentAttempt(req, res) {
   try {
     const { userId } = req.user;
-    const { assessmentId, answers } = req.body;
+    const { assessmentId, answers, timeUsedSeconds } = req.body;
 
     if (!assessmentId || !answers || !Array.isArray(answers)) {
       return res.status(400).json({
@@ -87,7 +87,8 @@ async function submitAssessmentAttempt(req, res) {
     const attempt = await assessmentService.submitAssessmentAttempt(
       userId,
       assessmentId,
-      answers
+      answers,
+      Number(timeUsedSeconds || 0)
     );
 
     // If passed, send notification and update module progress
@@ -248,13 +249,16 @@ async function listAssessments(req, res) {
 
 async function createAssessment(req, res) {
   try {
-    const { moduleId, title, passingScore, durationMinutes, attemptLimit } = req.body;
+    const { userId } = req.user;
+    const { moduleId, title, passingScore, durationMinutes, attemptLimit, badgeId } = req.body;
     const assessment = await assessmentService.createAssessment(
       Number(moduleId),
       title,
-      Number(passingScore),
-      Number(durationMinutes),
-      Number(attemptLimit || 3)
+      Number.isFinite(Number(passingScore)) ? Number(passingScore) : 60,
+      Number.isFinite(Number(durationMinutes)) ? Number(durationMinutes) : 120,
+      Number.isFinite(Number(attemptLimit)) ? Number(attemptLimit) : 3,
+      Number.isFinite(Number(badgeId)) ? Number(badgeId) : null,
+      Number(userId)
     );
 
     return res.status(201).json({ success: true, data: assessment });
@@ -270,13 +274,18 @@ async function createAssessment(req, res) {
 async function updateAssessmentSettings(req, res) {
   try {
     const { assessmentId } = req.params;
-    const { passingScore, durationMinutes, attemptLimit } = req.body;
+    const { passingScore, durationMinutes, attemptLimit, title } = req.body;
+
+    const parsedPassingScore = Number(passingScore);
+    const parsedDurationMinutes = Number(durationMinutes);
+    const parsedAttemptLimit = Number(attemptLimit);
 
     const result = await assessmentService.updateAssessmentSettings(
       Number(assessmentId),
-      Number(passingScore),
-      Number(durationMinutes),
-      Number(attemptLimit)
+      Number.isFinite(parsedPassingScore) ? parsedPassingScore : undefined,
+      Number.isFinite(parsedDurationMinutes) ? parsedDurationMinutes : undefined,
+      Number.isFinite(parsedAttemptLimit) ? parsedAttemptLimit : undefined,
+      typeof title === 'string' ? title : undefined
     );
 
     return res.json({ success: true, data: result });
@@ -422,7 +431,7 @@ async function getAssessmentDetails(req, res) {
     const { assessmentId } = req.params;
 
     const [rows] = await query(
-      `SELECT AssessmentID, ModuleID, Title, PassingScore, AttemptLimit
+      `SELECT AssessmentID, ModuleID, BadgeID, Title, PassingScore, AttemptLimit, DurationMinutes
        FROM Assessments
        WHERE AssessmentID = ?
        LIMIT 1`,
@@ -443,10 +452,11 @@ async function getAssessmentDetails(req, res) {
       data: {
         AssessmentID: assessment.AssessmentID,
         ModuleID: assessment.ModuleID,
+        BadgeID: assessment.BadgeID,
         Title: assessment.Title,
         PassingScore: assessment.PassingScore,
         AttemptLimit: assessment.AttemptLimit,
-        DurationMinutes: 120,
+        DurationMinutes: Number(assessment.DurationMinutes || 120),
       },
     });
   } catch (error) {
@@ -454,6 +464,54 @@ async function getAssessmentDetails(req, res) {
     return res.status(500).json({
       success: false,
       message: error.message || "Failed to fetch assessment details.",
+    });
+  }
+}
+
+async function linkAssessmentBadge(req, res) {
+  try {
+    const { assessmentId, badgeId } = req.params;
+    const result = await assessmentService.linkBadgeToAssessment(
+      Number(assessmentId),
+      Number(badgeId)
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Link assessment badge error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to link badge to assessment.',
+    });
+  }
+}
+
+async function unlinkAssessmentBadge(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const result = await assessmentService.unlinkBadgeFromAssessment(Number(assessmentId));
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Unlink assessment badge error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to unlink badge from assessment.',
+    });
+  }
+}
+
+async function getAssessmentBadge(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const result = await assessmentService.getAssessmentBadge(Number(assessmentId));
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Get assessment badge error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch assessment badge.',
     });
   }
 }
@@ -474,4 +532,7 @@ module.exports = {
   deleteAssessmentQuestionAdmin,
   getAssessmentAttemptsAdmin,
   resetAssessmentAttemptAdmin,
+  linkAssessmentBadge,
+  unlinkAssessmentBadge,
+  getAssessmentBadge,
 };

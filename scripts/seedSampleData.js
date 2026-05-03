@@ -318,35 +318,94 @@ Your safety and visitor safety are paramount.
 async function seedAssessments() {
   console.log("\nSeeding assessments...");
 
-  const [modules] = await query("SELECT ModuleID FROM Modules");
+  const [modules] = await query("SELECT ModuleID, ModuleTitle FROM Modules");
+  const [adminRows] = await query(
+    `SELECT UserID
+     FROM Users
+     WHERE RoleID = (SELECT RoleID FROM Roles WHERE RoleTitle = 'Admin' LIMIT 1)
+     ORDER BY UserID ASC
+     LIMIT 1`
+  );
+  const adminUserId = adminRows[0]?.UserID || null;
 
   if (modules.length === 0) {
     console.log("No modules found. Skipping assessments.");
     return;
   }
 
+  // Create or reuse one badge per module title.
+  const moduleBadgeById = new Map();
+  for (const module of modules) {
+    const badgeName = `${module.ModuleTitle} Completion`;
+    const [existingBadge] = await query(
+      "SELECT BadgeID FROM Badges WHERE BadgeName = ? LIMIT 1",
+      [badgeName]
+    );
+
+    let badgeId = existingBadge[0]?.BadgeID;
+    if (!badgeId) {
+      const [badgeInsert] = await query(
+        `INSERT INTO Badges (BadgeName, IconUrl, UnlockThreshold, IsActive, CreatedBy)
+         VALUES (?, ?, 70, 1, ?)`,
+        [badgeName, null, adminUserId]
+      );
+      badgeId = badgeInsert.insertId;
+      console.log(`✓ Created badge: ${badgeName}`);
+    }
+
+    moduleBadgeById.set(module.ModuleID, badgeId);
+  }
+
   for (const module of modules) {
     const [existing] = await query(
-      "SELECT AssessmentID FROM Assessments WHERE ModuleID = ? LIMIT 1",
+      "SELECT AssessmentID, BadgeID FROM Assessments WHERE ModuleID = ? LIMIT 1",
       [module.ModuleID]
     );
 
-    if (existing.length === 0) {
-      // Create assessment
+    const linkedBadgeId = moduleBadgeById.get(module.ModuleID) || null;
+    let assessmentId = existing[0]?.AssessmentID;
+
+    if (!assessmentId) {
+      // Create one assessment per module and link to its badge.
       const [assessResult] = await query(
-        `INSERT INTO Assessments (ModuleID, Title, PassingScore, AttemptLimit)
-         VALUES (?, ?, 70, 3)`,
-        [module.ModuleID, `Assessment for Module ${module.ModuleID}`]
+        `INSERT INTO Assessments (ModuleID, BadgeID, Title, PassingScore, DurationMinutes, AttemptLimit, QuestionCount, CreatedBy)
+         VALUES (?, ?, ?, 70, 60, 3, 0, ?)`,
+        [
+          module.ModuleID,
+          linkedBadgeId,
+          `${module.ModuleTitle} Assessment`,
+          adminUserId,
+        ]
       );
 
-      const assessmentId = assessResult.insertId;
+      assessmentId = assessResult.insertId;
+      console.log(`✓ Created assessment for Module ${module.ModuleID}`);
+    } else if (linkedBadgeId && Number(existing[0].BadgeID || 0) !== Number(linkedBadgeId)) {
+      await query(
+        `UPDATE Assessments
+         SET BadgeID = ?
+         WHERE AssessmentID = ?`,
+        [linkedBadgeId, assessmentId]
+      );
+      console.log(`✓ Linked badge ${linkedBadgeId} to Assessment ${assessmentId}`);
+    }
 
+    const [existingQuestionCountRows] = await query(
+      `SELECT COUNT(*) AS count
+       FROM AssessmentQuestions
+       WHERE AssessmentID = ?`,
+      [assessmentId]
+    );
+    const existingQuestionCount = Number(existingQuestionCountRows[0]?.count || 0);
+
+    if (existingQuestionCount === 0) {
       // Create 10 sample questions with options
       for (let q = 1; q <= 10; q++) {
+        const sectionTopic = SECTIONS[(q - 1) % SECTIONS.length];
         const [qResult] = await query(
-          `INSERT INTO AssessmentQuestions (AssessmentID, QuestionText, QuestionType)
-           VALUES (?, ?, 'multiple_choice')`,
-          [assessmentId, `Question ${q}: Sample question about park management?`]
+          `INSERT INTO AssessmentQuestions (AssessmentID, QuestionText, QuestionType, Topic)
+           VALUES (?, ?, 'mcq', ?)`,
+          [assessmentId, `Question ${q}: Sample question about park management?`, sectionTopic]
         );
 
         const questionId = qResult.insertId;
@@ -367,9 +426,52 @@ async function seedAssessments() {
         }
       }
 
-      console.log(`✓ Created assessment for Module ${module.ModuleID}`);
+      await query(
+        `UPDATE Assessments
+         SET QuestionCount = 10
+         WHERE AssessmentID = ?`,
+        [assessmentId]
+      );
+      console.log(`✓ Seeded 10 questions for Assessment ${assessmentId}`);
+    }
+
+    // Seed sample attempts for each guide on each assessment.
+    const [guideUsers] = await query(
+      `SELECT UserID
+       FROM Users
+       WHERE Username IN ('guide_john', 'guide_sarah', 'guide_mike')`
+    );
+
+    for (const guide of guideUsers) {
+      const [existingAttempts] = await query(
+        `SELECT COUNT(*) AS count
+         FROM AssessmentAttempts
+         WHERE UserID = ? AND AssessmentID = ?`,
+        [guide.UserID, assessmentId]
+      );
+
+      if (Number(existingAttempts[0]?.count || 0) === 0) {
+        const score = guide.UserID % 2 === 0 ? 82 : 64;
+        const status = score >= 70 ? 'Passed' : 'Failed';
+        const timeUsedSeconds = 1500 + (guide.UserID % 3) * 300;
+
+        await query(
+          `INSERT INTO AssessmentAttempts (UserID, AssessmentID, Score, Status, TimeUsedSeconds, Answers)
+           VALUES (?, ?, ?, ?, ?, ?)`,
+          [
+            guide.UserID,
+            assessmentId,
+            score,
+            status,
+            timeUsedSeconds,
+            JSON.stringify({ seeded: true }),
+          ]
+        );
+      }
     }
   }
+
+  console.log("✓ Seeded assessment attempts for sample park guides");
 }
 
 async function seedSchedules() {

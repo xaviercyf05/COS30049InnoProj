@@ -117,9 +117,15 @@ CREATE TABLE IF NOT EXISTS Subtitles (
 CREATE TABLE IF NOT EXISTS Assessments (
   AssessmentID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   ModuleID INT UNSIGNED NOT NULL,
+  BadgeID INT UNSIGNED NULL,
   Title VARCHAR(160) NOT NULL,
   PassingScore INT UNSIGNED NOT NULL,
+  DurationMinutes INT UNSIGNED NOT NULL DEFAULT 120,
   AttemptLimit INT UNSIGNED NOT NULL DEFAULT 1,
+  QuestionCount INT UNSIGNED NOT NULL DEFAULT 0,
+  CreatedBy INT UNSIGNED NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_assessments_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -128,6 +134,11 @@ CREATE TABLE IF NOT EXISTS AssessmentQuestions (
   AssessmentID INT UNSIGNED NOT NULL,
   QuestionText TEXT NOT NULL,
   QuestionType VARCHAR(50) NOT NULL,
+  Topic VARCHAR(255) NOT NULL DEFAULT 'General',
+  CorrectAnswer TEXT NULL,
+  Explanation TEXT NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_assessment_questions_assessment FOREIGN KEY (AssessmentID) REFERENCES Assessments (AssessmentID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -146,6 +157,9 @@ CREATE TABLE IF NOT EXISTS AssessmentAttempts (
   Score DECIMAL(5,2) NULL,
   Status VARCHAR(50) NOT NULL DEFAULT 'Pending',
   SubmittedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  TimeUsedSeconds INT UNSIGNED NOT NULL DEFAULT 0,
+  Answers JSON NULL,
+  UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_assessment_attempts_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
   CONSTRAINT fk_assessment_attempts_assessment FOREIGN KEY (AssessmentID) REFERENCES Assessments (AssessmentID) ON DELETE CASCADE,
   CONSTRAINT chk_assessment_attempts_status CHECK (Status IN ('Pending', 'Submitted', 'Passed', 'Failed'))
@@ -219,6 +233,16 @@ CREATE TABLE IF NOT EXISTS Badges (
   UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_badges_created_by FOREIGN KEY (CreatedBy) REFERENCES Users (UserID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+ALTER TABLE Assessments
+  ADD CONSTRAINT fk_assessments_badge FOREIGN KEY (BadgeID) REFERENCES Badges (BadgeID) ON DELETE SET NULL,
+  ADD CONSTRAINT fk_assessments_created_by FOREIGN KEY (CreatedBy) REFERENCES Users (UserID) ON DELETE SET NULL;
+
+CREATE INDEX idx_assessments_module ON Assessments (ModuleID);
+CREATE INDEX idx_assessments_badge ON Assessments (BadgeID);
+CREATE INDEX idx_assessment_questions_assessment ON AssessmentQuestions (AssessmentID);
+CREATE INDEX idx_assessment_attempts_assessment ON AssessmentAttempts (AssessmentID);
+CREATE INDEX idx_assessment_attempts_user_assessment ON AssessmentAttempts (UserID, AssessmentID);
 
 CREATE TABLE IF NOT EXISTS Notifications (
   NotificationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

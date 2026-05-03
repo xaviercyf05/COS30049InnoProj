@@ -363,6 +363,10 @@ router.post(
   "/assessments",
   [
     body("moduleId").isInt().withMessage("Valid module ID is required."),
+    body("badgeId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("Badge ID must be a valid number."),
     body("title")
       .trim()
       .isLength({ min: 1, max: 160 })
@@ -488,6 +492,39 @@ router.post(
   ],
   validate,
   asyncHandler(assessmentController.resetAssessmentAttemptAdmin)
+);
+
+/**
+ * PUT /admin/assessments/:assessmentId/badge/:badgeId - Link badge to assessment
+ */
+router.put(
+  "/assessments/:assessmentId/badge/:badgeId",
+  [
+    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
+    param("badgeId").isInt().withMessage("Invalid badge ID."),
+  ],
+  validate,
+  asyncHandler(assessmentController.linkAssessmentBadge)
+);
+
+/**
+ * DELETE /admin/assessments/:assessmentId/badge - Unlink badge from assessment
+ */
+router.delete(
+  "/assessments/:assessmentId/badge",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.unlinkAssessmentBadge)
+);
+
+/**
+ * GET /admin/assessments/:assessmentId/badge - Get linked badge for assessment
+ */
+router.get(
+  "/assessments/:assessmentId/badge",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.getAssessmentBadge)
 );
 
 /**

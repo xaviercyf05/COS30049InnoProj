@@ -49,6 +49,10 @@ router.post(
     body("assessmentId").isInt().withMessage("Valid assessment ID is required."),
     body("answers").isArray().withMessage("Answers must be an array."),
     body("answers.*.optionId").optional().isInt().withMessage("Each answer must have a valid option ID."),
+    body("timeUsedSeconds")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0 })
+      .withMessage("Time used must be a non-negative integer in seconds."),
   ],
   validate,
   asyncHandler(assessmentController.submitAssessmentAttempt)

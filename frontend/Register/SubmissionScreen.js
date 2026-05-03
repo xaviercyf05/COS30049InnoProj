@@ -67,11 +67,31 @@ export default function SubmissionScreen({ navigation }) {
         </Text>
 
         <View style={styles.messageCard}>
+          <Text style={styles.messageTitle}>What Happens Next?</Text>
           <Text style={styles.messageText}>
             Your application is now pending approval by Sarawak Forestry Corporation.
           </Text>
           <Text style={styles.smallText}>
             You will receive a notification once your application is reviewed.
+          </Text>
+        </View>
+
+        <View style={styles.verificationCard}>
+          <Text style={styles.verificationTitle}>After Approval</Text>
+          <Text style={styles.verificationStep}>
+            <Text style={styles.stepNumber}>1.</Text> You'll receive a verification email
+          </Text>
+          <Text style={styles.verificationStep}>
+            <Text style={styles.stepNumber}>2.</Text> Click the verification link in the email
+          </Text>
+          <Text style={styles.verificationStep}>
+            <Text style={styles.stepNumber}>3.</Text> Your account will be activated
+          </Text>
+          <Text style={styles.verificationStep}>
+            <Text style={styles.stepNumber}>4.</Text> You can then log in with your credentials
+          </Text>
+          <Text style={styles.verificationNote}>
+            The verification link will expire in 7 days. Please verify your email promptly.
           </Text>
         </View>
 
@@ -182,6 +202,47 @@ const styles = StyleSheet.create({
     color: COLORS.muted,
     textAlign: 'center',
     lineHeight: 20,
+  },
+  verificationCard: {
+    backgroundColor: '#F0F8F5',
+    borderWidth: 1,
+    borderColor: COLORS.accent,
+    borderRadius: 14,
+    padding: 16,
+    width: '100%',
+    maxWidth: 560,
+    marginBottom: 20,
+  },
+  verificationTitle: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: COLORS.accent,
+    marginBottom: 12,
+  },
+  verificationStep: {
+    fontSize: 13,
+    color: COLORS.body,
+    marginBottom: 8,
+    lineHeight: 20,
+  },
+  stepNumber: {
+    fontWeight: '700',
+    color: COLORS.accent,
+  },
+  verificationNote: {
+    fontSize: 12,
+    color: COLORS.muted,
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: COLORS.border,
+    fontStyle: 'italic',
+  },
+  messageTitle: {
+    fontSize: 16,
+    fontWeight: '800',
+    color: COLORS.heading,
+    marginBottom: 10,
   },
   loginButton: {
     backgroundColor: COLORS.primaryButton,

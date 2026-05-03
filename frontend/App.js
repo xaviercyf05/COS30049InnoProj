@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import {
 	ActivityIndicator,
 	Alert,
+	Animated,
 	Image,
 	ImageBackground,
 	Platform,
@@ -81,6 +82,8 @@ function HomeScreen({ navigation }) {
 	const [profile, setProfile] = useState(null);
 	const [profileLoading, setProfileLoading] = useState(true);
 	const [modulesLoading, setModulesLoading] = useState(true);
+	const [sidebarMounted, setSidebarMounted] = useState(false);
+	const sidebarTranslateX = React.useRef(new Animated.Value(-320)).current;
 	const [notifications, setNotifications] = useState([
 		{
 			id: 1,
@@ -199,6 +202,28 @@ function HomeScreen({ navigation }) {
 		return unsubscribe;
 	}, [loadProfile, navigation]);
 
+	useEffect(() => {
+		if (menuVisible) {
+			setSidebarMounted(true);
+			Animated.timing(sidebarTranslateX, {
+				toValue: 0,
+				duration: 220,
+				useNativeDriver: true,
+			}).start();
+			return;
+		}
+
+		Animated.timing(sidebarTranslateX, {
+			toValue: -320,
+			duration: 180,
+			useNativeDriver: true,
+		}).start(({ finished }) => {
+			if (finished) {
+				setSidebarMounted(false);
+			}
+		});
+	}, [menuVisible, sidebarTranslateX]);
+
 	const performLogout = async () => {
 		try {
 			await AsyncStorage.multiRemove(SESSION_STORAGE_KEYS);
@@ -298,6 +323,87 @@ function HomeScreen({ navigation }) {
 
 	return (
 		<View style={styles.container}>
+			{sidebarMounted && (
+				<View style={styles.sidebarOverlay}>
+					<TouchableOpacity
+						style={styles.sidebarBackdrop}
+						activeOpacity={1}
+						onPress={() => setMenuVisible(false)}
+					/>
+					<Animated.View
+						style={[
+							styles.sidebar,
+							{ transform: [{ translateX: sidebarTranslateX }] },
+						]}
+					>
+						<View style={styles.sidebarHeader}>
+							<View style={styles.userSection}>
+								<Image
+									source={profileImageSource}
+									style={styles.sidebarImage}
+								/>
+								<Text style={styles.username}>{displayName}</Text>
+								<Text style={styles.sidebarRole}>{isAdmin ? 'Administrator' : 'User'}</Text>
+							</View>
+						</View>
+
+						<View style={styles.sidebarSection}>
+							<TouchableOpacity
+								style={styles.sidebarItem}
+								onPress={() => {
+									setMenuVisible(false);
+									navigation.navigate('Profile');
+								}}
+							>
+								<Text style={styles.sidebarText}>Profile</Text>
+							</TouchableOpacity>
+
+							<TouchableOpacity style={styles.sidebarItem} onPress={openBadges}>
+								<Text style={styles.sidebarText}>{isAdmin ? 'Badge Management' : 'Badges'}</Text>
+							</TouchableOpacity>
+
+							<TouchableOpacity
+								style={styles.sidebarItem}
+								onPress={() => openAdminFeature('Calendar', 'View and manage schedule and training calendar entries.')}
+							>
+								<Text style={styles.sidebarText}>Calendar</Text>
+							</TouchableOpacity>
+
+							<TouchableOpacity style={styles.sidebarItem} onPress={openAnnouncements}>
+								<Text style={styles.sidebarText}>{isAdmin ? 'Admin Announcements' : 'Announcements'}</Text>
+							</TouchableOpacity>
+
+							{isAdmin && (
+								<>
+									<TouchableOpacity style={styles.sidebarItem} onPress={openAdminModules}>
+										<Text style={styles.sidebarText}>Module Library</Text>
+									</TouchableOpacity>
+									<TouchableOpacity style={styles.sidebarItem} onPress={openAdminRegistrations}>
+										<Text style={styles.sidebarText}>Registration Requests</Text>
+									</TouchableOpacity>
+									<TouchableOpacity
+										style={styles.sidebarItem}
+										onPress={() => openAdminFeature('Assessments', 'Manage assessment content, attempt settings, and review workflows.')}
+									>
+										<Text style={styles.sidebarText}>Assessments</Text>
+									</TouchableOpacity>
+								</>
+							)}
+						</View>
+
+						<TouchableOpacity
+							style={styles.logoutButton}
+							onPress={() => {
+								setMenuVisible(false);
+								setNotificationVisible(false);
+								handleLogout();
+							}}
+						>
+							<Text style={styles.logoutText}>Logout</Text>
+						</TouchableOpacity>
+					</Animated.View>
+				</View>
+			)}
 			<View
 				style={[
 					styles.header,
@@ -400,86 +506,6 @@ function HomeScreen({ navigation }) {
 						</View>
 					)}
 
-					{menuVisible && (
-						<View style={styles.dropdown}>
-							<View style={styles.topSection}>
-								<View style={styles.userSection}>
-									<Image
-										source={profileImageSource}
-										style={styles.dropdownImage}
-									/>
-									<Text style={styles.username}>{displayName}</Text>
-								</View>
-
-								<View style={styles.menuSection}>
-									<TouchableOpacity
-										style={styles.dropdownItem}
-										onPress={() => {
-											setMenuVisible(false);
-											navigation.navigate('Profile');
-										}}
-									>
-										<Text style={styles.dropdownText}>Profile</Text>
-									</TouchableOpacity>
-
-									<TouchableOpacity
-										style={styles.dropdownItem}
-										onPress={openBadges}
-									>
-										<Text style={styles.dropdownText}>{isAdmin ? 'Badge Management' : 'Badges'}</Text>
-									</TouchableOpacity>
-
-									<TouchableOpacity
-										style={styles.dropdownItem}
-										onPress={() => openAdminFeature('Calendar', 'View and manage schedule and training calendar entries.')}
-									>
-										<Text style={styles.dropdownText}>Calendar</Text>
-									</TouchableOpacity>
-
-									<TouchableOpacity
-										style={styles.dropdownItem}
-										onPress={openAnnouncements}
-									>
-										<Text style={styles.dropdownText}>{isAdmin ? 'Admin Announcements' : 'Announcements'}</Text>
-									</TouchableOpacity>
-
-									{isAdmin && (
-										<>
-											<TouchableOpacity
-												style={styles.dropdownItem}
-												onPress={openAdminModules}
-											>
-												<Text style={styles.dropdownText}>Module Library</Text>
-											</TouchableOpacity>
-											<TouchableOpacity
-												style={styles.dropdownItem}
-												onPress={openAdminRegistrations}
-											>
-												<Text style={styles.dropdownText}>Registration Requests</Text>
-											</TouchableOpacity>
-											<TouchableOpacity
-												style={styles.dropdownItem}
-												onPress={() => openAdminFeature('Assessments', 'Manage assessment content, attempt settings, and review workflows.')}
-											>
-												<Text style={styles.dropdownText}>Assessments</Text>
-											</TouchableOpacity>
-										</>
-									)}
-								</View>
-							</View>
-
-							<TouchableOpacity
-								style={styles.logoutButton}
-								onPress={() => {
-									setMenuVisible(false);
-									setNotificationVisible(false);
-									handleLogout();
-								}}
-							>
-								<Text style={styles.logoutText}>Logout</Text>
-							</TouchableOpacity>
-						</View>
-					)}
 				</View>
 			</View>
 
@@ -735,6 +761,66 @@ const styles = StyleSheet.create({
 		borderRadius: 19,
 		marginLeft: 6,
 	},
+	sidebarOverlay: {
+		...StyleSheet.absoluteFillObject,
+		zIndex: 10001,
+	},
+	sidebarBackdrop: {
+		...StyleSheet.absoluteFillObject,
+		backgroundColor: 'rgba(14, 22, 16, 0.28)',
+	},
+	sidebar: {
+		position: 'absolute',
+		top: 0,
+		left: 0,
+		bottom: 0,
+		width: 300,
+		backgroundColor: 'rgba(255, 255, 255, 0.98)',
+		borderTopRightRadius: 26,
+		borderBottomRightRadius: 26,
+		paddingHorizontal: 20,
+		paddingTop: 48,
+		paddingBottom: 24,
+		shadowColor: '#243426',
+		shadowOffset: { width: 8, height: 0 },
+		shadowOpacity: 0.16,
+		shadowRadius: 22,
+		elevation: 18,
+		zIndex: 10002,
+	},
+	sidebarHeader: {
+		width: '100%',
+		alignItems: 'center',
+		marginBottom: 20,
+	},
+	sidebarImage: {
+		width: 68,
+		height: 68,
+		borderRadius: 34,
+		borderWidth: 1.5,
+		borderColor: '#E3E9DD',
+		marginBottom: 10,
+	},
+	sidebarRole: {
+		fontSize: 12,
+		fontWeight: '700',
+		color: '#6C7A6B',
+		marginTop: 2,
+	},
+	sidebarSection: {
+		flex: 1,
+		paddingTop: 4,
+	},
+	sidebarItem: {
+		paddingVertical: 14,
+		borderBottomWidth: 1,
+		borderBottomColor: '#EEF2EA',
+	},
+	sidebarText: {
+		fontSize: 15,
+		fontWeight: '700',
+		color: '#3A4D39',
+	},
 	notificationDropdown: {
 		position: 'absolute',
 		top: 56,
@@ -838,7 +924,9 @@ const styles = StyleSheet.create({
 	},
 	topSection: {},
 	userSection: {
+		width: '100%',
 		alignItems: 'center',
+		justifyContent: 'center',
 		marginBottom: 15,
 	},
 	dropdownImage: {

@@ -550,17 +550,6 @@ function HomeScreen({ navigation }) {
 							key={module.id}
 							onPress={() => {
 								const moduleIndex = userModules.findIndex((item) => item.id === module.id);
-								const hasIncompletePreviousModule = userModules
-									.slice(0, Math.max(0, moduleIndex))
-									.some((item) => Number(item.progressPercent || 0) < 100);
-
-								if (hasIncompletePreviousModule) {
-									Alert.alert(
-										'Module Locked',
-										'Please complete earlier modules before opening this one.'
-									);
-									return;
-								}
 
 								navigation.navigate('Module', {
 									moduleName: module.title,

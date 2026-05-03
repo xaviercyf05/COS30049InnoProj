@@ -399,9 +399,18 @@ async function updateRegistrationStatus(req, res) {
           'account_activation'
         );
 
-        // Build verification link - construct the URL based on environment
-        const apiBaseUrl = process.env.API_BASE_URL || 
-                          (process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',')[0].trim() : 'https://innopappserver.xyz');
+        // Build verification link - use API_BASE_URL from environment
+        // Falls back to first HTTPS URL from CORS_ORIGIN, then to production domain
+        let apiBaseUrl = process.env.API_BASE_URL;
+        
+        if (!apiBaseUrl && process.env.CORS_ORIGIN) {
+          // If no API_BASE_URL, prefer HTTPS production URLs over localhost
+          const corsUrls = process.env.CORS_ORIGIN.split(',').map(url => url.trim());
+          const httpsUrl = corsUrls.find(url => url.startsWith('https://'));
+          apiBaseUrl = httpsUrl || corsUrls[0];
+        }
+        
+        apiBaseUrl = apiBaseUrl || 'https://innopappserver.xyz';
         
         const verificationLink = `${apiBaseUrl}/api/v1/auth/verify-email?token=${verificationToken}`;
 

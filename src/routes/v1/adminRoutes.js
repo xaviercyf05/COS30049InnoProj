@@ -218,6 +218,16 @@ router.put(
 );
 
 /**
+ * POST /admin/registrations/:registrationId/resend-token - Resend activation token email
+ */
+router.post(
+  "/registrations/:registrationId/resend-token",
+  [param("registrationId").isInt().withMessage("Invalid registration ID.")],
+  validate,
+  asyncHandler(registrationController.resendRegistrationVerificationToken)
+);
+
+/**
  * GET /admin/registrations/:registrationId/resume - Stream applicant resume
  */
 router.get(

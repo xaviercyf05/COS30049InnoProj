@@ -95,6 +95,33 @@ function mapRegistrationRow(row) {
   };
 }
 
+function buildVerificationLink(token) {
+  let apiBaseUrl = process.env.API_BASE_URL;
+
+  if (!apiBaseUrl && process.env.CORS_ORIGIN) {
+    const corsUrls = process.env.CORS_ORIGIN.split(',').map((url) => url.trim());
+    const httpsUrl = corsUrls.find((url) => url.startsWith('https://'));
+    apiBaseUrl = httpsUrl || corsUrls[0];
+  }
+
+  apiBaseUrl = apiBaseUrl || 'https://innopappserver.xyz';
+
+  return `${apiBaseUrl}/api/v1/auth/verify-email?token=${token}`;
+}
+
+async function sendActivationEmailForUser(userId, email, fullName) {
+  const verificationToken = await emailVerificationService.createVerificationToken(
+    userId,
+    'account_activation'
+  );
+
+  const verificationLink = buildVerificationLink(verificationToken);
+
+  await emailService.sendAccountActivationEmail(email, fullName, verificationLink);
+
+  return verificationLink;
+}
+
 async function cleanupUploadedResume(uploadedResume) {
   if (!uploadedResume?.path) {
     return;
@@ -393,32 +420,10 @@ async function updateRegistrationStatus(req, res) {
 
       // Now attempt to send verification email
       try {
-        // Generate verification token
-        const verificationToken = await emailVerificationService.createVerificationToken(
+        await sendActivationEmailForUser(
           createdUserId,
-          'account_activation'
-        );
-
-        // Build verification link - use API_BASE_URL from environment
-        // Falls back to first HTTPS URL from CORS_ORIGIN, then to production domain
-        let apiBaseUrl = process.env.API_BASE_URL;
-        
-        if (!apiBaseUrl && process.env.CORS_ORIGIN) {
-          // If no API_BASE_URL, prefer HTTPS production URLs over localhost
-          const corsUrls = process.env.CORS_ORIGIN.split(',').map(url => url.trim());
-          const httpsUrl = corsUrls.find(url => url.startsWith('https://'));
-          apiBaseUrl = httpsUrl || corsUrls[0];
-        }
-        
-        apiBaseUrl = apiBaseUrl || 'https://innopappserver.xyz';
-        
-        const verificationLink = `${apiBaseUrl}/api/v1/auth/verify-email?token=${verificationToken}`;
-
-        // Send verification email
-        await emailService.sendAccountActivationEmail(
           requestRow.Email,
-          requestRow.FullName,
-          verificationLink
+          requestRow.FullName
         );
 
         emailSent = true;
@@ -486,6 +491,87 @@ async function updateRegistrationStatus(req, res) {
     if (connection) {
       connection.release();
     }
+  }
+}
+
+/**
+ * Admin: resend verification token and email for an approved registration.
+ */
+async function resendRegistrationVerificationToken(req, res) {
+  const { registrationId } = req.params;
+
+  try {
+    await ensureRegistrationSchema();
+
+    const [rows] = await query(
+      `SELECT rr.RegistrationID,
+              rr.Username,
+              rr.FullName,
+              rr.Email,
+              rr.Status,
+              u.UserID,
+              u.IsActive,
+              u.Status AS UserStatus
+         FROM RegistrationRequests rr
+         LEFT JOIN Users u
+           ON u.Username = rr.Username
+           OR u.Email = rr.Email
+        WHERE rr.RegistrationID = ?
+        LIMIT 1`,
+      [registrationId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'Registration request not found.',
+      });
+    }
+
+    const registration = rows[0];
+
+    if (registration.Status !== 'Approved') {
+      return res.status(400).json({
+        success: false,
+        message: 'Verification tokens can only be resent for approved registrations.',
+      });
+    }
+
+    if (!registration.UserID) {
+      return res.status(404).json({
+        success: false,
+        message: 'Approved user account not found.',
+      });
+    }
+
+    if (Number(registration.IsActive) === 1 || String(registration.UserStatus || '').toLowerCase() === 'active') {
+      return res.status(409).json({
+        success: false,
+        message: 'This user account is already active. A verification token is not required.',
+      });
+    }
+
+    await sendActivationEmailForUser(
+      registration.UserID,
+      registration.Email,
+      registration.FullName
+    );
+
+    return res.json({
+      success: true,
+      message: 'Verification token resent successfully.',
+      data: {
+        registrationId: Number(registrationId),
+        userId: registration.UserID,
+        emailSent: true,
+      },
+    });
+  } catch (error) {
+    console.error('Resend verification token error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to resend verification token.',
+    });
   }
 }
 
@@ -563,5 +649,6 @@ module.exports = {
   submitRegistrationRequest,
   getRegistrationRequests,
   updateRegistrationStatus,
+  resendRegistrationVerificationToken,
   getRegistrationResume,
 };

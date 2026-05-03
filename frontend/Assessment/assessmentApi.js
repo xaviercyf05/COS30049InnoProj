@@ -351,3 +351,57 @@ export async function resetUserAttempt(assessmentId, attemptId) {
 
 	return response.success ? { error: null } : { error: response.error };
 }
+
+export async function linkBadgeToAssessment(assessmentId, badgeId) {
+	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	if (!token) {
+		return { error: 'Authentication required' };
+	}
+
+	const response = await requestAssessmentApi(
+		`/api/v1/admin/assessments/${assessmentId}/badge/${badgeId}`,
+		token,
+		{ method: 'PUT' }
+	);
+
+	return response.success ? { error: null } : { error: response.error };
+}
+
+export async function unlinkBadgeFromAssessment(assessmentId) {
+	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	if (!token) {
+		return { error: 'Authentication required' };
+	}
+
+	const response = await requestAssessmentApi(
+		`/api/v1/admin/assessments/${assessmentId}/badge`,
+		token,
+		{ method: 'DELETE' }
+	);
+
+	return response.success ? { error: null } : { error: response.error };
+}
+
+export async function getAssessmentBadge(assessmentId) {
+	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	if (!token) {
+		return { error: 'Authentication required', badge: null };
+	}
+
+	const response = await requestAssessmentApi(`/api/v1/admin/assessments/${assessmentId}/badge`, token);
+
+	if (!response.success) {
+		return { error: response.error, badge: null };
+	}
+
+	const payload = response.data?.data || response.data || {};
+	const badge = payload.badge
+		? {
+			id: payload.badge.id || payload.badge.BadgeID,
+			name: payload.badge.name || payload.badge.Name,
+			image: payload.badge.image || payload.badge.Image,
+		}
+		: null;
+
+	return { error: null, badge };
+}

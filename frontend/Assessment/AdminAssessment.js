@@ -34,7 +34,7 @@ const createBlankQuestion = () => ({
 	isNew: true,
 });
 
-function AdminAssessment({ route }) {
+function AdminAssessment({ route, navigation }) {
 	const defaultAssessmentId = route?.params?.assessmentId || null;
 	const defaultModuleId = route?.params?.moduleId ? String(route.params.moduleId) : '';
 
@@ -419,6 +419,25 @@ function AdminAssessment({ route }) {
 		);
 	};
 
+	const openResultVerification = (attempt) => {
+		navigation.navigate('AdminResultVerification', {
+			result: {
+				...attempt,
+				parkGuideName: attempt.userName,
+				moduleName: assessmentTitle || 'Assessment',
+				assessmentId: selectedAssessmentId,
+				passingScore: Number(assessmentPassingScore) || 60,
+			},
+			parkGuideName: attempt.userName,
+			moduleName: assessmentTitle || 'Assessment',
+			dateAttempt: attempt.submittedAt,
+			timeUsedSeconds: attempt.timeUsedSeconds,
+			finalScore: attempt.score,
+			assessmentId: selectedAssessmentId,
+			passingScore: Number(assessmentPassingScore) || 60,
+		});
+	};
+
 	// Delete assessment
 	const deleteAssessmentConfirm = () => {
 		const assessment = assessments.find((a) => a.id === selectedAssessmentId);
@@ -677,6 +696,44 @@ function AdminAssessment({ route }) {
 							</View>
 						)}
 
+						{/* Assessment Selector */}
+						<View style={styles.card}>
+							<Text style={styles.label}>Select Assessment</Text>
+							<ScrollView
+								horizontal
+								showsHorizontalScrollIndicator={false}
+								contentContainerStyle={styles.assessmentSelectorContainer}
+							>
+								{assessments.length === 0 ? (
+									<Text style={styles.emptyText}>No assessments available. Create one first.</Text>
+								) : (
+									assessments.map((assessment) => (
+										<TouchableOpacity
+											key={assessment.id}
+											style={[
+												styles.assessmentSelectorButton,
+												selectedAssessmentId === assessment.id && styles.assessmentSelectorButtonActive,
+											]}
+											onPress={() => {
+												setSelectedAssessmentId(assessment.id);
+												setAssessmentTitle(assessment.title);
+												clearStatus();
+											}}
+										>
+											<Text
+												style={[
+													styles.assessmentSelectorButtonText,
+													selectedAssessmentId === assessment.id && styles.assessmentSelectorButtonTextActive,
+												]}
+											>
+												{assessment.title}
+											</Text>
+										</TouchableOpacity>
+									))
+								)}
+							</ScrollView>
+						</View>
+
 						<View style={styles.card}>
 							<View style={styles.cardHeader}>
 								<Text style={styles.cardTitle}>Questions</Text>
@@ -836,6 +893,44 @@ function AdminAssessment({ route }) {
 							</View>
 						)}
 
+						{/* Assessment Selector */}
+						<View style={styles.card}>
+							<Text style={styles.label}>Select Assessment</Text>
+							<ScrollView
+								horizontal
+								showsHorizontalScrollIndicator={false}
+								contentContainerStyle={styles.assessmentSelectorContainer}
+							>
+								{assessments.length === 0 ? (
+									<Text style={styles.emptyText}>No assessments available.</Text>
+								) : (
+									assessments.map((assessment) => (
+										<TouchableOpacity
+											key={assessment.id}
+											style={[
+												styles.assessmentSelectorButton,
+												selectedAssessmentId === assessment.id && styles.assessmentSelectorButtonActive,
+											]}
+											onPress={() => {
+												setSelectedAssessmentId(assessment.id);
+												setAssessmentTitle(assessment.title);
+												clearStatus();
+											}}
+										>
+											<Text
+												style={[
+													styles.assessmentSelectorButtonText,
+													selectedAssessmentId === assessment.id && styles.assessmentSelectorButtonTextActive,
+												]}
+											>
+												{assessment.title}
+											</Text>
+										</TouchableOpacity>
+									))
+								)}
+							</ScrollView>
+						</View>
+
 						{attempts.length === 0 ? (
 							<View style={styles.card}>
 								<Text style={styles.emptyText}>No attempts yet.</Text>
@@ -856,14 +951,22 @@ function AdminAssessment({ route }) {
 										Submitted: {new Date(attempt.submittedAt).toLocaleDateString()} {new Date(attempt.submittedAt).toLocaleTimeString()}
 									</Text>
 									<Text style={styles.attemptDetail}>Time: {Math.round(attempt.timeUsedSeconds / 60)} min</Text>
+									<View style={styles.attemptActionRow}>
+										<TouchableOpacity
+											style={styles.reviewButton}
+											onPress={() => openResultVerification(attempt)}
+										>
+											<Text style={styles.reviewButtonText}>Review Result</Text>
+										</TouchableOpacity>
 
-									<TouchableOpacity
-										style={[styles.resetButton, saving && styles.resetButtonDisabled]}
-										onPress={() => resetAttemptConfirm(attempt.id, attempt.userName)}
-										disabled={saving}
-									>
-										<Text style={styles.resetButtonText}>Reset Attempt</Text>
-									</TouchableOpacity>
+										<TouchableOpacity
+											style={[styles.resetButton, saving && styles.resetButtonDisabled]}
+											onPress={() => resetAttemptConfirm(attempt.id, attempt.userName)}
+											disabled={saving}
+										>
+											<Text style={styles.resetButtonText}>Reset Attempt</Text>
+										</TouchableOpacity>
+									</View>
 								</View>
 							))
 						)}
@@ -1245,12 +1348,30 @@ const styles = StyleSheet.create({
 		color: '#666666',
 		marginBottom: 6,
 	},
+	attemptActionRow: {
+		flexDirection: 'row',
+		gap: 10,
+		marginTop: 10,
+	},
+	reviewButton: {
+		flex: 1,
+		backgroundColor: '#EAF2E0',
+		borderRadius: 8,
+		paddingVertical: 10,
+		paddingHorizontal: 12,
+		alignItems: 'center',
+	},
+	reviewButtonText: {
+		color: '#3A4D39',
+		fontSize: 12,
+		fontWeight: '700',
+	},
 	resetButton: {
+		flex: 1,
 		backgroundColor: '#FFF3E0',
 		borderRadius: 8,
 		paddingVertical: 10,
 		paddingHorizontal: 12,
-		marginTop: 10,
 		alignItems: 'center',
 	},
 	resetButtonDisabled: {
@@ -1260,6 +1381,33 @@ const styles = StyleSheet.create({
 		color: '#FF9800',
 		fontSize: 12,
 		fontWeight: '700',
+	},
+	assessmentSelectorContainer: {
+		gap: 8,
+		paddingVertical: 4,
+	},
+	assessmentSelectorButton: {
+		backgroundColor: '#F5F8F2',
+		borderRadius: 8,
+		borderWidth: 1,
+		borderColor: '#D8DCF0',
+		paddingVertical: 10,
+		paddingHorizontal: 14,
+		minWidth: 120,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	assessmentSelectorButtonActive: {
+		backgroundColor: '#4F772D',
+		borderColor: '#4F772D',
+	},
+	assessmentSelectorButtonText: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: '#3A4D39',
+	},
+	assessmentSelectorButtonTextActive: {
+		color: '#FFFFFF',
 	},
 });
 

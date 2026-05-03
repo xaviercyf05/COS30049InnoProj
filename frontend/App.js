@@ -35,6 +35,7 @@ import AdminRegistrationManagementScreen from './Admin/AdminRegistrationManageme
 import BadgeManagementScreen from './Admin/BadgeManagementScreen.js';
 import AddBadgeScreen from './Admin/AddBadgeScreen.js';
 import EditBadgeScreen from './Admin/EditBadgeScreen.js';
+import AdminResultVerificationScreen from './Admin/AdminResultVerificationScreen.js';
 import ProfileScreen from './Profile/ProfileScreen.js';
 import EditProfileScreen from './Profile/EditProfileScreen.js';
 import {
@@ -387,6 +388,15 @@ function HomeScreen({ navigation }) {
 									>
 										<Text style={styles.sidebarText}>Assessments</Text>
 									</TouchableOpacity>
+									<TouchableOpacity
+										style={styles.sidebarItem}
+										onPress={() => {
+											setMenuVisible(false);
+											navigation.navigate('AdminResultVerification');
+										}}
+									>
+										<Text style={styles.sidebarText}>Result Verification</Text>
+									</TouchableOpacity>
 								</>
 							)}
 						</View>
@@ -656,6 +666,11 @@ export default function App() {
 					component={EditBadgeScreen}
 					options={{ headerShown: true, title: 'Edit Badge' }}
 				/>
+					<Stack.Screen
+						name="AdminResultVerification"
+						component={AdminResultVerificationScreen}
+						options={{ headerShown: true, title: 'Result Verification' }}
+					/>
 				<Stack.Screen
 					name="AdminFeature"
 					component={AdminFeatureScreen}

@@ -179,6 +179,28 @@ export const styles = StyleSheet.create({
     marginTop: 2,
     marginBottom: 2,
   },
+  rememberContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 14,
+    marginBottom: 10,
+    paddingHorizontal: 4,
+  },
+  rememberLabelWrap: {
+    flex: 1,
+    paddingLeft: 12,
+  },
+  rememberLabel: {
+    color: '#243B21',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  rememberHint: {
+    color: '#667264',
+    fontSize: 12,
+    marginTop: 2,
+  },
   loginButton: {
     backgroundColor: '#2D5A27',
     height: 50,

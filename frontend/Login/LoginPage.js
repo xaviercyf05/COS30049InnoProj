@@ -8,16 +8,17 @@ import {
   Platform,
   StatusBar,
   ActivityIndicator,
+  Switch,
 } from 'react-native';
 import { Leaf, Lock, ShieldCheck, User, Compass, PawPrint } from 'lucide-react-native';
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
-
 import { styles } from './LoginPageStyle'; 
+import { persistAuthSession } from './authSession.js';
 
 export default function LoginPage({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
 
@@ -49,6 +50,7 @@ export default function LoginPage({ navigation }) {
         username: normalizedIdentifier,
         userId: numericUserId,
         password,
+        remember: !!stayLoggedIn,
       }),
     });
   };
@@ -99,21 +101,14 @@ export default function LoginPage({ navigation }) {
         const resolvedUserId = data?.data?.user?.userId;
         const resolvedUsername = data?.data?.user?.username || '';
 
-        const sessionPairs = [['innopapp_auth_token', data.data.token]];
-
-        if (resolvedRole) {
-          sessionPairs.push(['innopapp_auth_role', resolvedRole]);
-        }
-
-        if (resolvedUsername) {
-          sessionPairs.push(['innopapp_auth_username', resolvedUsername]);
-        }
-
-        if (resolvedUserId !== undefined && resolvedUserId !== null) {
-          sessionPairs.push(['innopapp_auth_user_id', String(resolvedUserId)]);
-        }
-
-        await AsyncStorage.multiSet(sessionPairs);
+        await persistAuthSession({
+          accessToken: data.data.token,
+          refreshToken: data.data.refreshToken || '',
+          role: resolvedRole,
+          username: resolvedUsername,
+          userId: resolvedUserId,
+          stayLoggedIn,
+        });
         navigation.reset({
           index: 0,
           routes: [{ name: 'Home' }],
@@ -223,6 +218,18 @@ export default function LoginPage({ navigation }) {
             {!!errorMessage && (
               <Text style={styles.inlineErrorText}>{errorMessage}</Text>
             )}
+            <View style={styles.rememberContainer}>
+              <Switch
+                value={stayLoggedIn}
+                onValueChange={setStayLoggedIn}
+                trackColor={{ false: '#C9D3C5', true: '#2E6B4D' }}
+                thumbColor="#FFFFFF"
+              />
+              <View style={styles.rememberLabelWrap}>
+                <Text style={styles.rememberLabel}>Stay logged in</Text>
+                <Text style={styles.rememberHint}>Keep me signed in on this device for 7 days.</Text>
+              </View>
+            </View>
 
             <TouchableOpacity
               style={[styles.loginButton, loading && styles.loginButtonDisabled]}

@@ -44,6 +44,11 @@ import {
 	resolveApiAssetUri,
 	resolveProfileImageUri,
 } from './Profile/profileApi.js';
+import {
+	getStoredAuthSession,
+	persistAuthSession,
+	refreshAuthSession,
+} from './Login/authSession.js';
 
 const Stack = createNativeStackNavigator();
 const SESSION_STORAGE_KEYS = [
@@ -68,6 +73,7 @@ function AdminFeatureScreen({ route }) {
 }
 
 function HomeScreen({ navigation }) {
+	usePeriodicTokenRefresh();
 	const insets = useSafeAreaInsets();
 	const isMobile = Platform.OS !== 'web';
 	const statusBarInset =
@@ -590,6 +596,44 @@ function HomeScreen({ navigation }) {
 		</View>
 		</View>
 	);
+}
+
+// Periodically refresh token when user opted to stay logged in
+function usePeriodicTokenRefresh() {
+	useEffect(() => {
+		let mounted = true;
+
+		const refreshOnce = async () => {
+			try {
+				const session = await getStoredAuthSession();
+				if (!session.refreshToken) return;
+
+				const refreshed = await refreshAuthSession(session.refreshToken);
+				await persistAuthSession({
+					accessToken: refreshed.token,
+					refreshToken: refreshed.refreshToken || session.refreshToken,
+					role: session.role,
+					username: session.username,
+					userId: session.userId,
+					stayLoggedIn: session.stayLoggedIn,
+				});
+			} catch (err) {
+				// ignore
+			}
+		};
+
+		// Run once immediately, then every 4 hours
+		refreshOnce();
+		const id = setInterval(() => {
+			if (!mounted) return;
+			void refreshOnce();
+		}, 4 * 60 * 60 * 1000);
+
+		return () => {
+			mounted = false;
+			clearInterval(id);
+		};
+	}, []);
 }
 
 export default function App() {

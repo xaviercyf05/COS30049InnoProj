@@ -1441,5 +1441,8 @@ module.exports = {
   updateUserProfile,
   updateUserProfileImage,
   changeUserPassword,
+  requestPasswordReset,
+  showPasswordResetPage,
+  completePasswordReset,
   verifyEmailAndActivateAccount,
 };

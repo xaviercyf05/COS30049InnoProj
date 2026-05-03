@@ -154,6 +154,16 @@ async function revokeRefreshTokenById(tokenId, { queryImpl = query } = {}) {
   );
 }
 
+async function revokeRefreshTokensForUser(userId, { queryImpl = query } = {}) {
+  await queryImpl(
+    `UPDATE RefreshTokens
+        SET RevokedAt = COALESCE(RevokedAt, NOW())
+      WHERE UserID = ?
+        AND RevokedAt IS NULL`,
+    [userId]
+  );
+}
+
 async function rotateRefreshToken({
   refreshToken,
   queryImpl = query,
@@ -304,6 +314,10 @@ function createAuthTokenService(overrides = {}) {
       return revokeRefreshTokenById(tokenId, { queryImpl });
     },
 
+    revokeRefreshTokensForUser(userId) {
+      return revokeRefreshTokensForUser(userId, { queryImpl });
+    },
+
     findRefreshTokenRecord(token) {
       return findRefreshTokenRecord(token, { queryImpl, envConfig });
     },
@@ -321,4 +335,5 @@ module.exports = {
   calculateExpiresAt,
   getAccessTokenExpiresIn,
   getRefreshTokenExpiresIn,
+  revokeRefreshTokensForUser,
 };

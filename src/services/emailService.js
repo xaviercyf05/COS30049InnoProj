@@ -199,6 +199,186 @@ async function sendAccountActivationEmail(email, fullName, verificationLink) {
 }
 
 /**
+ * Send password reset email to an existing user
+ * @param {string} email - Recipient email address
+ * @param {string} fullName - Full name of the user
+ * @param {string} resetLink - Complete password reset link URL
+ * @returns {Promise<object>} - Email send result
+ */
+async function sendPasswordResetEmail(email, fullName, resetLink) {
+  const htmlContent = `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Reset Your Password</title>
+      <style>
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+          line-height: 1.6;
+          color: #333;
+          background-color: #f5f5f5;
+          margin: 0;
+          padding: 0;
+        }
+        .container {
+          max-width: 600px;
+          margin: 0 auto;
+          background-color: #ffffff;
+          border-radius: 8px;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+          overflow: hidden;
+        }
+        .header {
+          background: linear-gradient(135deg, #2E6B4D 0%, #445A4D 100%);
+          color: #ffffff;
+          padding: 30px 20px;
+          text-align: center;
+        }
+        .header h1 {
+          margin: 0;
+          font-size: 28px;
+          font-weight: 700;
+        }
+        .content {
+          padding: 30px 20px;
+        }
+        .content h2 {
+          color: #2E6B4D;
+          font-size: 20px;
+          margin-top: 0;
+          margin-bottom: 16px;
+        }
+        .content p {
+          margin: 12px 0;
+          font-size: 14px;
+          color: #555;
+        }
+        .requirements {
+          background-color: #ECF2E5;
+          border-left: 4px solid #2E6B4D;
+          padding: 16px;
+          margin: 20px 0;
+          border-radius: 4px;
+        }
+        .requirements h3 {
+          margin-top: 0;
+          margin-bottom: 12px;
+          color: #2E6B4D;
+          font-size: 16px;
+        }
+        .requirements ul {
+          margin: 0;
+          padding-left: 20px;
+          font-size: 13px;
+          color: #555;
+        }
+        .requirements li {
+          margin: 6px 0;
+        }
+        .cta-button {
+          display: inline-block;
+          background-color: #2E6B4D;
+          color: #ffffff !important;
+          padding: 14px 32px;
+          text-decoration: none;
+          border-radius: 6px;
+          font-weight: 600;
+          font-size: 15px;
+          margin: 24px 0;
+          transition: background-color 0.2s ease;
+        }
+        .cta-button:hover {
+          background-color: #1f4a37;
+        }
+        .button-container {
+          text-align: center;
+        }
+        .link-info {
+          background-color: #f9f9f9;
+          border: 1px solid #e0e0e0;
+          padding: 16px;
+          border-radius: 4px;
+          margin: 16px 0;
+          font-size: 13px;
+          color: #666;
+          word-break: break-all;
+        }
+        .footer {
+          background-color: #f5f5f5;
+          border-top: 1px solid #e0e0e0;
+          padding: 20px;
+          text-align: center;
+          font-size: 12px;
+          color: #999;
+        }
+        .footer p {
+          margin: 6px 0;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Password Reset Request</h1>
+        </div>
+        <div class="content">
+          <h2>Hello ${escapeHtml(fullName)},</h2>
+          <p>We received a request to reset the password for your Sarawak National Parks training account.</p>
+          <p>If you made this request, use the button below to choose a new password.</p>
+
+          <div class="button-container">
+            <a href="${escapeHtml(resetLink)}" class="cta-button">Reset Password</a>
+          </div>
+
+          <p style="font-size: 13px; color: #999;">Or copy and paste this link in your browser:</p>
+          <div class="link-info">
+            ${escapeHtml(resetLink)}
+          </div>
+
+          <div class="requirements">
+            <h3>Security Notes:</h3>
+            <ul>
+              <li>This link can only be used once.</li>
+              <li>The link expires automatically after 7 days.</li>
+              <li>If you did not request this reset, you can ignore this email.</li>
+            </ul>
+          </div>
+
+          <p style="font-size: 13px; color: #999;">For your protection, your current login sessions will be signed out after the password is changed.</p>
+        </div>
+        <div class="footer">
+          <p><strong>Sarawak Forestry Corporation</strong></p>
+          <p>Park Guide Training & Qualification Program</p>
+          <p style="margin-top: 12px; border-top: 1px solid #e0e0e0; padding-top: 12px;">
+            This is an automated email. Please do not reply directly.
+          </p>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+
+  const mailOptions = {
+    from: emailConfig.auth.user,
+    to: email,
+    subject: 'Reset Your Password - Sarawak National Parks',
+    html: htmlContent,
+    text: generatePasswordResetPlainText(fullName, resetLink),
+  };
+
+  try {
+    const result = await transporter.sendMail(mailOptions);
+    console.log('Password reset email sent successfully:', result.messageId);
+    return { success: true, messageId: result.messageId };
+  } catch (error) {
+    console.error('Failed to send password reset email:', error);
+    throw error;
+  }
+}
+
+/**
  * Generate plain text version of the email for email clients that don't support HTML
  */
 function generatePlainTextVersion(fullName, verificationLink) {
@@ -222,6 +402,33 @@ Next Steps:
 - Complete assessments and earn badges
 
 If you did not submit a registration request or believe this email was sent in error, please contact the administrator immediately.
+
+---
+Sarawak Forestry Corporation
+Park Guide Training & Qualification Program
+
+This is an automated email. Please do not reply directly.
+  `;
+}
+
+function generatePasswordResetPlainText(fullName, resetLink) {
+  return `
+Password Reset Request
+
+Hello ${fullName},
+
+We received a request to reset the password for your Sarawak National Parks training account.
+
+If you made this request, visit the link below to choose a new password:
+
+${resetLink}
+
+Security Notes:
+- This link can only be used once
+- The link expires automatically after 7 days
+- If you did not request this reset, you can ignore this email
+
+For your protection, your current login sessions will be signed out after the password is changed.
 
 ---
 Sarawak Forestry Corporation
@@ -262,5 +469,6 @@ async function testEmailConnection() {
 
 module.exports = {
   sendAccountActivationEmail,
+  sendPasswordResetEmail,
   testEmailConnection,
 };

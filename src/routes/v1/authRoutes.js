@@ -61,6 +61,22 @@ router.post(
 );
 
 /**
+ * POST /auth/forgot-password - Request a password reset email
+ * Body: { email }
+ */
+router.post(
+  "/forgot-password",
+  [
+    body("email")
+      .trim()
+      .isEmail()
+      .withMessage("A valid email address is required."),
+  ],
+  validate,
+  asyncHandler(userController.requestPasswordReset)
+);
+
+/**
  * POST /auth/refresh - Refresh a valid JWT token
  * Body: { refreshToken }
  */
@@ -75,6 +91,24 @@ router.post(
   ],
   validate,
   asyncHandler(userController.refreshToken)
+);
+
+/**
+ * GET /auth/reset-password - Render the password reset form
+ * Query: { token }
+ */
+router.get(
+  "/reset-password",
+  asyncHandler(userController.showPasswordResetPage)
+);
+
+/**
+ * POST /auth/reset-password - Complete a password reset
+ * Body: { token, newPassword, confirmPassword }
+ */
+router.post(
+  "/reset-password",
+  asyncHandler(userController.completePasswordReset)
 );
 
 /**

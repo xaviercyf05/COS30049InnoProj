@@ -2,12 +2,18 @@ const bcrypt = require("bcryptjs");
 const fs = require("fs/promises");
 const path = require("path");
 const { query } = require("../config/db");
+const emailService = require("../services/emailService");
 const emailVerificationService = require("../services/emailVerificationService");
 const { createAuthTokenService } = require("../services/authTokenService");
 
 const profileImagePrefix = "/uploads/profile-images/";
 const profileImageStorageDir = path.join(__dirname, "..", "..", "uploads", "profile-images");
 const authTokenService = createAuthTokenService();
+const passwordResetBaseUrl = "https://api.innopappserver.xyz";
+
+function buildPasswordResetLink(token) {
+  return `${passwordResetBaseUrl}/api/v1/auth/reset-password?token=${encodeURIComponent(token)}`;
+}
 
 async function getUserProfileRow(userId) {
   const [rows] = await query(
@@ -451,6 +457,8 @@ async function changeUserPassword(req, res) {
       userId,
     ]);
 
+    await authTokenService.revokeRefreshTokensForUser(userId);
+
     return res.json({
       success: true,
       message: "Password changed successfully.",
@@ -461,6 +469,170 @@ async function changeUserPassword(req, res) {
       success: false,
       message: "Internal server error.",
     });
+  }
+}
+
+/**
+ * Request a password reset email.
+ */
+async function requestPasswordReset(req, res) {
+  const email = String(req.body?.email || "").trim();
+
+  if (!email) {
+    return res.status(400).json({
+      success: false,
+      message: "Email is required.",
+    });
+  }
+
+  try {
+    const [rows] = await query(
+      `SELECT UserID, FullName, Email, IsActive, Status
+         FROM Users
+        WHERE Email = ?
+        LIMIT 1`,
+      [email]
+    );
+
+    if (rows.length > 0) {
+      const user = rows[0];
+
+      if (Number(user.IsActive) === 1 && String(user.Status || "").toLowerCase() === "active") {
+        const token = await emailVerificationService.createVerificationToken(
+          user.UserID,
+          "password_reset"
+        );
+
+        try {
+          const resetLink = buildPasswordResetLink(token);
+          await emailService.sendPasswordResetEmail(
+            user.Email,
+            user.FullName || user.Email,
+            resetLink
+          );
+        } catch (sendError) {
+          await emailVerificationService.deleteVerificationToken?.(token).catch(() => {});
+          console.error("Password reset email send failed:", sendError);
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: "If an account with that email exists, a password reset link has been sent.",
+    });
+  } catch (error) {
+    console.error("Request password reset error:", error);
+
+    return res.json({
+      success: true,
+      message: "If an account with that email exists, a password reset link has been sent.",
+    });
+  }
+}
+
+/**
+ * Render the password reset form for a valid token.
+ */
+async function showPasswordResetPage(req, res) {
+  const verificationToken = req.query?.token ? String(req.query.token).trim() : "";
+
+  try {
+    if (!verificationToken) {
+      return res.status(400).send(getErrorPage("Password reset token is required."));
+    }
+
+    const tokenRecord = await emailVerificationService.verifyToken(
+      verificationToken,
+      "password_reset"
+    );
+
+    if (!tokenRecord) {
+      return res.status(400).send(
+        getErrorPage("Invalid or expired password reset token. Please request a new link from the login page.")
+      );
+    }
+
+    const user = await emailVerificationService.getUserFromToken(
+      verificationToken,
+      "password_reset"
+    );
+
+    return res.send(
+      getPasswordResetPage({
+        token: verificationToken,
+        fullName: user?.FullName || "",
+        email: user?.Email || "",
+      })
+    );
+  } catch (error) {
+    console.error("Show password reset page error:", error);
+    return res.status(500).send(getErrorPage("Unable to load the password reset page."));
+  }
+}
+
+/**
+ * Update the user's password after validating a reset token.
+ */
+async function completePasswordReset(req, res) {
+  const token = String(req.body?.token || req.query?.token || "").trim();
+  const newPassword = String(req.body?.newPassword || "");
+  const confirmPassword = String(req.body?.confirmPassword || "");
+
+  if (!token) {
+    return res.status(400).send(getErrorPage("Password reset token is required."));
+  }
+
+  if (!newPassword || newPassword.length < 8 || newPassword.length > 128) {
+    return res.status(400).send(
+      getPasswordResetPage({
+        token,
+        errorMessage: "New password must be between 8 and 128 characters.",
+      })
+    );
+  }
+
+  if (newPassword !== confirmPassword) {
+    return res.status(400).send(
+      getPasswordResetPage({
+        token,
+        errorMessage: "Passwords do not match.",
+      })
+    );
+  }
+
+  try {
+    const tokenRecord = await emailVerificationService.verifyToken(token, "password_reset");
+
+    if (!tokenRecord) {
+      return res.status(400).send(
+        getErrorPage("Invalid or expired password reset token. Please request a new link from the login page.")
+      );
+    }
+
+    const user = await emailVerificationService.getUserFromToken(token, "password_reset");
+
+    if (!user) {
+      return res.status(404).send(getErrorPage("User account not found for this reset token."));
+    }
+
+    const passwordHash = await bcrypt.hash(newPassword, 12);
+    const [result] = await query("UPDATE Users SET PasswordHash = ? WHERE UserID = ?", [
+      passwordHash,
+      tokenRecord.UserID,
+    ]);
+
+    if (result.affectedRows === 0) {
+      return res.status(404).send(getErrorPage("User account not found."));
+    }
+
+    await authTokenService.revokeRefreshTokensForUser(tokenRecord.UserID);
+    await emailVerificationService.deleteVerificationToken(tokenRecord.TokenID);
+
+    return res.send(getPasswordResetSuccessPage(user));
+  } catch (error) {
+    console.error("Complete password reset error:", error);
+    return res.status(500).send(getErrorPage("Failed to reset password. Please try again later."));
   }
 }
 
@@ -726,6 +898,329 @@ function getSuccessPage(user) {
           <strong>Sarawak Forestry Corporation</strong><br>
           Park Guide Training & Qualification Program<br>
           <span style="display: block; margin-top: 8px; opacity: 0.7;">© 2026 All rights reserved</span>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * Render the password reset form.
+ */
+function getPasswordResetPage({ token, fullName = "", email = "", errorMessage = "" }) {
+  const greetingName = fullName ? escapeHtml(fullName) : "there";
+  const encodedToken = escapeHtml(token || "");
+  const encodedEmail = email ? escapeHtml(email) : "your account email";
+  const errorMarkup = errorMessage
+    ? `<div class="error">${escapeHtml(errorMessage)}</div>`
+    : "";
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Reset Password - Sarawak Park Guide Training</title>
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+          background: linear-gradient(135deg, #071407 0%, #0a1d0a 100%);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+        .container {
+          background: #ffffff;
+          border-radius: 16px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          max-width: 520px;
+          width: 100%;
+          overflow: hidden;
+        }
+        .header {
+          background: linear-gradient(135deg, #2E6B4D 0%, #445A4D 100%);
+          padding: 36px 20px;
+          text-align: center;
+          color: #ffffff;
+        }
+        .header h1 {
+          font-size: 28px;
+          font-weight: 800;
+          margin: 0;
+        }
+        .content {
+          padding: 34px 28px 30px;
+        }
+        .title {
+          font-size: 22px;
+          font-weight: 800;
+          color: #20372A;
+          margin-bottom: 12px;
+          text-align: center;
+        }
+        .message {
+          font-size: 15px;
+          color: #445A4D;
+          text-align: center;
+          line-height: 24px;
+          margin-bottom: 24px;
+        }
+        .account-box {
+          background-color: #ECF2E5;
+          border: 1px solid #D8E2CF;
+          border-radius: 12px;
+          padding: 16px;
+          margin-bottom: 22px;
+          color: #20372A;
+          font-size: 13px;
+        }
+        .error {
+          background: #FDECEC;
+          color: #A12626;
+          border: 1px solid #F3C1C1;
+          border-radius: 10px;
+          padding: 12px 14px;
+          margin-bottom: 18px;
+          font-size: 13px;
+          line-height: 18px;
+        }
+        .field {
+          margin-bottom: 14px;
+        }
+        .field label {
+          display: block;
+          font-size: 13px;
+          font-weight: 700;
+          color: #20372A;
+          margin-bottom: 8px;
+        }
+        .field input {
+          width: 100%;
+          padding: 14px 14px;
+          border-radius: 10px;
+          border: 1px solid #D8E2CF;
+          font-size: 15px;
+          color: #20372A;
+          outline: none;
+        }
+        .field input:focus {
+          border-color: #2E6B4D;
+          box-shadow: 0 0 0 3px rgba(46, 107, 77, 0.12);
+        }
+        .button {
+          width: 100%;
+          border: none;
+          border-radius: 10px;
+          padding: 14px 18px;
+          font-size: 15px;
+          font-weight: 700;
+          cursor: pointer;
+          background: #2E6B4D;
+          color: #ffffff;
+          transition: transform 0.2s ease, box-shadow 0.2s ease;
+          margin-top: 6px;
+        }
+        .button:hover {
+          transform: translateY(-1px);
+          box-shadow: 0 10px 20px rgba(46, 107, 77, 0.2);
+        }
+        .security-note {
+          background-color: #F9FBF7;
+          border-left: 4px solid #2E6B4D;
+          padding: 14px 16px;
+          border-radius: 6px;
+          margin-top: 18px;
+          font-size: 13px;
+          color: #445A4D;
+          line-height: 20px;
+        }
+        .footer {
+          text-align: center;
+          padding-top: 12px;
+          color: #6A7A67;
+          font-size: 12px;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Reset Password</h1>
+        </div>
+        <div class="content">
+          <div class="title">Set a New Password</div>
+          <p class="message">
+            Hello ${greetingName}, choose a strong new password for ${encodedEmail}.
+          </p>
+
+          <div class="account-box">
+            This reset link is valid for one use only. If you did not request it, you can close this page.
+          </div>
+
+          ${errorMarkup}
+
+          <form method="POST" action="/api/v1/auth/reset-password">
+            <input type="hidden" name="token" value="${encodedToken}" />
+            <div class="field">
+              <label for="newPassword">New Password</label>
+              <input id="newPassword" name="newPassword" type="password" minlength="8" maxlength="128" required />
+            </div>
+            <div class="field">
+              <label for="confirmPassword">Confirm New Password</label>
+              <input id="confirmPassword" name="confirmPassword" type="password" minlength="8" maxlength="128" required />
+            </div>
+            <button class="button" type="submit">Update Password</button>
+          </form>
+
+          <div class="security-note">
+            Your active login sessions will be signed out after the password changes.
+          </div>
+
+          <div class="footer" style="margin-top: 18px;">
+            Return to the app after you finish resetting your password.
+          </div>
+        </div>
+      </div>
+    </body>
+    </html>
+  `;
+}
+
+/**
+ * Render the password reset success page.
+ */
+function getPasswordResetSuccessPage(user) {
+  const displayName = user?.FullName ? escapeHtml(user.FullName) : "Your account";
+
+  return `
+    <!DOCTYPE html>
+    <html lang="en">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Password Updated - Sarawak Park Guide Training</title>
+      <style>
+        * {
+          margin: 0;
+          padding: 0;
+          box-sizing: border-box;
+        }
+        body {
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', 'Ubuntu', 'Cantarell', sans-serif;
+          background: linear-gradient(135deg, #071407 0%, #0a1d0a 100%);
+          min-height: 100vh;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 20px;
+        }
+        .container {
+          background: #ffffff;
+          border-radius: 16px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+          max-width: 500px;
+          width: 100%;
+          overflow: hidden;
+        }
+        .header {
+          background: linear-gradient(135deg, #2E6B4D 0%, #445A4D 100%);
+          padding: 40px 20px;
+          text-align: center;
+          color: #ffffff;
+        }
+        .header h1 {
+          font-size: 28px;
+          font-weight: 800;
+          margin: 0;
+        }
+        .content {
+          padding: 40px 30px;
+          text-align: center;
+        }
+        .title {
+          font-size: 22px;
+          font-weight: 800;
+          color: #20372A;
+          margin-bottom: 12px;
+        }
+        .message {
+          font-size: 15px;
+          color: #445A4D;
+          line-height: 24px;
+          margin-bottom: 24px;
+        }
+        .button-group {
+          display: flex;
+          gap: 12px;
+          flex-direction: column;
+        }
+        .button {
+          padding: 14px 24px;
+          border-radius: 10px;
+          font-size: 15px;
+          font-weight: 700;
+          border: none;
+          cursor: pointer;
+          transition: all 0.3s ease;
+          text-decoration: none;
+          display: inline-block;
+          text-align: center;
+        }
+        .button-primary {
+          background-color: #2E6B4D;
+          color: #ffffff;
+        }
+        .button-primary:hover {
+          background-color: #1f4a37;
+          transform: translateY(-2px);
+          box-shadow: 0 8px 16px rgba(46, 107, 77, 0.3);
+        }
+        .button-secondary {
+          background-color: #F2F5ED;
+          color: #2E6B4D;
+          border: 1px solid #D8E2CF;
+        }
+        .button-secondary:hover {
+          background-color: #E8EEE3;
+        }
+        .footer {
+          background-color: #F5F5F5;
+          border-top: 1px solid #E0E0E0;
+          padding: 20px;
+          text-align: center;
+          font-size: 12px;
+          color: #999;
+        }
+      </style>
+    </head>
+    <body>
+      <div class="container">
+        <div class="header">
+          <h1>Password Updated</h1>
+        </div>
+        <div class="content">
+          <div class="title">${displayName} is Secured Again</div>
+          <p class="message">
+            Your password has been updated successfully. You can now return to the training portal and sign in with your new password.
+          </p>
+
+          <div class="button-group">
+            <a href="https://innopappserver.xyz" class="button button-primary">Go to Training Portal</a>
+            <a href="javascript:history.back()" class="button button-secondary">Go Back</a>
+          </div>
+        </div>
+        <div class="footer">
+          <strong>Sarawak Forestry Corporation</strong><br>
+          Park Guide Training & Qualification Program
         </div>
       </div>
     </body>

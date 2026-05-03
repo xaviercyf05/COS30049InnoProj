@@ -1,5 +1,5 @@
 const express = require("express");
-const { body } = require("express-validator");
+const { body, query } = require("express-validator");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const userController = require("../../controllers/userController");
@@ -54,6 +54,23 @@ router.post(
   ],
   validate,
   asyncHandler(userController.loginUser)
+);
+
+/**
+ * GET /auth/verify-email - Verify email and activate user account
+ * Query: { token } - The verification token from email link
+ */
+router.get(
+  "/verify-email",
+  [
+    query("token")
+      .notEmpty()
+      .withMessage("Verification token is required.")
+      .isLength({ min: 1, max: 500 })
+      .withMessage("Token must be between 1 and 500 characters."),
+  ],
+  validate,
+  asyncHandler(userController.verifyEmailAndActivateAccount)
 );
 
 module.exports = router;

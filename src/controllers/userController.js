@@ -4,6 +4,7 @@ const fs = require("fs/promises");
 const path = require("path");
 const { query } = require("../config/db");
 const env = require("../config/env");
+const emailVerificationService = require("../services/emailVerificationService");
 
 const profileImagePrefix = "/uploads/profile-images/";
 const profileImageStorageDir = path.join(__dirname, "..", "..", "uploads", "profile-images");
@@ -422,10 +423,74 @@ async function changeUserPassword(req, res) {
   }
 }
 
+/**
+ * Verify email and activate user account
+ * Used when user clicks the verification link in their email
+ */
+async function verifyEmailAndActivateAccount(req, res) {
+  const { token } = req.query;
+
+  try {
+    // Trim and validate token
+    const verificationToken = token ? String(token).trim() : "";
+
+    if (!verificationToken) {
+      return res.status(400).json({
+        success: false,
+        message: "Verification token is required.",
+      });
+    }
+
+    // Verify token and get token record
+    const tokenRecord = await emailVerificationService.verifyToken(
+      verificationToken,
+      'account_activation'
+    );
+
+    if (!tokenRecord) {
+      return res.status(400).json({
+        success: false,
+        message: "Invalid or expired verification token. Please request a new one.",
+      });
+    }
+
+    // Activate user account
+    const activatedUser = await emailVerificationService.activateUserAccount(tokenRecord.UserID);
+
+    if (!activatedUser) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to activate account. Please contact support.",
+      });
+    }
+
+    // Return success response with user info
+    return res.json({
+      success: true,
+      message: "Email verified successfully! Your account is now active. You can now log in.",
+      data: {
+        userId: activatedUser.UserID,
+        username: activatedUser.Username,
+        email: activatedUser.Email,
+        fullName: activatedUser.FullName,
+        isActive: Boolean(activatedUser.IsActive),
+        status: activatedUser.Status,
+      },
+    });
+  } catch (error) {
+    console.error("Email verification error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "An error occurred while verifying your email.",
+    });
+  }
+}
+
 module.exports = {
   loginUser,
   getUserProfile,
   updateUserProfile,
   updateUserProfileImage,
   changeUserPassword,
+  verifyEmailAndActivateAccount,
 };

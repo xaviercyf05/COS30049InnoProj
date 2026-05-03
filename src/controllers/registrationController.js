@@ -2,6 +2,8 @@ const bcrypt = require("bcryptjs");
 const fs = require("fs/promises");
 const path = require("path");
 const { pool, query } = require("../config/db");
+const emailVerificationService = require("../services/emailVerificationService");
+const emailService = require("../services/emailService");
 
 const resumePathPrefix = "/uploads/registration-resumes/";
 const resumeStorageDir = path.join(
@@ -280,6 +282,7 @@ async function getRegistrationRequests(req, res) {
 
 /**
  * Admin: update request status and create user account on approval.
+ * When approved, user account is created but kept INACTIVE until email verification.
  */
 async function updateRegistrationStatus(req, res) {
   const { registrationId } = req.params;
@@ -333,6 +336,8 @@ async function updateRegistrationStatus(req, res) {
     }
 
     let createdUserId = null;
+    let emailSent = false;
+    let emailError = null;
 
     if (normalizedStatus === "Approved" && requestRow.Status !== "Approved") {
       const [duplicateUsers] = await connection.execute(
@@ -360,6 +365,7 @@ async function updateRegistrationStatus(req, res) {
         });
       }
 
+      // Create user as INACTIVE - they must verify email to activate
       const [insertUserResult] = await connection.execute(
         `INSERT INTO Users (
           Username,
@@ -370,7 +376,7 @@ async function updateRegistrationStatus(req, res) {
           Progress,
           Status,
           RoleID
-        ) VALUES (?, ?, 1, ?, ?, 0, 'Active', ?)`,
+        ) VALUES (?, ?, 0, ?, ?, 0, 'Inactive', ?)`,
         [
           requestRow.Username,
           requestRow.PasswordHash,
@@ -381,21 +387,61 @@ async function updateRegistrationStatus(req, res) {
       );
 
       createdUserId = insertUserResult.insertId;
+
+      // Commit database changes first
+      await connection.commit();
+
+      // Now attempt to send verification email
+      try {
+        // Generate verification token
+        const verificationToken = await emailVerificationService.createVerificationToken(
+          createdUserId,
+          'account_activation'
+        );
+
+        // Build verification link - construct the URL based on environment
+        const apiBaseUrl = process.env.API_BASE_URL || 
+                          (process.env.CORS_ORIGIN ? process.env.CORS_ORIGIN.split(',')[0].trim() : 'https://innopappserver.xyz');
+        
+        const verificationLink = `${apiBaseUrl}/api/v1/auth/verify-email?token=${verificationToken}`;
+
+        // Send verification email
+        await emailService.sendAccountActivationEmail(
+          requestRow.Email,
+          requestRow.FullName,
+          verificationLink
+        );
+
+        emailSent = true;
+        console.log(`Verification email sent to ${requestRow.Email} for user ${createdUserId}`);
+      } catch (error) {
+        emailError = error.message;
+        console.error(`Failed to send verification email to ${requestRow.Email}:`, error);
+        // Email sending is not critical - account was created, just log the error
+        // User might be able to resend verification email later
+      }
+    } else {
+      // For rejection or other status changes
+      await connection.commit();
     }
 
-    await connection.execute(
-      `UPDATE RegistrationRequests
-          SET Status = ?,
-              ReviewedBy = ?,
-              ReviewedAt = CURRENT_TIMESTAMP,
-              ReviewRemark = ?
-        WHERE RegistrationID = ?`,
-      [normalizedStatus, req.user.userId, remark ? String(remark).trim().slice(0, 255) : null, registrationId]
-    );
+    // Update registration request status
+    const updateConnection = await pool.getConnection();
+    try {
+      await updateConnection.execute(
+        `UPDATE RegistrationRequests
+            SET Status = ?,
+                ReviewedBy = ?,
+                ReviewedAt = CURRENT_TIMESTAMP,
+                ReviewRemark = ?
+          WHERE RegistrationID = ?`,
+        [normalizedStatus, req.user.userId, remark ? String(remark).trim().slice(0, 255) : null, registrationId]
+      );
+    } finally {
+      updateConnection.release();
+    }
 
-    await connection.commit();
-
-    return res.json({
+    const response = {
       success: true,
       message: `Registration request ${normalizedStatus.toLowerCase()} successfully.`,
       data: {
@@ -403,7 +449,20 @@ async function updateRegistrationStatus(req, res) {
         status: normalizedStatus.toLowerCase(),
         createdUserId,
       },
-    });
+    };
+
+    // Add email status to response if user was approved
+    if (normalizedStatus === "Approved") {
+      response.data.emailSent = emailSent;
+      if (emailError) {
+        response.data.emailError = emailError;
+        response.warning = "User account created but verification email failed to send.";
+      } else {
+        response.data.emailStatus = "Verification email sent successfully. User must verify email to activate account.";
+      }
+    }
+
+    return res.json(response);
   } catch (error) {
     if (connection) {
       await connection.rollback().catch(() => {});

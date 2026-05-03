@@ -53,7 +53,7 @@ CREATE TABLE IF NOT EXISTS Users (
   Email VARCHAR(150) NOT NULL UNIQUE,
   ProfileImageUrl VARCHAR(255) NULL,
   Progress INT UNSIGNED NOT NULL DEFAULT 0,
-  Status VARCHAR(50) NOT NULL DEFAULT 'Active',
+  Status VARCHAR(50) NOT NULL DEFAULT 'Inactive',
   RoleID TINYINT UNSIGNED NOT NULL,
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_users_role FOREIGN KEY (RoleID) REFERENCES Roles (RoleID),
@@ -227,3 +227,18 @@ CREATE TABLE IF NOT EXISTS Notifications (
   Message TEXT NOT NULL,
   CONSTRAINT fk_notifications_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS EmailVerificationTokens (
+  TokenID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  UserID INT UNSIGNED NOT NULL,
+  Token VARCHAR(255) NOT NULL UNIQUE,
+  TokenType VARCHAR(50) NOT NULL,
+  ExpiresAt TIMESTAMP NOT NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_email_verification_tokens_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
+  CONSTRAINT chk_email_verification_token_type CHECK (TokenType IN ('account_activation', 'password_reset'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_email_verification_tokens_token ON EmailVerificationTokens (Token);
+CREATE INDEX idx_email_verification_tokens_user_type ON EmailVerificationTokens (UserID, TokenType);
+CREATE INDEX idx_email_verification_tokens_expires ON EmailVerificationTokens (ExpiresAt);

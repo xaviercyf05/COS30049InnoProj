@@ -75,7 +75,7 @@ function BadgeManagementScreen({ navigation, currentProfile }) {
     }
 
     return {
-      uri: 'https://i.pinimg.com/736x/cc/f4/05/ccf405a0cd0fa9c574d87d7bc2bcc900.jpg',
+      uri: 'https://static.vecteezy.com/system/resources/previews/036/280/651/original/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-illustration-vector.jpg',
     };
   }, [currentProfile]);
 

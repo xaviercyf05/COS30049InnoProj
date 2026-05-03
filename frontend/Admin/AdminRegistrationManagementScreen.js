@@ -35,6 +35,7 @@ function AdminRegistrationManagementScreen({ navigation }) {
 
   const [applications, setApplications] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [resendingRegistrationId, setResendingRegistrationId] = useState(null);
 
   const [modalVisible, setModalVisible] = useState(false);
   const [modalTitle, setModalTitle] = useState('');
@@ -116,6 +117,26 @@ function AdminRegistrationManagementScreen({ navigation }) {
       showModal(title, `The application has been marked as ${newStatus}.`);
     } catch (error) {
       showModal('Update failed', error?.message || 'Unable to update application status.');
+    }
+  };
+
+  const resendVerificationToken = async (id) => {
+    try {
+      setResendingRegistrationId(id);
+
+      const token = await getAuthToken();
+      await requestProfileApi(`/api/v1/admin/registrations/${id}/resend-token`, token, {
+        method: 'POST',
+      });
+
+      showModal(
+        'Token Resent',
+        'A new verification token has been emailed to the applicant. The previous token is no longer valid.'
+      );
+    } catch (error) {
+      showModal('Resend failed', error?.message || 'Unable to resend verification token right now.');
+    } finally {
+      setResendingRegistrationId(null);
     }
   };
 
@@ -261,6 +282,21 @@ function AdminRegistrationManagementScreen({ navigation }) {
               <TouchableOpacity style={styles.resumeButton} onPress={() => openResume(item)}>
                 <Text style={styles.resumeButtonText}>Open Resume</Text>
               </TouchableOpacity>
+
+              {item.status === 'approved' && (
+                <TouchableOpacity
+                  style={[
+                    styles.resendButton,
+                    resendingRegistrationId === item.id && styles.resendButtonDisabled,
+                  ]}
+                  onPress={() => resendVerificationToken(item.id)}
+                  disabled={resendingRegistrationId === item.id}
+                >
+                  <Text style={styles.resendButtonText}>
+                    {resendingRegistrationId === item.id ? 'Resending...' : 'Resend Token'}
+                  </Text>
+                </TouchableOpacity>
+              )}
 
               {item.status === 'pending' && (
                 <View style={styles.actionButtons}>
@@ -448,6 +484,23 @@ const styles = StyleSheet.create({
   },
   resumeButtonText: {
     color: COLORS.pillText,
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  resendButton: {
+    marginTop: 10,
+    backgroundColor: '#F8F1E5',
+    borderWidth: 1,
+    borderColor: '#E5C78F',
+    borderRadius: 10,
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  resendButtonDisabled: {
+    opacity: 0.7,
+  },
+  resendButtonText: {
+    color: '#A86400',
     fontSize: 13,
     fontWeight: '700',
   },

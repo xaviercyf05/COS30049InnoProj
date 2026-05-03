@@ -481,7 +481,7 @@ export default function EditProfileScreen({ navigation, route }) {
           <View style={styles.avatarSection}>
             <TouchableOpacity style={styles.avatarButton} onPress={pickProfileImage} activeOpacity={0.85}>
               <Image
-                source={profileImageUri ? { uri: profileImageUri } : defaultAvatar}
+                source={profileImageUri ? { uri: profileImageUri } : { uri: 'https://static.vecteezy.com/system/resources/previews/036/280/651/original/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-illustration-vector.jpg' }}
                 style={styles.avatarImage}
               />
             </TouchableOpacity>

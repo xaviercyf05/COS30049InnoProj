@@ -48,6 +48,7 @@ export default function RegisterScreen({ navigation }) {
   const [formData, setFormData] = useState({
     username: '',
     password: '',
+    confirmPassword: '',
     fullName: '',
     phoneNumber: '',
     email: '',
@@ -104,6 +105,8 @@ export default function RegisterScreen({ navigation }) {
     if (!formData.username.trim()) return 'Username is required.';
     if (!formData.password.trim()) return 'Password is required.';
     if (formData.password.length < 8) return 'Password must be at least 8 characters.';
+    if (!formData.confirmPassword.trim()) return 'Please confirm your password.';
+    if (formData.password !== formData.confirmPassword) return 'Passwords do not match.';
     if (!formData.fullName.trim()) return 'Full name is required.';
     if (!formData.phoneNumber.trim()) return 'Phone number is required.';
     if (!formData.email.trim()) return 'Email address is required.';
@@ -274,10 +277,20 @@ export default function RegisterScreen({ navigation }) {
           <Text style={styles.label}>Password</Text>
           <TextInput
             style={styles.input}
-            placeholder="Minimum 6 characters"
+            placeholder="Minimum 8 characters"
             placeholderTextColor="#8A9687"
             value={formData.password}
             onChangeText={(text) => handleInputChange('password', text)}
+            secureTextEntry
+          />
+
+          <Text style={styles.label}>Confirm Password</Text>
+          <TextInput
+            style={styles.input}
+            placeholder="Re-enter your password"
+            placeholderTextColor="#8A9687"
+            value={formData.confirmPassword}
+            onChangeText={(text) => handleInputChange('confirmPassword', text)}
             secureTextEntry
           />
 

@@ -107,7 +107,7 @@ export default function ProfileScreen({ navigation }) {
   const resolvedProfileImagePath = pickProfileImagePath(profile);
   const avatarSource = resolvedProfileImagePath
     ? { uri: resolveProfileImageUri(resolvedProfileImagePath) }
-    : defaultAvatar;
+    : { uri: 'https://static.vecteezy.com/system/resources/previews/036/280/651/original/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-illustration-vector.jpg' };
 
   if (loading && !profile) {
     return (

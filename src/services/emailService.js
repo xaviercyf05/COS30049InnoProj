@@ -97,7 +97,7 @@ async function sendAccountActivationEmail(email, fullName, verificationLink) {
         .cta-button {
           display: inline-block;
           background-color: #2E6B4D;
-          color: #ffffff;
+          color: #ffffff !important;
           padding: 14px 32px;
           text-decoration: none;
           border-radius: 6px;
@@ -146,7 +146,7 @@ async function sendAccountActivationEmail(email, fullName, verificationLink) {
           <p>To complete your account setup and begin your training as a park guide, please activate your account by clicking the button below:</p>
           
           <div class="button-container">
-            <a href="${escapeHtml(verificationLink)}" class="cta-button">Activate Account</a>
+            <a href="${escapeHtml(verificationLink)}" class="cta-button" style="color: #ffffff !important; background-color: #2E6B4D; text-decoration: none;">Activate Account</a>
           </div>
 
           <p style="font-size: 13px; color: #999;">Or copy and paste this link in your browser:</p>

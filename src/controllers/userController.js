@@ -130,29 +130,38 @@ async function loginUser(req, res) {
       ? Number.parseInt(loginIdentifier, 10)
       : null;
 
-    const [rows] = await query(
+    // First, check if user exists (regardless of IsActive status)
+    const [allUserRows] = await query(
       `SELECT u.UserID, u.Username, u.PasswordHash, u.Status, u.IsActive, r.RoleTitle
        FROM Users u
        INNER JOIN Roles r ON r.RoleID = u.RoleID
-       WHERE u.IsActive = 1
-         AND (
-           u.Username = ?
-           OR (? IS NOT NULL AND u.UserID = ?)
-         )
+       WHERE (
+         u.Username = ?
+         OR (? IS NOT NULL AND u.UserID = ?)
+       )
        LIMIT 1`,
       [loginIdentifier, parsedUserId, parsedUserId]
     );
 
-    if (rows.length === 0) {
+    if (allUserRows.length === 0) {
       return res.status(401).json({
         success: false,
         message: "Invalid credentials.",
       });
     }
 
-    const user = rows[0];
+    const user = allUserRows[0];
 
-    // Check account status
+    // Check if account is inactive and provide specific error message
+    if (user.IsActive === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is inactive. Please verify your email using the verification link sent to you to activate your account.",
+        isInactive: true,
+      });
+    }
+
+    // Check account status (Suspended, etc.)
     if (user.Status !== "Active") {
       return res.status(403).json({
         success: false,

@@ -1,10 +1,11 @@
 const nodemailer = require('nodemailer');
 
 // Email configuration from environment variables
+// Note: EMAIL_HOST in .env is the email ADDRESS (sfcadmin.noreply@gmail.com), not the SMTP host
 const emailConfig = {
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: process.env.EMAIL_PORT || 587,
-  secure: process.env.EMAIL_SECURE === 'true' || false,
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
   auth: {
     user: process.env.EMAIL_HOST || 'sfcadmin.noreply@gmail.com',
     pass: process.env.EMAIL_APP_PASSWORD || '',

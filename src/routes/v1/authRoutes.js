@@ -1,4 +1,5 @@
 const express = require("express");
+const cors = require("cors");
 const { body, query } = require("express-validator");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
@@ -108,6 +109,7 @@ router.get(
  */
 router.post(
   "/reset-password",
+  cors(),
   asyncHandler(userController.completePasswordReset)
 );
 

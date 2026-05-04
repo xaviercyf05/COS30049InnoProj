@@ -181,6 +181,38 @@ async function loginUser(req, res) {
       });
     }
 
+    // Check if MFA is enabled for this user
+    const [mfaCheck] = await query(
+      `SELECT MFAEnabled FROM Users WHERE UserID = ?`,
+      [user.UserID]
+    );
+
+    const mfaEnabled = mfaCheck.length > 0 && mfaCheck[0].MFAEnabled === 1;
+
+    if (mfaEnabled) {
+      // Create a temporary MFA verification token (expires in 10 minutes)
+      const mfaTempToken = require('jsonwebtoken').sign(
+        { userId: user.UserID, type: 'mfa_verification', originalPurpose: 'login' },
+        require('../config/env').jwtSecret,
+        { expiresIn: '10m' }
+      );
+
+      return res.json({
+        success: true,
+        mfaRequired: true,
+        data: {
+          tempToken: mfaTempToken,
+          userId: user.UserID,
+          user: {
+            userId: user.UserID,
+            username: user.Username,
+            role: user.RoleTitle,
+          },
+          message: "MFA verification required. Please enter the 6-digit code from your authenticator app or use a recovery code.",
+        },
+      });
+    }
+
     const tokenPair = await authTokenService.issueTokenPair({
       user,
       remember: !!remember,
@@ -1469,8 +1501,97 @@ function escapeHtml(text) {
   return String(text).replace(/[&<>"']/g, (char) => map[char]);
 }
 
+/**
+ * Complete login after MFA verification
+ */
+async function completeMFALogin(req, res) {
+  try {
+    const { tempToken, remember } = req.body;
+    const jwt = require('jsonwebtoken');
+    const env = require('../config/env');
+
+    if (!tempToken) {
+      return res.status(400).json({
+        success: false,
+        message: 'Temporary token is required.',
+      });
+    }
+
+    // Verify the MFA temp token
+    let decoded;
+    try {
+      decoded = jwt.verify(tempToken, env.jwtSecret);
+    } catch (error) {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid or expired temporary token.',
+      });
+    }
+
+    // Verify it's an MFA verification token
+    if (decoded.type !== 'mfa_verification') {
+      return res.status(401).json({
+        success: false,
+        message: 'Invalid token type.',
+      });
+    }
+
+    const userId = decoded.userId;
+
+    // Get user information
+    const [userRows] = await query(
+      `SELECT u.UserID, u.Username, u.Status, u.IsActive, r.RoleTitle
+       FROM Users u
+       INNER JOIN Roles r ON r.RoleID = u.RoleID
+       WHERE u.UserID = ?
+       LIMIT 1`,
+      [userId]
+    );
+
+    if (userRows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found.',
+      });
+    }
+
+    const user = userRows[0];
+
+    // Issue final tokens
+    const tokenPair = await authTokenService.issueTokenPair({
+      user,
+      remember: !!remember,
+      userAgent: req.headers['user-agent'] || null,
+      ipAddress: req.ip || req.socket?.remoteAddress || null,
+    });
+
+    return res.json({
+      success: true,
+      data: {
+        token: tokenPair.accessToken,
+        refreshToken: tokenPair.refreshToken,
+        tokenType: 'Bearer',
+        expiresIn: tokenPair.accessTokenExpiresIn,
+        refreshTokenExpiresIn: tokenPair.refreshTokenExpiresIn,
+        user: {
+          userId: user.UserID,
+          username: user.Username,
+          role: user.RoleTitle,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('MFA login completion error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Error completing login.',
+    });
+  }
+}
+
 module.exports = {
   loginUser,
+  completeMFALogin,
   refreshToken,
   getUserProfile,
   updateUserProfile,

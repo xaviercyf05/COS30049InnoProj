@@ -112,7 +112,7 @@ router.post(
 );
 
 /**
- * GET /auth/verify-email - Verify email and activate user account
+ * POST /auth/verify-email - Verify email and activate user account
  * Query: { token } - The verification token from email link
  */
 router.get(
@@ -126,6 +126,50 @@ router.get(
   ],
   validate,
   asyncHandler(userController.verifyEmailAndActivateAccount)
+);
+
+/**
+ * POST /auth/mfa/verify-token - Verify MFA token during login
+ * Body: { userId, token } OR { userId, recoveryCode }
+ */
+router.post(
+  "/mfa/verify-token",
+  [
+    body("userId")
+      .isInt({ min: 1 })
+      .withMessage("User ID must be a positive integer."),
+    body()
+      .custom((_, { req }) => {
+        const { token, recoveryCode } = req.body;
+        if (!token && !recoveryCode) {
+          throw new Error("Either token or recovery code is required.");
+        }
+        return true;
+      }),
+  ],
+  validate,
+  asyncHandler(require("../../controllers/mfaController").verifyMFAToken)
+);
+
+/**
+ * POST /auth/mfa/complete-login - Complete login after MFA verification
+ * Body: { tempToken, remember }
+ */
+router.post(
+  "/mfa/complete-login",
+  [
+    body("tempToken")
+      .notEmpty()
+      .withMessage("Temporary token is required.")
+      .isLength({ min: 1, max: 1000 })
+      .withMessage("Token is too long."),
+    body("remember")
+      .optional()
+      .isBoolean()
+      .withMessage("Remember flag must be a boolean."),
+  ],
+  validate,
+  asyncHandler(userController.completeMFALogin)
 );
 
 module.exports = router;

@@ -5,6 +5,7 @@ const profileImageUpload = require("../../middleware/profileImageUpload");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const userController = require("../../controllers/userController");
+const mfaController = require("../../controllers/mfaController");
 
 const router = express.Router();
 
@@ -67,6 +68,75 @@ router.post(
   ],
   validate,
   asyncHandler(userController.changeUserPassword)
+);
+
+/**
+ * POST /user/mfa/setup/initiate - Initiate MFA setup
+ * Returns QR code and recovery codes
+ */
+router.post(
+  "/mfa/setup/initiate",
+  asyncHandler(mfaController.initiateMFASetup)
+);
+
+/**
+ * POST /user/mfa/setup/confirm - Confirm MFA setup with verification token
+ * Body: { secret, token, recoveryCodes }
+ */
+router.post(
+  "/mfa/setup/confirm",
+  [
+    body("secret")
+      .notEmpty()
+      .withMessage("Secret is required."),
+    body("token")
+      .isLength({ min: 6, max: 6 })
+      .isNumeric()
+      .withMessage("Token must be a 6-digit code."),
+    body("recoveryCodes")
+      .isArray({ min: 1 })
+      .withMessage("Recovery codes array is required."),
+  ],
+  validate,
+  asyncHandler(mfaController.confirmMFASetup)
+);
+
+/**
+ * GET /user/mfa/status - Get MFA status for current user
+ */
+router.get(
+  "/mfa/status",
+  asyncHandler(mfaController.getMFAStatus)
+);
+
+/**
+ * POST /user/mfa/disable - Disable MFA for current user
+ * Body: { password }
+ */
+router.post(
+  "/mfa/disable",
+  [
+    body("password")
+      .isLength({ min: 8 })
+      .withMessage("Password is required for security."),
+  ],
+  validate,
+  asyncHandler(mfaController.disableMFA)
+);
+
+/**
+ * POST /user/mfa/recovery-codes/regenerate - Generate new recovery codes
+ * Body: { password }
+ */
+router.post(
+  "/mfa/recovery-codes/regenerate",
+  [
+    body("password")
+      .isLength({ min: 8 })
+      .withMessage("Password is required for security."),
+  ],
+  validate,
+  asyncHandler(mfaController.regenerateRecoveryCodes)
 );
 
 module.exports = router;

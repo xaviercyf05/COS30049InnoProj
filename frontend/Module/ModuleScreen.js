@@ -107,8 +107,26 @@ function buildRichContentDocument(title, contentHtml) {
         margin: 0 0 12px;
       }
       img {
-        max-width: 100%;
-        height: auto;
+        border-radius: 8px;
+      }
+      iframe, video, embed {
+        border-radius: 8px;
+        min-height: 360px;
+      }
+      .video-container {
+        position: relative;
+        width: 100%;
+        padding-bottom: 56.25%;
+        height: 0;
+        overflow: hidden;
+      }
+      .video-container iframe {
+        position: absolute;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        min-height: unset;
         border-radius: 8px;
       }
       table {

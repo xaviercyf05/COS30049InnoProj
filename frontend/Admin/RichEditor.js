@@ -91,6 +91,37 @@ export default function RichEditor({ value, onChange }) {
             border-radius: 8px;
           }
 
+          .sun-editor .sun-editor-editable iframe,
+          .sun-editor .sun-editor-editable video,
+          .sun-editor .sun-editor-editable embed {
+            border-radius: 8px;
+            min-height: 360px;
+          }
+
+          .sun-editor .sun-editor-editable iframe[style*="width"],
+          .sun-editor .sun-editor-editable video[style*="width"],
+          .sun-editor .sun-editor-editable embed[style*="width"] {
+            max-width: none !important;
+          }
+
+          .sun-editor .sun-editor-editable .video-container {
+            position: relative;
+            width: 100%;
+            padding-bottom: 56.25%;
+            height: 0;
+            overflow: hidden;
+          }
+
+          .sun-editor .sun-editor-editable .video-container iframe {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            min-height: unset;
+            border-radius: 8px;
+          }
+
           .sun-editor .se-resizing-container .se-resize-dot > span.tl,
           .sun-editor .se-resizing-container .se-resize-dot > span.tr,
           .sun-editor .se-resizing-container .se-resize-dot > span.bl,

@@ -186,16 +186,22 @@ function AdminModuleManagerScreen({ navigation }) {
   };
 
   const loadModuleForEdit = async (moduleId, token) => {
-    const response = await requestProfileApi(`/api/v1/admin/modules/${moduleId}`, token, {
-      method: 'GET',
-    });
+    try {
+      const response = await requestProfileApi(`/api/v1/admin/modules/${moduleId}`, token, {
+        method: 'GET',
+      });
 
-    if (response?.data) {
-      setDraft(toDraft(response.data));
-      return;
+      if (response?.data) {
+        setDraft(toDraft(response.data));
+        return;
+      }
+
+      setDraft(createEmptyDraft());
+    } catch (error) {
+      // If module not found or other error, just use empty draft
+      console.warn('Failed to load module for edit:', error?.message);
+      setDraft(createEmptyDraft());
     }
-
-    setDraft(createEmptyDraft());
   };
 
   const refreshModules = async (focusedModuleId = null) => {
@@ -273,7 +279,15 @@ function AdminModuleManagerScreen({ navigation }) {
           await requestProfileApi(`/api/v1/admin/modules/${moduleId}`, token, {
             method: 'DELETE',
           });
-          await refreshModules();
+          
+          // Find a module to focus on after deletion (prefer the next one in the list)
+          const remainingModules = modules.filter((m) => {
+            const mId = m.id || `module-${m.moduleId}`;
+            return mId !== `module-${moduleId}`;
+          });
+          
+          const focusModuleId = remainingModules.length > 0 ? remainingModules[0].moduleId : null;
+          await refreshModules(focusModuleId);
         } catch (error) {
           Alert.alert('Delete failed', error?.message || 'Unable to delete module right now.');
         }

@@ -20,6 +20,301 @@ function sanitizeEditorHtml(rawHtml) {
     .replace(/\son[a-z]+='[^']*'/gi, '');
 }
 
+function parseYouTubeStartTime(rawValue) {
+  const value = String(rawValue || '').trim();
+
+  if (!value) {
+    return null;
+  }
+
+  if (/^\d+$/.test(value)) {
+    return value;
+  }
+
+  const match = value.match(/^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s)?$/i);
+
+  if (!match) {
+    return null;
+  }
+
+  const hours = Number(match[1] || 0);
+  const minutes = Number(match[2] || 0);
+  const seconds = Number(match[3] || 0);
+  const totalSeconds = hours * 3600 + minutes * 60 + seconds;
+
+  return totalSeconds > 0 ? String(totalSeconds) : null;
+}
+
+function normalizeYouTubeEmbedSrc(src) {
+  const rawSrc = String(src || '').trim();
+
+  if (!rawSrc) {
+    return rawSrc;
+  }
+
+  let url;
+
+  try {
+    url = new URL(rawSrc, 'https://www.youtube.com');
+  } catch (_error) {
+    return rawSrc;
+  }
+
+  const host = url.hostname.toLowerCase();
+  const isYouTubeHost =
+    host === 'youtube.com' ||
+    host.endsWith('.youtube.com') ||
+    host === 'youtu.be' ||
+    host.endsWith('.youtu.be');
+
+  if (!isYouTubeHost) {
+    return rawSrc;
+  }
+
+  let videoId = '';
+
+  if (host === 'youtu.be' || host.endsWith('.youtu.be')) {
+    videoId = url.pathname.replace(/^\//, '').split('/')[0];
+  } else if (url.pathname.startsWith('/embed/')) {
+    videoId = url.pathname.split('/')[2] || '';
+  } else if (url.pathname.startsWith('/shorts/')) {
+    videoId = url.pathname.split('/')[2] || '';
+  } else if (url.pathname === '/watch') {
+    videoId = url.searchParams.get('v') || '';
+  }
+
+  if (!videoId) {
+    return rawSrc;
+  }
+
+  const embedUrl = new URL(`https://www.youtube-nocookie.com/embed/${encodeURIComponent(videoId)}`);
+  const startTime = parseYouTubeStartTime(url.searchParams.get('t') || url.searchParams.get('start'));
+
+  url.searchParams.forEach((value, key) => {
+    if (['v', 'feature', 'ab_channel', 'si', 'list', 'index', 'pp', 't', 'start'].includes(key)) {
+      return;
+    }
+
+    embedUrl.searchParams.set(key, value);
+  });
+
+  if (startTime) {
+    embedUrl.searchParams.set('start', startTime);
+  }
+
+  return embedUrl.toString();
+}
+
+function normalizeVideoEmbedNode(mediaNode) {
+  if (!mediaNode || mediaNode.tagName !== 'IFRAME') {
+    return;
+  }
+
+  const currentSrc = mediaNode.getAttribute('src');
+  const normalizedSrc = normalizeYouTubeEmbedSrc(currentSrc);
+
+  if (normalizedSrc !== currentSrc) {
+    mediaNode.setAttribute('src', normalizedSrc);
+  }
+
+  mediaNode.setAttribute('referrerpolicy', 'strict-origin-when-cross-origin');
+  mediaNode.setAttribute('loading', 'lazy');
+  mediaNode.setAttribute(
+    'allow',
+    'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share'
+  );
+  mediaNode.setAttribute('allowfullscreen', 'true');
+}
+
+function extractYouTubeIdFromSrc(src) {
+  try {
+    const url = new URL(src, 'https://www.youtube.com');
+    const host = url.hostname.toLowerCase();
+    if (host === 'youtu.be' || host.endsWith('.youtu.be')) {
+      return url.pathname.replace(/^\//, '').split('/')[0] || null;
+    }
+
+    if (url.pathname.startsWith('/embed/')) {
+      return url.pathname.split('/')[2] || null;
+    }
+
+    if (url.pathname.startsWith('/shorts/')) {
+      return url.pathname.split('/')[2] || null;
+    }
+
+    if (url.pathname === '/watch') {
+      return url.searchParams.get('v') || null;
+    }
+
+    return null;
+  } catch (_e) {
+    return null;
+  }
+}
+
+function createEditorPlaceholderForIframe(doc, iframeEl) {
+  const src = iframeEl.getAttribute('src') || '';
+  const id = extractYouTubeIdFromSrc(src);
+
+  const placeholder = doc.createElement('div');
+  placeholder.className = 'video-placeholder';
+  placeholder.setAttribute('data-original-iframe', iframeEl.outerHTML);
+
+  if (id) {
+    const thumb = doc.createElement('img');
+    thumb.src = `https://img.youtube.com/vi/${encodeURIComponent(id)}/hqdefault.jpg`;
+    thumb.alt = 'Video thumbnail';
+    thumb.className = 'video-thumb';
+    placeholder.appendChild(thumb);
+  } else {
+    // Generic fallback box
+    placeholder.textContent = 'Video';
+  }
+
+  // Decorative play overlay
+  const overlay = doc.createElement('div');
+  overlay.className = 'video-play-overlay';
+  overlay.innerHTML = '<svg viewBox="0 0 120 120" width="48" height="48" fill="rgba(255,255,255,0.95)"><path d="M40 30 L90 60 L40 90 Z"/></svg>';
+  placeholder.appendChild(overlay);
+
+  return placeholder;
+}
+
+function createLiveIframeFromPlaceholder(doc, placeholder) {
+  const originalIframeMarkup = placeholder.getAttribute('data-original-iframe');
+
+  if (!originalIframeMarkup) {
+    return null;
+  }
+
+  const container = doc.createElement('div');
+  container.innerHTML = originalIframeMarkup;
+  const iframe = container.firstElementChild;
+
+  if (!iframe || iframe.tagName !== 'IFRAME') {
+    return null;
+  }
+
+  normalizeVideoEmbedNode(iframe);
+  iframe.classList.add('video-live-iframe');
+  return iframe;
+}
+
+function activateVideoPlaceholder(placeholder) {
+  const wrapper = placeholder?.closest?.('.video-container');
+  const parentDocument = placeholder?.ownerDocument;
+
+  if (!wrapper || !parentDocument) {
+    return false;
+  }
+
+  const liveIframe = createLiveIframeFromPlaceholder(parentDocument, placeholder);
+
+  if (!liveIframe) {
+    return false;
+  }
+
+  wrapper.classList.add('video-container--active');
+  wrapper.replaceChild(liveIframe, placeholder);
+  return true;
+}
+
+function restorePlaceholdersToIframes(html) {
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(String(html || ''), 'text/html');
+    const placeholders = Array.from(doc.querySelectorAll('div.video-placeholder'));
+
+    placeholders.forEach((ph) => {
+      const orig = ph.getAttribute('data-original-iframe');
+      if (orig) {
+        const container = doc.createElement('div');
+        container.innerHTML = orig;
+        const iframe = container.firstElementChild;
+        if (iframe) {
+          ph.parentNode.replaceChild(iframe, ph);
+        }
+      }
+    });
+
+    return doc.body.innerHTML;
+  } catch (_e) {
+    return String(html || '');
+  }
+}
+
+function prepareHtmlForEditor(rawHtml) {
+  try {
+    const html = String(rawHtml || '');
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(html, 'text/html');
+
+    doc.querySelectorAll('img').forEach((img) => {
+      const styleText = img.getAttribute('style') || '';
+      const styleWidth = styleText.match(/width:\s*([^;]+)/i)?.[1];
+      const widthAttr = img.getAttribute('width');
+      const widthValue = styleWidth || (widthAttr && /^\d+$/.test(widthAttr) ? `${widthAttr}px` : widthAttr);
+
+      if (widthValue && widthValue !== 'auto' && widthValue !== '100%') {
+        img.style.width = widthValue;
+      }
+
+      img.style.maxWidth = 'none';
+      img.style.height = 'auto';
+    });
+
+    doc.querySelectorAll('iframe, video, embed').forEach((mediaNode) => {
+      // Normalize iframe src/attrs first
+      normalizeVideoEmbedNode(mediaNode);
+
+      const parent = mediaNode.parentElement;
+      if (parent && parent.classList && parent.classList.contains('video-container')) {
+        return;
+      }
+
+      const wrapper = doc.createElement('div');
+      wrapper.className = 'video-container';
+
+      const styleText = mediaNode.getAttribute('style') || '';
+      const styleWidth = styleText.match(/width:\s*([^;]+)/i)?.[1];
+      const styleHeight = styleText.match(/height:\s*([^;]+)/i)?.[1];
+      const widthAttr = mediaNode.getAttribute('width');
+      const heightAttr = mediaNode.getAttribute('height');
+      const widthValue = styleWidth || (widthAttr && /^\d+$/.test(widthAttr) ? `${widthAttr}px` : widthAttr);
+      const heightValue = styleHeight || (heightAttr && /^\d+$/.test(heightAttr) ? `${heightAttr}px` : heightAttr);
+
+      if (widthValue && widthValue !== 'auto' && widthValue !== '100%') {
+        wrapper.style.width = widthValue;
+      }
+
+      if (heightValue && heightValue !== 'auto' && heightValue !== '100%') {
+        wrapper.style.paddingBottom = '0';
+        wrapper.style.height = heightValue;
+      }
+
+      // Replace the live iframe with an editor-only placeholder so the editor retains control
+      let appendNode = mediaNode;
+      if (mediaNode.tagName === 'IFRAME') {
+        try {
+          appendNode = createEditorPlaceholderForIframe(doc, mediaNode);
+        } catch (_err) {
+          appendNode = mediaNode;
+        }
+      }
+
+      mediaNode.parentNode.insertBefore(wrapper, mediaNode);
+      wrapper.appendChild(appendNode);
+      if (appendNode !== mediaNode) {
+        // keep original iframe stored on placeholder via data-original-iframe
+      }
+    });
+
+    return doc.body.innerHTML;
+  } catch (_e) {
+    return String(rawHtml || '');
+  }
+}
+
 function resolveSunEditorInstance() {
   const candidate = typeof window !== 'undefined' ? window.SUNEDITOR : globalThis.SUNEDITOR;
 
@@ -40,9 +335,10 @@ function getEditorHtml(editor) {
 
 function setEditorHtml(editor, html) {
   const sanitizedHtml = sanitizeEditorHtml(html) || '<p><br></p>';
+  const preparedHtml = prepareHtmlForEditor(sanitizedHtml) || sanitizedHtml;
 
   if (editor?.$?.html?.set) {
-    editor.$.html.set(sanitizedHtml);
+    editor.$.html.set(preparedHtml);
     return true;
   }
 
@@ -52,7 +348,7 @@ function setEditorHtml(editor, html) {
     return false;
   }
 
-  wysiwyg.innerHTML = sanitizedHtml;
+  wysiwyg.innerHTML = preparedHtml;
   return true;
 }
 
@@ -60,6 +356,7 @@ export default function RichEditor({ value, onChange }) {
   const hostRef = useRef(null);
   const editorRef = useRef(null);
   const editorObserverRef = useRef(null);
+  const editorInteractionCleanupRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const isApplyingExternalValueRef = useRef(false);
   const latestValueRef = useRef(sanitizeEditorHtml(value));
@@ -74,7 +371,8 @@ export default function RichEditor({ value, onChange }) {
   }, [value]);
 
   const emitEditorContentChange = (contents) => {
-    const sanitized = sanitizeEditorHtml(contents);
+    const restored = restorePlaceholdersToIframes(contents);
+    const sanitized = sanitizeEditorHtml(restored);
 
     if (isApplyingExternalValueRef.current) {
       return;
@@ -90,24 +388,6 @@ export default function RichEditor({ value, onChange }) {
       onChangeRef.current(sanitized);
     }
   };
-
-  const editorOptions = useMemo(
-    () => ({
-      defaultTag: 'p',
-      height: '320px',
-      buttonList: EDITOR_BUTTON_LIST,
-      imageResizing: true,
-      imageFileInput: true,
-      videoFileInput: false,
-      resizingBar: false,
-      defaultStyle:
-        "font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 15px; color: #2f4a3d;",
-      onChange: (contents) => {
-        emitEditorContentChange(contents);
-      },
-    }),
-    []
-  );
 
   useEffect(() => {
     let isMounted = true;
@@ -127,7 +407,19 @@ export default function RichEditor({ value, onChange }) {
       }
 
       const editor = editorFactory.create(hostRef.current, {
-        ...editorOptions,
+        defaultTag: 'p',
+        height: '320px',
+        buttonList: EDITOR_BUTTON_LIST,
+        imageResizing: true,
+        imageFileInput: true,
+        videoFileInput: false,
+        resizingBar: false,
+        imageSizeUnit: '%',
+        defaultStyle:
+          "font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 15px; color: #2f4a3d;",
+        onChange: (contents) => {
+          emitEditorContentChange(contents);
+        },
         plugins: editorFactory.plugins || {},
       });
       editorRef.current = editor;
@@ -150,6 +442,30 @@ export default function RichEditor({ value, onChange }) {
         editorObserverRef.current = observer;
       }
 
+      if (syncTarget) {
+        const handleVideoPreviewClick = (event) => {
+          const placeholder = event.target?.closest?.('.video-placeholder');
+
+          if (!placeholder || !syncTarget.contains(placeholder)) {
+            return;
+          }
+
+          if (activateVideoPlaceholder(placeholder)) {
+            event.preventDefault();
+            event.stopPropagation();
+            emitEditorContentChange(getEditorHtml(editor));
+          }
+        };
+
+        syncTarget.addEventListener('click', handleVideoPreviewClick, true);
+        syncTarget.addEventListener('pointerdown', handleVideoPreviewClick, true);
+
+        editorInteractionCleanupRef.current = () => {
+          syncTarget.removeEventListener('click', handleVideoPreviewClick, true);
+          syncTarget.removeEventListener('pointerdown', handleVideoPreviewClick, true);
+        };
+      }
+
       try {
         editor.onChange = (contents) => {
           emitEditorContentChange(contents);
@@ -162,6 +478,51 @@ export default function RichEditor({ value, onChange }) {
       if (initialContent) {
         isApplyingExternalValueRef.current = true;
         setEditorHtml(editor, initialContent);
+        
+        // Extract and reapply image widths and video dimensions after SunEditor renders
+        setTimeout(() => {
+          try {
+            const parser = new DOMParser();
+            const doc = parser.parseFromString(initialContent, 'text/html');
+            const savedImgs = Array.from(doc.querySelectorAll('img'));
+            const savedVideos = Array.from(doc.querySelectorAll('iframe, video, embed'));
+            
+            const wysiwyg = editor?.$?.frameContext?.get('wysiwyg');
+            if (wysiwyg) {
+              // Reapply image widths
+              if (savedImgs.length > 0) {
+                const editorImgs = Array.from(wysiwyg.querySelectorAll('img'));
+                
+                editorImgs.forEach((editorImg, idx) => {
+                  const savedImg = savedImgs[idx];
+                  if (savedImg) {
+                    // Extract width from inline style or width attribute
+                    let savedWidth = savedImg.getAttribute('style') ? 
+                      savedImg.getAttribute('style').match(/width:\s*([^;]+)/i)?.[1] : null;
+                    
+                    if (!savedWidth) {
+                      const widthAttr = savedImg.getAttribute('width');
+                      if (widthAttr) {
+                        savedWidth = /^\d+$/.test(widthAttr) ? `${widthAttr}px` : widthAttr;
+                      }
+                    }
+                    
+                    if (savedWidth && savedWidth.trim() && savedWidth !== 'auto' && savedWidth !== '100%') {
+                      console.log(`[RichEditor] Applying width "${savedWidth}" to image ${idx}`);
+                      editorImg.style.width = savedWidth;
+                      editorImg.style.maxWidth = 'none';
+                      editorImg.style.height = 'auto';
+                    }
+                  }
+                });
+              }
+              
+            }
+          } catch (err) {
+            console.warn('[RichEditor] Error applying media dimensions:', err);
+          }
+        }, 200);
+        
         isApplyingExternalValueRef.current = false;
       }
     } catch (error) {
@@ -179,12 +540,17 @@ export default function RichEditor({ value, onChange }) {
         editorObserverRef.current = null;
       }
 
+      if (editorInteractionCleanupRef.current) {
+        editorInteractionCleanupRef.current();
+        editorInteractionCleanupRef.current = null;
+      }
+
       if (editorRef.current) {
         editorRef.current.destroy();
         editorRef.current = null;
       }
     };
-  }, [editorOptions]);
+  }, []);
 
   useEffect(() => {
     const editor = editorRef.current;
@@ -202,6 +568,50 @@ export default function RichEditor({ value, onChange }) {
 
     isApplyingExternalValueRef.current = true;
     setEditorHtml(editor, nextContent);
+    
+    // Reapply image widths and video dimensions after content updates
+    setTimeout(() => {
+      try {
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(nextContent, 'text/html');
+        const savedImgs = Array.from(doc.querySelectorAll('img'));
+        const savedVideos = Array.from(doc.querySelectorAll('iframe, video, embed'));
+        
+        const wysiwyg = editor?.$?.frameContext?.get('wysiwyg');
+        if (wysiwyg) {
+          // Reapply image widths
+          if (savedImgs.length > 0) {
+            const editorImgs = Array.from(wysiwyg.querySelectorAll('img'));
+            
+            editorImgs.forEach((editorImg, idx) => {
+              const savedImg = savedImgs[idx];
+              if (savedImg) {
+                // Extract width from inline style or width attribute
+                let savedWidth = savedImg.getAttribute('style') ? 
+                  savedImg.getAttribute('style').match(/width:\s*([^;]+)/i)?.[1] : null;
+                
+                if (!savedWidth) {
+                  const widthAttr = savedImg.getAttribute('width');
+                  if (widthAttr) {
+                    savedWidth = /^\d+$/.test(widthAttr) ? `${widthAttr}px` : widthAttr;
+                  }
+                }
+                
+                if (savedWidth && savedWidth.trim() && savedWidth !== 'auto' && savedWidth !== '100%') {
+                  editorImg.style.width = savedWidth;
+                  editorImg.style.maxWidth = 'none';
+                  editorImg.style.height = 'auto';
+                }
+              }
+            });
+          }
+          
+        }
+      } catch (err) {
+        console.warn('[RichEditor] Error applying media dimensions on value change:', err);
+      }
+    }, 200);
+    
     isApplyingExternalValueRef.current = false;
   }, [value]);
 
@@ -292,9 +702,96 @@ export default function RichEditor({ value, onChange }) {
         }
 
         .rich-editor-shell .sun-editor .sun-editor-editable img {
-          max-width: 100%;
-          height: auto;
           border-radius: 8px;
+        }
+        .rich-editor-shell .sun-editor .sun-editor-editable img {
+          border-radius: 8px;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable img[style*="width"] {
+          max-width: none !important;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable iframe,
+        .rich-editor-shell .sun-editor .sun-editor-editable video,
+        .rich-editor-shell .sun-editor .sun-editor-editable embed {
+          border-radius: 8px;
+          min-height: 360px;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable iframe[style*="width"],
+        .rich-editor-shell .sun-editor .sun-editor-editable video[style*="width"],
+        .rich-editor-shell .sun-editor .sun-editor-editable embed[style*="width"] {
+          max-width: none !important;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable .video-container {
+          position: relative;
+          width: 100%;
+          padding-bottom: 56.25%;
+          height: 0;
+          overflow: hidden;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable .video-container iframe {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          min-height: unset;
+          border-radius: 8px;
+          pointer-events: none;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable .video-container--active iframe {
+          pointer-events: auto;
+          width: 100% !important;
+          height: 100% !important;
+          min-width: 0 !important;
+          min-height: 0 !important;
+          max-width: none !important;
+          max-height: none !important;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable .video-container .video-placeholder {
+          position: absolute;
+          top: 0;
+          left: 0;
+          width: 100%;
+          height: 100%;
+          display: block;
+          cursor: pointer;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable .video-container .video-placeholder img {
+          position: absolute;
+          top: 0;
+          left: 0;
+          right: 0;
+          bottom: 0;
+          margin: auto;
+          max-width: 100%;
+          max-height: 100%;
+          object-fit: contain;
+          background: #000;
+          display: block;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable .video-container .video-play-overlay {
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          transform: translate(-50%, -50%);
+          pointer-events: none;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .rich-editor-shell .sun-editor .sun-editor-editable .video-container .video-play-overlay,
+        .rich-editor-shell .sun-editor .sun-editor-editable .video-container .video-placeholder {
+          pointer-events: auto;
         }
 
         .rich-editor-shell .sun-editor .se-resizing-container .se-resize-dot > span.tl,

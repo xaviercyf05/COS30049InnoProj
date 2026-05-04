@@ -10,6 +10,7 @@ import {
 	View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import {
 	addAssessmentQuestion,
@@ -23,6 +24,7 @@ import {
 	updateAssessmentQuestion,
 	updateAssessmentSettings,
 } from './assessmentApi.js';
+import { requestProfileApi } from '../Profile/profileApi.js';
 
 const createBlankQuestion = () => ({
 	id: `new-${Date.now()}`,
@@ -49,6 +51,7 @@ function AdminAssessment({ route, navigation }) {
 	const [assessmentDuration, setAssessmentDuration] = useState('120');
 	const [assessmentPassingScore, setAssessmentPassingScore] = useState('60');
 	const [assessmentAttemptLimit, setAssessmentAttemptLimit] = useState('3');
+	const [availableModules, setAvailableModules] = useState([]);
 
 	// Questions state
 	const [questions, setQuestions] = useState([]);
@@ -67,6 +70,37 @@ function AdminAssessment({ route, navigation }) {
 	const selectedQuestion = selectedQuestionId
 		? questions.find((q) => q.id === selectedQuestionId)
 		: questions[0];
+
+	const moduleNameById = useMemo(() => {
+		return availableModules.reduce((acc, module) => {
+			acc[String(module.moduleId)] = module.title;
+			return acc;
+		}, {});
+	}, [availableModules]);
+
+	const loadModules = useCallback(async () => {
+		try {
+			const token = await AsyncStorage.getItem('innopapp_auth_token');
+			if (!token) {
+				setAvailableModules([]);
+				return;
+			}
+
+			const response = await requestProfileApi('/api/v1/admin/modules', token, {
+				method: 'GET',
+			});
+
+			const moduleList = Array.isArray(response?.data) ? response.data : [];
+			setAvailableModules(
+				moduleList.map((module) => ({
+					moduleId: module.moduleId,
+					title: module.title || `Module ${module.moduleId}`,
+				}))
+			);
+		} catch (_error) {
+			setAvailableModules([]);
+		}
+	}, []);
 
 	// Load questions from backend
 	const loadQuestions = useCallback(async () => {
@@ -315,6 +349,11 @@ function AdminAssessment({ route, navigation }) {
 
 	// Load initial data based on active tab
 	useEffect(() => {
+		loadModules();
+	}, [loadModules]);
+
+	// Load initial data based on active tab
+	useEffect(() => {
 		if (currentTab === 'assessments') {
 			loadAssessments();
 		} else if (currentTab === 'questions' && selectedAssessmentId) {
@@ -554,6 +593,33 @@ function AdminAssessment({ route, navigation }) {
 								placeholderTextColor="#AAA"
 								keyboardType="number-pad"
 							/>
+							{availableModules.length > 0 && (
+								<>
+									<Text style={styles.helperText}>Or select from created modules</Text>
+									<ScrollView
+										style={styles.moduleListContainer}
+										contentContainerStyle={styles.moduleListContent}
+										showsVerticalScrollIndicator
+										nestedScrollEnabled
+									>
+										{availableModules.map((module) => {
+											const selected = String(module.moduleId) === String(assessmentModuleId);
+											return (
+												<TouchableOpacity
+													key={module.moduleId}
+													style={[styles.assessmentItem, selected && styles.assessmentItemActive]}
+													onPress={() => setAssessmentModuleId(String(module.moduleId))}
+												>
+													<View style={{ flex: 1 }}>
+														<Text style={styles.assessmentItemTitle}>{module.title}</Text>
+														<Text style={styles.assessmentItemSubtitle}>Module ID: {module.moduleId}</Text>
+													</View>
+												</TouchableOpacity>
+											);
+										})}
+									</ScrollView>
+								</>
+							)}
 							<Text style={styles.label}>Title</Text>
 							<TextInput
 								style={styles.input}
@@ -579,6 +645,16 @@ function AdminAssessment({ route, navigation }) {
 								value={assessmentPassingScore}
 								onChangeText={setAssessmentPassingScore}
 								placeholder="60"
+								placeholderTextColor="#AAA"
+								keyboardType="number-pad"
+							/>
+
+							<Text style={styles.label}>Attempt Limit</Text>
+							<TextInput
+								style={styles.input}
+								value={assessmentAttemptLimit}
+								onChangeText={setAssessmentAttemptLimit}
+								placeholder="3"
 								placeholderTextColor="#AAA"
 								keyboardType="number-pad"
 							/>
@@ -619,7 +695,7 @@ function AdminAssessment({ route, navigation }) {
 										<View style={{ flex: 1 }}>
 											<Text style={styles.assessmentItemTitle}>{a.title}</Text>
 											<Text style={styles.assessmentItemSubtitle}>
-												Module {a.moduleId} • {a.questionCount} questions • Pass: {a.passingScore}%
+												{moduleNameById[String(a.moduleId)] || `Module ${a.moduleId}`} • {a.questionCount} questions • Pass: {a.passingScore}%
 											</Text>
 										</View>
 									</TouchableOpacity>
@@ -639,6 +715,15 @@ function AdminAssessment({ route, navigation }) {
 										<Text style={styles.deleteButtonText}>Delete</Text>
 									</TouchableOpacity>
 								</View>
+
+								<Text style={styles.label}>Assessment Title</Text>
+								<TextInput
+									style={styles.input}
+									value={assessmentTitle}
+									onChangeText={setAssessmentTitle}
+									placeholder="e.g. Module 1 Final Exam"
+									placeholderTextColor="#AAA"
+								/>
 
 								<Text style={styles.label}>Duration (minutes)</Text>
 								<TextInput
@@ -1092,12 +1177,12 @@ const styles = StyleSheet.create({
 		marginBottom: 12,
 	},
 	cardTitle: {
-		fontSize: 15,
+		fontSize: 20,
 		fontWeight: '700',
 		color: '#1A1A1A',
 	},
 	label: {
-		fontSize: 12,
+		fontSize: 15,
 		fontWeight: '700',
 		color: '#3A4D39',
 		marginBottom: 6,
@@ -1109,7 +1194,7 @@ const styles = StyleSheet.create({
 		borderRadius: 8,
 		paddingVertical: 10,
 		paddingHorizontal: 11,
-		fontSize: 13,
+		fontSize: 14,
 		color: '#1A1A1A',
 		backgroundColor: '#F9FAFC',
 		fontWeight: '500',
@@ -1226,6 +1311,19 @@ const styles = StyleSheet.create({
 		marginBottom: 12,
 		marginTop: 4,
 	},
+	moduleListContainer: {
+		maxHeight: 220,
+		borderWidth: 1,
+		borderColor: '#E8EDE2',
+		borderRadius: 10,
+		backgroundColor: '#FFFFFF',
+		paddingHorizontal: 8,
+		paddingTop: 6,
+		marginBottom: 6,
+	},
+	moduleListContent: {
+		paddingBottom: 6,
+	},
 	deleteButton: {
 		backgroundColor: '#FFE8E8',
 		borderRadius: 6,
@@ -1299,7 +1397,7 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 		fontWeight: '700',
 		color: '#1A1A1A',
-		marginBottom: 4,
+		marginBottom: 6,
 	},
 	assessmentItemSubtitle: {
 		fontSize: 12,

@@ -27,6 +27,7 @@ import ModuleScreen from './Module/ModuleScreen.js';
 import GuideAssessment from './Assessment/GuideAssessment.js';
 import AssessmentSubmittedPage from './Assessment/SubmittedPage.js';
 import AdminAssessment from './Assessment/AdminAssessment.js';
+import { fetchAssessmentHistory } from './Assessment/assessmentApi.js';
 import AnnouncementScreen from './Announcement/AnnouncementScreen.js';
 import BadgeScreen from './Badge/BadgePage.js';
 import AddModuleScreen from './Admin/AddModuleScreen.js';
@@ -59,6 +60,97 @@ const SESSION_STORAGE_KEYS = [
 	'innopapp_auth_username',
 	'innopapp_auth_user_id',
 ];
+const GENERAL_MODULE_COUNT = 1;
+const PARK_SPECIFIC_MODULE_COUNT = 5;
+const ON_SITE_MODULE_COUNT = 5;
+
+function resolveModuleStageByIndex(index) {
+	if (index < GENERAL_MODULE_COUNT) {
+		return 'general';
+	}
+
+	if (index < GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT) {
+		return 'park-specific';
+	}
+
+	if (
+		index <
+		GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT + ON_SITE_MODULE_COUNT
+	) {
+		return 'on-site';
+	}
+
+	return 'other';
+}
+
+function isAttemptPassed(attempt) {
+	const status = String(attempt?.status || '').trim().toLowerCase();
+	return status === 'passed' || status === 'pass' || status === 'completed' || status === 'complete';
+}
+
+function buildProgressionModules(modules, isAdmin) {
+	if (!Array.isArray(modules)) {
+		return [];
+	}
+
+	const generalModule = modules[0] || null;
+	const parkSpecificModules = modules.slice(
+		GENERAL_MODULE_COUNT,
+		GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT
+	);
+	const onSiteModules = modules.slice(
+		GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT,
+		GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT + ON_SITE_MODULE_COUNT
+	);
+	const passedModuleIds = new Set(
+		modules
+			.filter((module) => module.assessmentPassed)
+			.map((module) => String(module.moduleId))
+	);
+
+	return modules.map((module, index) => {
+		const stage = resolveModuleStageByIndex(index);
+		let prerequisiteModuleId = null;
+		let unlocked = true;
+		let lockReason = '';
+
+		if (stage === 'park-specific') {
+			prerequisiteModuleId = generalModule?.moduleId ?? null;
+			unlocked = !prerequisiteModuleId || passedModuleIds.has(String(prerequisiteModuleId));
+			lockReason = unlocked
+				? ''
+				: 'Complete and pass the General assessment to unlock Park Specific modules.';
+		}
+
+		if (stage === 'on-site') {
+			const trackIndex = index - (GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT);
+			prerequisiteModuleId = parkSpecificModules[trackIndex]?.moduleId ?? null;
+			unlocked = !prerequisiteModuleId || passedModuleIds.has(String(prerequisiteModuleId));
+			lockReason = unlocked
+				? ''
+				: 'Complete and pass the matching Park Specific assessment to unlock this On-Site module.';
+		}
+
+		if (isAdmin) {
+			unlocked = true;
+			lockReason = '';
+		}
+
+		return {
+			...module,
+			stage,
+			trackIndex:
+				stage === 'park-specific'
+					? index - GENERAL_MODULE_COUNT
+					: stage === 'on-site'
+						? index - (GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT)
+						: null,
+			unlocked,
+			lockReason,
+			prerequisiteModuleId,
+		};
+	});
+}
 
 const wrapWithChrome = (Component, title) => withSidebarChrome(Component, { title });
 
@@ -171,6 +263,8 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 
 			const loadedProfile = response.data;
 			setProfile(loadedProfile);
+			const loadedRole = loadedProfile?.viewerRole || loadedProfile?.role || 'User';
+			const loadedIsAdmin = loadedRole === 'Admin';
 
 			if (loadedProfile?.viewerRole || loadedProfile?.role) {
 				await AsyncStorage.setItem(
@@ -197,15 +291,33 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 			}
 
 			if (Array.isArray(modulesResponse?.data) && modulesResponse.data.length > 0) {
-				setUserModules(
-					modulesResponse.data.map((module, index) => ({
-						id: String(module.moduleId || index + 1),
-						moduleId: module.moduleId,
-						title: module.title || `Module ${index + 1}`,
-						image: resolveApiAssetUri(module.image) || module.image,
-						progressPercent: Number(module.progressPercent || 0),
-					}))
+				const baseModules = modulesResponse.data.map((module, index) => ({
+					id: String(module.moduleId || index + 1),
+					moduleId: module.moduleId,
+					title: module.title || `Module ${index + 1}`,
+					image: resolveApiAssetUri(module.image) || module.image,
+					progressPercent: Number(module.progressPercent || 0),
+				}));
+
+				const modulesWithHistory = await Promise.all(
+					baseModules.map(async (module) => {
+						try {
+							const { error: historyError, history } = await fetchAssessmentHistory(module.moduleId);
+							if (historyError) {
+								return { ...module, assessmentPassed: false };
+							}
+
+							return {
+								...module,
+								assessmentPassed: Array.isArray(history) && history.some(isAttemptPassed),
+							};
+						} catch (_error) {
+							return { ...module, assessmentPassed: false };
+						}
+					})
 				);
+
+				setUserModules(buildProgressionModules(modulesWithHistory, loadedIsAdmin));
 			} else {
 				setUserModules([]);
 			}
@@ -668,6 +780,11 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 						<TouchableOpacity
 							key={module.id}
 							onPress={() => {
+								if (!module.unlocked) {
+									Alert.alert('Module Locked', module.lockReason || 'Complete prerequisite modules first.');
+									return;
+								}
+
 								const moduleIndex = userModules.findIndex((item) => item.id === module.id);
 
 								navigation.navigate('Module', {
@@ -676,9 +793,14 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 									moduleOrder: moduleIndex + 1,
 									totalModules: userModules.length,
 									moduleProgressPercent: module.progressPercent,
+									moduleStage: module.stage,
+									moduleTrackIndex: module.trackIndex,
+									progressionUnlocked: module.unlocked,
+									progressionLockReason: module.lockReason,
+									prerequisiteModuleId: module.prerequisiteModuleId,
 								});
 							}}
-							style={styles.cardWrapper}
+							style={[styles.cardWrapper, !module.unlocked && styles.cardWrapperLocked]}
 						>
 							<ImageBackground
 								source={{ uri: module.image }}
@@ -686,7 +808,15 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 								imageStyle={{ borderRadius: 20 }}
 							>
 								<View style={styles.overlay} />
+								{!module.unlocked && (
+									<View style={styles.lockBadge}>
+										<Text style={styles.lockBadgeText}>Locked</Text>
+									</View>
+								)}
 								<Text style={styles.cardTitle}>{module.title}</Text>
+								{!module.unlocked && module.lockReason ? (
+									<Text style={styles.lockReasonText}>{module.lockReason}</Text>
+								) : null}
 
 								<View style={styles.progressBar}>
 									<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
@@ -1240,6 +1370,9 @@ const styles = StyleSheet.create({
 		shadowRadius: 12,
 		elevation: 5,
 	},
+	cardWrapperLocked: {
+		opacity: 0.9,
+	},
 	card: {
 		height: 180,
 		justifyContent: 'flex-end',
@@ -1257,6 +1390,30 @@ const styles = StyleSheet.create({
 		fontWeight: '700',
 		marginBottom: 10,
 		letterSpacing: 0.5,
+	},
+	lockBadge: {
+		position: 'absolute',
+		top: 12,
+		right: 12,
+		backgroundColor: 'rgba(0,0,0,0.55)',
+		borderRadius: 999,
+		paddingHorizontal: 10,
+		paddingVertical: 4,
+		zIndex: 2,
+	},
+	lockBadgeText: {
+		color: '#FFFFFF',
+		fontSize: 11,
+		fontWeight: '800',
+		letterSpacing: 0.2,
+	},
+	lockReasonText: {
+		color: '#F3F6EA',
+		fontSize: 11,
+		lineHeight: 15,
+		fontWeight: '600',
+		marginTop: -4,
+		marginBottom: 8,
 	},
 	progressBar: {
 		height: 4,

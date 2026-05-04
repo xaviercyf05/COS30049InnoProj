@@ -151,10 +151,16 @@ function buildRichContentDocument(title, contentHtml) {
 function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = false }) {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
+  const role = currentProfile?.viewerRole || currentProfile?.role || 'User';
+  const isAdmin = role === 'Admin';
   const routeModuleId = route?.params?.moduleId || null;
   const moduleName = route?.params?.moduleName || route?.params?.grade || 'General';
   const userLabel = currentProfile?.fullName || currentProfile?.username || 'Guide';
   const moduleSummary = TRACK_SUMMARY[moduleName] || TRACK_SUMMARY.General;
+  const progressionUnlocked = isAdmin || route?.params?.progressionUnlocked !== false;
+  const progressionLockReason =
+    route?.params?.progressionLockReason ||
+    'Complete the required previous assessment to unlock this one.';
 
   const [sections, setSections] = useState(MODULE_SECTIONS);
   const [selectedSectionId, setSelectedSectionId] = useState(MODULE_SECTIONS[0].id);
@@ -275,6 +281,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
   };
 
   const assessmentUnlocked = sections.length > 0 && sections.every((section) => visitedSectionIds.has(section.id));
+  const canTakeAssessment = assessmentUnlocked && progressionUnlocked;
 
   const renderSectionBody = (section, variant = 'desktop') => {
     if (!section) {
@@ -327,6 +334,14 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
   };
 
   const goToAssessment = () => {
+    if (!progressionUnlocked) {
+      Alert.alert(
+        'Assessment Locked',
+        progressionLockReason
+      );
+      return;
+    }
+
     if (!assessmentUnlocked) {
       Alert.alert(
         'Assessment Locked',
@@ -429,16 +444,22 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
             )}
 
             <TouchableOpacity
-              style={[styles.assessmentButton, !assessmentUnlocked && styles.assessmentButtonDisabled]}
+              style={[styles.assessmentButton, !canTakeAssessment && styles.assessmentButtonDisabled]}
               onPress={goToAssessment}
-              disabled={!assessmentUnlocked}
+              disabled={!canTakeAssessment}
             >
-              <Text style={[styles.assessmentButtonText, !assessmentUnlocked && styles.assessmentButtonTextDisabled]}>
-                {assessmentUnlocked ? 'Take Assessment' : 'Review Sections First'}
+              <Text style={[styles.assessmentButtonText, !canTakeAssessment && styles.assessmentButtonTextDisabled]}>
+                {!progressionUnlocked
+                  ? 'Locked by Learning Pathway'
+                  : assessmentUnlocked
+                    ? 'Take Assessment'
+                    : 'Review Sections First'}
               </Text>
               <Text style={styles.assessmentArrow}>{'>'}</Text>
             </TouchableOpacity>
-            {!assessmentUnlocked && sections.length > 0 ? (
+            {!progressionUnlocked ? (
+              <Text style={styles.assessmentHintText}>{progressionLockReason}</Text>
+            ) : !assessmentUnlocked && sections.length > 0 ? (
               <Text style={styles.assessmentHintText}>Open each section once to unlock the assessment.</Text>
             ) : null}
           </View>

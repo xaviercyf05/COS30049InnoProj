@@ -9,6 +9,8 @@ import {
   Alert,
   StyleSheet,
   Image,
+  Keyboard,
+  Platform,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Settings, Shield, Lock, RefreshCw, Copy, Eye, EyeOff } from 'lucide-react-native';
@@ -166,17 +168,12 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
       const data = await response.json();
 
       if (response.ok && data?.success) {
-        Alert.alert(
-          'Success',
-          'Multi-Factor Authentication has been enabled. Save your recovery codes in a safe place!',
-          [{ text: 'OK', onPress: () => {
-            setSetupStep(null);
-            setVerificationCode('');
-            setSetupData(null);
-            fetchMFAStatus();
-            if (onMFAStatusChange) onMFAStatusChange(true);
-          }}]
-        );
+        setSetupStep(null);
+        setVerificationCode('');
+        setSetupData(null);
+        await fetchMFAStatus();
+        if (onMFAStatusChange) onMFAStatusChange(true);
+        Alert.alert('Success', 'Multi-Factor Authentication has been enabled. Save your recovery codes in a safe place!');
       } else {
         setError(data?.message || 'Failed to confirm MFA setup');
       }
@@ -188,68 +185,76 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
     }
   };
 
-  const handleDisableMFA = async () => {
-    if (!disablePassword.trim()) {
-      setError('Please enter your password to disable MFA');
-      return;
-    }
+const handleDisableMFA = async () => {
+  Keyboard.dismiss();
 
+  const pwd = (disablePassword || '').trim();
+  if (!pwd) {
+    setError('Please enter your password to disable MFA');
+    return;
+  }
+
+  const doDisable = async () => {
+    console.log('Disable confirmed: starting request', { pwdPresent: !!pwd });
+    try {
+      if (!effectiveToken) {
+        setError('Please sign in again to manage MFA settings.');
+        console.warn('Disable aborted: missing effectiveToken');
+        return;
+      }
+
+      console.log('Disable request payload', { passwordLength: pwd.length });
+      setLoading(true);
+      const response = await fetch(`${API_ORIGIN}/api/v1/user/mfa/disable`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${effectiveToken}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ password: pwd }),
+      });
+
+      console.log('Disable fetch completed, status=', response.status);
+      const data = await response.json();
+      console.log('Disable response body', data);
+
+      if (response.ok && data?.success) {
+        setDisablePassword('');
+        setError('');
+        await fetchMFAStatus();
+        if (onMFAStatusChange) onMFAStatusChange(false);
+        Alert.alert('Success', 'MFA has been disabled');
+      } else {
+        setError(data?.message || 'Failed to disable MFA');
+      }
+    } catch (err) {
+      setError('Unable to disable MFA');
+      console.error('Disable error', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  if (Platform.OS === 'web' && typeof window !== 'undefined') {
+    const confirmed = window.confirm('Are you sure you want to disable two-factor authentication? Your account will be less secure.');
+    if (confirmed) await doDisable();
+  } else {
     Alert.alert(
       'Disable MFA?',
       'Are you sure you want to disable two-factor authentication? Your account will be less secure.',
       [
         { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Disable',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              if (!effectiveToken) {
-                setError('Please sign in again to manage MFA settings.');
-                return;
-              }
-
-              setLoading(true);
-              const response = await fetch(`${API_ORIGIN}/api/v1/user/mfa/disable`, {
-                method: 'POST',
-                headers: {
-                  'Authorization': `Bearer ${effectiveToken}`,
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ password: disablePassword }),
-              });
-
-              const data = await response.json();
-
-              if (response.ok && data?.success) {
-                Alert.alert('Success', 'MFA has been disabled', [
-                  {
-                    text: 'OK',
-                    onPress: () => {
-                      setDisablePassword('');
-                      setError('');
-                      fetchMFAStatus();
-                      if (onMFAStatusChange) onMFAStatusChange(false);
-                    },
-                  },
-                ]);
-              } else {
-                setError(data?.message || 'Failed to disable MFA');
-              }
-            } catch (err) {
-              setError('Unable to disable MFA');
-              console.error(err);
-            } finally {
-              setLoading(false);
-            }
-          },
-        },
+        { text: 'Disable', style: 'destructive', onPress: doDisable },
       ]
     );
-  };
+  }
+};
 
   const handleRegenerateRecoveryCodes = async () => {
-    if (!disablePassword.trim()) {
+    Keyboard.dismiss();
+
+    const pwd = (disablePassword || '').trim();
+    if (!pwd) {
       setError('Please enter your password to regenerate recovery codes');
       return;
     }
@@ -261,28 +266,26 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
       }
 
       setLoading(true);
+      console.log('Regenerate recovery codes: sending request', { pwdPresent: !!pwd });
       const response = await fetch(`${API_ORIGIN}/api/v1/user/mfa/recovery-codes/regenerate`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${effectiveToken}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ password: disablePassword }),
+        body: JSON.stringify({ password: pwd }),
       });
 
+      console.log('Regenerate fetch completed, status=', response.status);
       const data = await response.json();
+      console.log('Regenerate response body', data);
 
       if (response.ok && data?.success) {
-        Alert.alert('Success', 'New recovery codes have been generated', [
-          {
-            text: 'OK',
-            onPress: () => {
-              setSetupData({ ...setupData, recoveryCodes: data.data.recoveryCodes });
-              setShowRecoveryCodes(true);
-              setDisablePassword('');
-            },
-          },
-        ]);
+        setSetupData({ ...setupData, recoveryCodes: data.data.recoveryCodes });
+        setShowRecoveryCodes(true);
+        setDisablePassword('');
+        await fetchMFAStatus();
+        Alert.alert('Success', 'New recovery codes have been generated');
       } else {
         setError(data?.message || 'Failed to regenerate recovery codes');
       }
@@ -451,18 +454,28 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
             {/* Password input moved below the action buttons for better UX */}
 
             <TouchableOpacity
-              style={[styles.button, styles.secondaryButton, loading && styles.buttonDisabled]}
-              onPress={handleRegenerateRecoveryCodes}
-              disabled={loading}
+              activeOpacity={0.75}
+              style={[styles.button, styles.secondaryButton, (loading || !(disablePassword || '').trim()) && styles.buttonDisabled]}
+              onPress={() => {
+                console.log('RegenerateRecoveryCodes pressed', { disablePassword });
+                if (!(disablePassword || '').trim()) return;
+                handleRegenerateRecoveryCodes();
+              }}
+              disabled={loading || !(disablePassword || '').trim()}
             >
               <RefreshCw size={16} color="#2E6B4D" />
               <Text style={styles.secondaryButtonText}>Regenerate Recovery Codes</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={[styles.button, styles.dangerButton, loading && styles.buttonDisabled]}
-              onPress={handleDisableMFA}
-              disabled={loading}
+              activeOpacity={0.75}
+              style={[styles.button, styles.dangerButton, (loading || !(disablePassword || '').trim()) && styles.buttonDisabled]}
+              onPress={() => {
+                console.log('DisableMFA pressed', { disablePassword });
+                if (!(disablePassword || '').trim()) return;
+                handleDisableMFA();
+              }}
+              disabled={loading || !(disablePassword || '').trim()}
             >
               <Text style={styles.dangerButtonText}>Disable Two-Factor Authentication</Text>
             </TouchableOpacity>

@@ -578,12 +578,21 @@ async function completePasswordReset(req, res) {
   const token = String(req.body?.token || req.query?.token || "").trim();
   const newPassword = String(req.body?.newPassword || "");
   const confirmPassword = String(req.body?.confirmPassword || "");
+  
+  // Detect if this is a JSON request (from fetch) or form submission
+  const isJsonRequest = req.get("Content-Type")?.includes("application/json");
 
   if (!token) {
+    if (isJsonRequest) {
+      return res.status(400).json({ message: "Password reset token is required." });
+    }
     return res.status(400).send(getErrorPage("Password reset token is required."));
   }
 
   if (!newPassword || newPassword.length < 8 || newPassword.length > 128) {
+    if (isJsonRequest) {
+      return res.status(400).json({ message: "New password must be between 8 and 128 characters." });
+    }
     return res.status(400).send(
       getPasswordResetPage({
         token,
@@ -593,6 +602,9 @@ async function completePasswordReset(req, res) {
   }
 
   if (newPassword !== confirmPassword) {
+    if (isJsonRequest) {
+      return res.status(400).json({ message: "Passwords do not match." });
+    }
     return res.status(400).send(
       getPasswordResetPage({
         token,
@@ -605,6 +617,9 @@ async function completePasswordReset(req, res) {
     const tokenRecord = await emailVerificationService.verifyToken(token, "password_reset");
 
     if (!tokenRecord) {
+      if (isJsonRequest) {
+        return res.status(400).json({ message: "Invalid or expired password reset token. Please request a new link from the login page." });
+      }
       return res.status(400).send(
         getErrorPage("Invalid or expired password reset token. Please request a new link from the login page.")
       );
@@ -613,6 +628,9 @@ async function completePasswordReset(req, res) {
     const user = await emailVerificationService.getUserFromToken(token, "password_reset");
 
     if (!user) {
+      if (isJsonRequest) {
+        return res.status(404).json({ message: "User account not found for this reset token." });
+      }
       return res.status(404).send(getErrorPage("User account not found for this reset token."));
     }
 
@@ -623,15 +641,32 @@ async function completePasswordReset(req, res) {
     ]);
 
     if (result.affectedRows === 0) {
+      if (isJsonRequest) {
+        return res.status(404).json({ message: "User account not found." });
+      }
       return res.status(404).send(getErrorPage("User account not found."));
     }
 
     await authTokenService.revokeRefreshTokensForUser(tokenRecord.UserID);
     await emailVerificationService.deleteVerificationToken(tokenRecord.TokenID);
 
+    if (isJsonRequest) {
+      return res.json({ 
+        success: true,
+        message: "Password updated successfully. All your active sessions have been signed out.",
+        user: {
+          UserID: user.UserID,
+          Email: user.Email,
+          FullName: user.FullName,
+        }
+      });
+    }
     return res.send(getPasswordResetSuccessPage(user));
   } catch (error) {
     console.error("Complete password reset error:", error);
+    if (isJsonRequest) {
+      return res.status(500).json({ message: "Failed to reset password. Please try again later." });
+    }
     return res.status(500).send(getErrorPage("Failed to reset password. Please try again later."));
   }
 }
@@ -1067,9 +1102,12 @@ function getPasswordResetPage({ token, fullName = "", email = "", errorMessage =
           </div>
 
           ${errorMarkup}
+          <div id="loadingMessage" class="error" style="display: none; background: #E3F2FD; color: #1565C0; border-color: #90CAF9;">
+            Updating your password...
+          </div>
 
-          <form method="POST" action="/api/v1/auth/reset-password">
-            <input type="hidden" name="token" value="${encodedToken}" />
+          <form id="passwordResetForm">
+            <input type="hidden" id="tokenField" name="token" value="${encodedToken}" />
             <div class="field">
               <label for="newPassword">New Password</label>
               <input id="newPassword" name="newPassword" type="password" minlength="8" maxlength="128" required />
@@ -1078,7 +1116,7 @@ function getPasswordResetPage({ token, fullName = "", email = "", errorMessage =
               <label for="confirmPassword">Confirm New Password</label>
               <input id="confirmPassword" name="confirmPassword" type="password" minlength="8" maxlength="128" required />
             </div>
-            <button class="button" type="submit">Update Password</button>
+            <button class="button" id="submitBtn" type="submit">Update Password</button>
           </form>
 
           <div class="security-note">
@@ -1090,6 +1128,88 @@ function getPasswordResetPage({ token, fullName = "", email = "", errorMessage =
           </div>
         </div>
       </div>
+
+      <script>
+        document.getElementById('passwordResetForm').addEventListener('submit', async (e) => {
+          e.preventDefault();
+          
+          const token = document.getElementById('tokenField').value;
+          const newPassword = document.getElementById('newPassword').value;
+          const confirmPassword = document.getElementById('confirmPassword').value;
+          const submitBtn = document.getElementById('submitBtn');
+          const loadingMsg = document.getElementById('loadingMessage');
+          const form = document.getElementById('passwordResetForm');
+          
+          // Show loading state
+          submitBtn.disabled = true;
+          submitBtn.style.opacity = '0.6';
+          loadingMsg.style.display = 'block';
+          
+          try {
+            const response = await fetch('/api/v1/auth/reset-password', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                token,
+                newPassword,
+                confirmPassword,
+              }),
+            });
+            
+            const data = await response.json();
+            
+            if (response.ok) {
+              // Success - show success message and redirect
+              loadingMsg.textContent = 'Password updated successfully! Redirecting...';
+              loadingMsg.style.color = '#2E6B4D';
+              loadingMsg.style.background = '#ECF2E5';
+              loadingMsg.style.borderColor = '#D8E2CF';
+              
+              // Hide form
+              form.style.display = 'none';
+              
+              // Redirect after 2 seconds
+              setTimeout(() => {
+                window.location.href = '/';
+              }, 2000);
+            } else {
+              // Error - show the error message
+              loadingMsg.style.display = 'none';
+              submitBtn.disabled = false;
+              submitBtn.style.opacity = '1';
+              
+              // Remove any existing error messages
+              const existingErrors = form.parentNode.querySelectorAll('.error');
+              existingErrors.forEach(err => {
+                if (err !== loadingMsg) err.remove();
+              });
+              
+              const errorDiv = document.createElement('div');
+              errorDiv.className = 'error';
+              errorDiv.textContent = data.message || 'Failed to reset password. Please try again.';
+              form.parentNode.insertBefore(errorDiv, form);
+            }
+          } catch (error) {
+            console.error('Password reset error:', error);
+            loadingMsg.style.display = 'none';
+            submitBtn.disabled = false;
+            submitBtn.style.opacity = '1';
+            
+            // Remove any existing error messages
+            const existingErrors = form.parentNode.querySelectorAll('.error');
+            existingErrors.forEach(err => {
+              if (err !== loadingMsg) err.remove();
+            });
+            
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = 'Network error. Please check your connection and try again.';
+            form.parentNode.insertBefore(errorDiv, form);
+          }
+        });
+      </script>
     </body>
     </html>
   `;

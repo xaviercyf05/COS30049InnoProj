@@ -41,28 +41,35 @@ const configuredCorsOrigins = Array.isArray(env.corsOrigin)
   ? env.corsOrigin.filter(Boolean)
   : [];
 
-// Allow CORS for password reset endpoints (public endpoints that don't require authentication)
-app.use("/api/v1/auth/reset-password", cors());
-
 app.use(
-  cors({
-    origin(origin, callback) {
-      // When no CORS_ORIGIN is configured, allow all origins (dev-friendly default).
-      if (configuredCorsOrigins.length === 0) {
-        return callback(null, true);
-      }
+  cors((req, callback) => {
+    const requestOrigin = req.header("Origin");
+    const isPasswordResetRoute = req.path.startsWith("/api/v1/auth/reset-password");
 
-      // Allow server-to-server and same-origin requests without an Origin header.
-      if (!origin) {
-        return callback(null, true);
-      }
+    // The password reset page is public and must be able to submit its form without
+    // being blocked by the global origin whitelist.
+    if (isPasswordResetRoute) {
+      return callback(null, {
+        origin: true,
+        methods: ["GET", "POST", "OPTIONS"],
+      });
+    }
 
-      if (configuredCorsOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+    // When no CORS_ORIGIN is configured, allow all origins (dev-friendly default).
+    if (configuredCorsOrigins.length === 0) {
+      return callback(null, { origin: true });
+    }
 
-      return callback(new Error("Not allowed by CORS"));
-    },
+    // Allow server-to-server and same-origin requests without an Origin header.
+    if (!requestOrigin) {
+      return callback(null, { origin: true });
+    }
+
+    if (configuredCorsOrigins.includes(requestOrigin)) {
+      return callback(null, { origin: true });
+    }
+
+    return callback(new Error("Not allowed by CORS"));
   })
 );
 app.use(morgan("combined"));

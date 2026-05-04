@@ -1102,11 +1102,7 @@ function getPasswordResetPage({ token, fullName = "", email = "", errorMessage =
           </div>
 
           ${errorMarkup}
-          <div id="loadingMessage" class="error" style="display: none; background: #E3F2FD; color: #1565C0; border-color: #90CAF9;">
-            Updating your password...
-          </div>
-
-          <form id="passwordResetForm" method="POST" onsubmit="return false;">
+          <form method="POST" action="/api/v1/auth/reset-password">
             <input type="hidden" id="tokenField" name="token" value="${encodedToken}" />
             <div class="field">
               <label for="newPassword">New Password</label>
@@ -1128,111 +1124,6 @@ function getPasswordResetPage({ token, fullName = "", email = "", errorMessage =
           </div>
         </div>
       </div>
-
-      <script>
-        // Immediately attach the submit handler without waiting for the DOM
-        (function() {
-          const form = document.getElementById('passwordResetForm');
-          if (!form) {
-            console.error('Password reset form not found');
-            return;
-          }
-          
-          form.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            console.log('Form submit event triggered');
-            
-            const token = document.getElementById('tokenField').value;
-            const newPassword = document.getElementById('newPassword').value;
-            const confirmPassword = document.getElementById('confirmPassword').value;
-            const submitBtn = document.getElementById('submitBtn');
-            const loadingMsg = document.getElementById('loadingMessage');
-            
-            console.log('Token:', token ? 'present' : 'missing');
-            console.log('Password length:', newPassword.length);
-            
-            if (!token || !newPassword || !confirmPassword) {
-              console.error('Missing required fields');
-              return;
-            }
-            
-            // Show loading state
-            submitBtn.disabled = true;
-            submitBtn.style.opacity = '0.6';
-            loadingMsg.style.display = 'block';
-            
-            try {
-              const url = window.location.origin + '/api/v1/auth/reset-password';
-              console.log('Sending POST request to:', url);
-              
-              const response = await fetch(url, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                  token,
-                  newPassword,
-                  confirmPassword,
-                }),
-              });
-              
-              console.log('Response status:', response.status);
-              
-              const data = await response.json();
-              console.log('Response data:', data);
-              
-              if (response.ok) {
-                // Success - show success message and redirect
-                loadingMsg.textContent = 'Password updated successfully! Redirecting...';
-                loadingMsg.style.color = '#2E6B4D';
-                loadingMsg.style.background = '#ECF2E5';
-                loadingMsg.style.borderColor = '#D8E2CF';
-                
-                // Hide form
-                form.style.display = 'none';
-                
-                // Redirect after 2 seconds
-                setTimeout(() => {
-                  window.location.href = '/';
-                }, 2000);
-              } else {
-                // Error - show the error message
-                loadingMsg.style.display = 'none';
-                submitBtn.disabled = false;
-                submitBtn.style.opacity = '1';
-                
-                // Remove any existing error messages
-                const existingErrors = form.parentNode.querySelectorAll('.error');
-                existingErrors.forEach(err => {
-                  if (err !== loadingMsg) err.remove();
-                });
-                
-                const errorDiv = document.createElement('div');
-                errorDiv.className = 'error';
-                errorDiv.textContent = data.message || 'Failed to reset password. Please try again.';
-                form.parentNode.insertBefore(errorDiv, form);
-              }
-            } catch (error) {
-              console.error('Password reset error:', error);
-              loadingMsg.style.display = 'none';
-              submitBtn.disabled = false;
-              submitBtn.style.opacity = '1';
-              
-              // Remove any existing error messages
-              const existingErrors = form.parentNode.querySelectorAll('.error');
-              existingErrors.forEach(err => {
-                if (err !== loadingMsg) err.remove();
-              });
-              
-              const errorDiv = document.createElement('div');
-              errorDiv.className = 'error';
-              errorDiv.textContent = 'Network error: ' + error.message;
-              form.parentNode.insertBefore(errorDiv, form);
-            }
-          });
-        })();
-      </script>
     </body>
     </html>
   `;

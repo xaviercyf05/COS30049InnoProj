@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
 	ActivityIndicator,
 	Alert,
+	Platform,
 	ScrollView,
 	StyleSheet,
 	Text,
@@ -138,6 +139,26 @@ function AdminAssessment({ route, navigation }) {
 		setStatusType('');
 	};
 
+	const confirmDestructiveAction = (title, message, onConfirm) => {
+		if (Platform.OS === 'web') {
+			const confirmed =
+				typeof globalThis !== 'undefined' && typeof globalThis.confirm === 'function'
+					? globalThis.confirm(`${title}\n\n${message}`)
+					: true;
+
+			if (confirmed) {
+				onConfirm();
+			}
+
+			return;
+		}
+
+		Alert.alert(title, message, [
+			{ text: 'Cancel', style: 'cancel' },
+			{ text: 'Delete', style: 'destructive', onPress: onConfirm },
+		]);
+	};
+
 	const updateQuestion = (field, value) => {
 		clearStatus();
 		if (!selectedQuestion) return;
@@ -188,12 +209,10 @@ function AdminAssessment({ route, navigation }) {
 			return;
 		}
 
-		Alert.alert('Delete Question', 'Are you sure you want to delete this question?', [
-			{ text: 'Cancel', style: 'cancel' },
-			{
-				text: 'Delete',
-				style: 'destructive',
-				onPress: async () => {
+		confirmDestructiveAction(
+			'Delete Question',
+			'Are you sure you want to delete this question?',
+			async () => {
 					setStatusType('info');
 					setStatusMessage('Deleting question...');
 					setSaving(true);
@@ -201,10 +220,10 @@ function AdminAssessment({ route, navigation }) {
 						const deletedQuestionId = selectedQuestion.id;
 
 						if (!selectedQuestion.isNew) {
-							const { error: deleteError } = await deleteAssessmentQuestion(
-								selectedAssessmentId,
-								selectedQuestion.id
-							);
+											const { error: deleteError } = await deleteAssessmentQuestion(
+												Number(selectedAssessmentId),
+												Number(selectedQuestion.id)
+											);
 							if (deleteError) throw new Error(deleteError);
 						}
 
@@ -224,9 +243,8 @@ function AdminAssessment({ route, navigation }) {
 					} finally {
 						setSaving(false);
 					}
-				},
-			},
-		]);
+				}
+		);
 	};
 
 	const saveQuestion = async () => {
@@ -502,28 +520,24 @@ function AdminAssessment({ route, navigation }) {
 		const assessment = assessments.find((a) => sameId(a.id, selectedAssessmentId));
 		if (!assessment) return;
 
-		Alert.alert(
+		confirmDestructiveAction(
 			'Delete Assessment',
 			`Are you sure you want to delete "${assessment.title}"? This cannot be undone.`,
-			[
-				{ text: 'Cancel', style: 'cancel' },
-				{
-					text: 'Delete',
-					style: 'destructive',
-					onPress: async () => {
+			async () => {
 						setStatusType('info');
 						setStatusMessage('Deleting assessment...');
 						setSaving(true);
 						try {
-								const deletedAssessmentId = selectedAssessmentId;
+													const deletedAssessmentId = selectedAssessmentId;
 
-							const { error: deleteError } = await deleteAssessment(
-								selectedAssessmentId
-							);
+													// Ensure numeric IDs are passed to the API routes
+													const { error: deleteError } = await deleteAssessment(Number(selectedAssessmentId));
 
 							if (deleteError) throw new Error(deleteError);
 
-								const refreshedAssessments = await loadAssessments();
+													// Clear the selection first so reload doesn't try to re-select the deleted item
+													setSelectedAssessmentId(null);
+													const refreshedAssessments = await loadAssessments();
 								const stillExists = refreshedAssessments.some((assessmentItem) => sameId(assessmentItem.id, deletedAssessmentId));
 
 								if (stillExists) {
@@ -536,12 +550,10 @@ function AdminAssessment({ route, navigation }) {
 								setStatusType('error');
 								setStatusMessage(`Assessment delete validation failed: ${err.message}`);
 								Alert.alert('Error Deleting Assessment', err.message);
-						} finally {
+							} finally {
 							setSaving(false);
 						}
-					},
-				},
-			]
+				}
 		);
 	};
 
@@ -744,7 +756,7 @@ function AdminAssessment({ route, navigation }) {
 										onPress={deleteAssessmentConfirm}
 										disabled={saving}
 									>
-										<Text style={styles.deleteButtonText}>DELETE V2</Text>
+										<Text style={styles.deleteButtonText}>Delete</Text>
 									</TouchableOpacity>
 								</View>
 
@@ -897,7 +909,7 @@ function AdminAssessment({ route, navigation }) {
 										disabled={saving}
 										activeOpacity={0.8}
 									>
-										<Text style={styles.deleteButtonText}>DELETE V2</Text>
+										<Text style={styles.deleteButtonText}>Delete</Text>
 									</TouchableOpacity>
 								</View>
 
@@ -1357,23 +1369,15 @@ const styles = StyleSheet.create({
 		paddingBottom: 6,
 	},
 	deleteButton: {
-		backgroundColor: '#6B0F1A',
-		borderRadius: 12,
-		paddingVertical: 10,
-		paddingHorizontal: 14,
-		borderWidth: 1,
-		borderColor: '#2A060A',
-		shadowColor: '#000000',
-		shadowOpacity: 0.16,
-		shadowRadius: 4,
-		shadowOffset: { width: 0, height: 2 },
-	elevation: 2,
+		backgroundColor: '#FCEAEA',
+		borderRadius: 8,
+		paddingVertical: 8,
+		paddingHorizontal: 10,
 	},
 	deleteButtonText: {
-		color: '#FFFFFF',
-		fontSize: 13,
-		fontWeight: '800',
-		letterSpacing: 0.6,
+		color: '#C73737',
+		fontSize: 12,
+		fontWeight: '700',
 	},
 	saveButton: {
 		backgroundColor: '#4F772D',

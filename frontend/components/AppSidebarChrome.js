@@ -400,7 +400,13 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 							</View>
 						</View>
 
-						<View style={styles.sidebarSection}>
+						<ScrollView
+							style={styles.sidebarScroll}
+							contentContainerStyle={styles.sidebarScrollContent}
+							showsVerticalScrollIndicator
+							nestedScrollEnabled
+						>
+							<View style={styles.sidebarSection}>
 							<TouchableOpacity
 								style={styles.sidebarItem}
 								onPress={() => {
@@ -465,24 +471,27 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 									</TouchableOpacity>
 								</>
 							)}
-						</View>
-
-						<TouchableOpacity
-							style={styles.logoutButton}
-							onPress={() => {
-								setMenuVisible(false);
-								handleLogout();
-							}}
-						>
-							<Text style={styles.logoutText}>Logout</Text>
-						</TouchableOpacity>
-
-						{profileLoading ? (
-							<View style={styles.loadingRow}>
-								<ActivityIndicator size="small" color="#2E6B4D" />
-								<Text style={styles.loadingText}>Loading profile...</Text>
 							</View>
-						) : null}
+						</ScrollView>
+
+						<View style={styles.sidebarFooter}>
+							<TouchableOpacity
+								style={styles.logoutButton}
+								onPress={() => {
+									setMenuVisible(false);
+									handleLogout();
+								}}
+							>
+								<Text style={styles.logoutText}>Logout</Text>
+							</TouchableOpacity>
+
+							{profileLoading ? (
+								<View style={styles.loadingRow}>
+									<ActivityIndicator size="small" color="#2E6B4D" />
+									<Text style={styles.loadingText}>Loading profile...</Text>
+								</View>
+							) : null}
+						</View>
 					</Animated.View>
 				</View>
 			)}
@@ -732,8 +741,18 @@ const styles = StyleSheet.create({
 		marginTop: 2,
 	},
 	sidebarSection: {
-		flex: 1,
 		paddingTop: 4,
+	},
+	sidebarScroll: {
+		flex: 1,
+	},
+	sidebarScrollContent: {
+		flexGrow: 1,
+	},
+	sidebarFooter: {
+		paddingTop: 12,
+		borderTopWidth: 1,
+		borderTopColor: '#EEF2EA',
 	},
 	sidebarItem: {
 		paddingVertical: 14,

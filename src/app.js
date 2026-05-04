@@ -41,6 +41,9 @@ const configuredCorsOrigins = Array.isArray(env.corsOrigin)
   ? env.corsOrigin.filter(Boolean)
   : [];
 
+// Allow CORS for password reset endpoints (public endpoints that don't require authentication)
+app.use("/api/v1/auth/reset-password", cors());
+
 app.use(
   cors({
     origin(origin, callback) {

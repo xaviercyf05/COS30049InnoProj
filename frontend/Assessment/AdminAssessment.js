@@ -36,6 +36,8 @@ const createBlankQuestion = () => ({
 	isNew: true,
 });
 
+const sameId = (left, right) => String(left) === String(right);
+
 function AdminAssessment({ route, navigation }) {
 	const defaultAssessmentId = route?.params?.assessmentId || null;
 	const defaultModuleId = route?.params?.moduleId ? String(route.params.moduleId) : '';
@@ -68,7 +70,7 @@ function AdminAssessment({ route, navigation }) {
 	const [error, setError] = useState('');
 
 	const selectedQuestion = selectedQuestionId
-		? questions.find((q) => q.id === selectedQuestionId)
+		? questions.find((q) => sameId(q.id, selectedQuestionId))
 		: questions[0];
 
 	const moduleNameById = useMemo(() => {
@@ -118,11 +120,14 @@ function AdminAssessment({ route, navigation }) {
 
 			setQuestions(fetchedQuestions || []);
 			if (fetchedQuestions && fetchedQuestions.length > 0) {
-				setSelectedQuestionId(fetchedQuestions[0].id);
+				setSelectedQuestionId(String(fetchedQuestions[0].id));
 			}
+
+			return fetchedQuestions || [];
 		} catch (err) {
 			setError(err.message);
 			Alert.alert('Error Loading Questions', err.message);
+			return [];
 		} finally {
 			setLoading(false);
 		}
@@ -189,23 +194,32 @@ function AdminAssessment({ route, navigation }) {
 				text: 'Delete',
 				style: 'destructive',
 				onPress: async () => {
+					setStatusType('info');
+					setStatusMessage('Deleting question...');
 					setSaving(true);
 					try {
+						const deletedQuestionId = selectedQuestion.id;
+
 						if (!selectedQuestion.isNew) {
 							const { error: deleteError } = await deleteAssessmentQuestion(
+								selectedAssessmentId,
 								selectedQuestion.id
 							);
 							if (deleteError) throw new Error(deleteError);
 						}
 
-						const updatedQuestions = questions.filter(
-							(q) => q.id !== selectedQuestion.id
-						);
-						setQuestions(updatedQuestions);
-						setSelectedQuestionId(updatedQuestions[0]?.id);
+						const refreshedQuestions = await loadQuestionsHandler();
+						const stillExists = refreshedQuestions.some((question) => sameId(question.id, deletedQuestionId));
+
+						if (stillExists) {
+							throw new Error('Question still exists after delete attempt.');
+						}
+
 						setStatusType('success');
-						setStatusMessage('Question deleted successfully.');
+						setStatusMessage('Question deleted and verified successfully.');
 					} catch (err) {
+						setStatusType('error');
+						setStatusMessage(`Question delete validation failed: ${err.message}`);
 						Alert.alert('Error', err.message);
 					} finally {
 						setSaving(false);
@@ -289,9 +303,9 @@ function AdminAssessment({ route, navigation }) {
 			setAssessments(fetchedAssessments || []);
 			if (fetchedAssessments && fetchedAssessments.length > 0) {
 				const selected =
-					fetchedAssessments.find((a) => String(a.id) === String(selectedAssessmentId)) ||
+					fetchedAssessments.find((a) => sameId(a.id, selectedAssessmentId)) ||
 					fetchedAssessments[0];
-				setSelectedAssessmentId(selected.id);
+				setSelectedAssessmentId(String(selected.id));
 				setAssessmentModuleId(String(selected.moduleId || ''));
 				setAssessmentTitle(selected.title);
 				setAssessmentDuration(String(selected.durationMinutes || 120));
@@ -303,8 +317,11 @@ function AdminAssessment({ route, navigation }) {
 				setQuestions([]);
 				setAttempts([]);
 			}
+
+			return fetchedAssessments || [];
 		} catch (err) {
 			setError(err.message);
+			return [];
 		} finally {
 			setLoading(false);
 		}
@@ -314,7 +331,7 @@ function AdminAssessment({ route, navigation }) {
 	const loadQuestionsHandler = useCallback(async () => {
 		if (!selectedAssessmentId) {
 			setQuestions([]);
-			return;
+			return [];
 		}
 
 		setError('');
@@ -325,11 +342,14 @@ function AdminAssessment({ route, navigation }) {
 
 			setQuestions(fetchedQuestions || []);
 			if (fetchedQuestions && fetchedQuestions.length > 0) {
-				setSelectedQuestionId(fetchedQuestions[0].id);
+				setSelectedQuestionId(String(fetchedQuestions[0].id));
 			}
+
+			return fetchedQuestions || [];
 		} catch (err) {
 			setError(err.message);
 			Alert.alert('Error Loading Questions', err.message);
+			return [];
 		}
 	}, [selectedAssessmentId]);
 
@@ -479,7 +499,7 @@ function AdminAssessment({ route, navigation }) {
 
 	// Delete assessment
 	const deleteAssessmentConfirm = () => {
-		const assessment = assessments.find((a) => a.id === selectedAssessmentId);
+		const assessment = assessments.find((a) => sameId(a.id, selectedAssessmentId));
 		if (!assessment) return;
 
 		Alert.alert(
@@ -491,19 +511,31 @@ function AdminAssessment({ route, navigation }) {
 					text: 'Delete',
 					style: 'destructive',
 					onPress: async () => {
+						setStatusType('info');
+						setStatusMessage('Deleting assessment...');
 						setSaving(true);
 						try {
+								const deletedAssessmentId = selectedAssessmentId;
+
 							const { error: deleteError } = await deleteAssessment(
 								selectedAssessmentId
 							);
 
 							if (deleteError) throw new Error(deleteError);
 
-							setStatusType('success');
-							setStatusMessage('Assessment deleted successfully.');
-							loadAssessments();
+								const refreshedAssessments = await loadAssessments();
+								const stillExists = refreshedAssessments.some((assessmentItem) => sameId(assessmentItem.id, deletedAssessmentId));
+
+								if (stillExists) {
+									throw new Error('Assessment still exists after delete attempt.');
+								}
+
+								setStatusType('success');
+								setStatusMessage('Assessment deleted and verified successfully.');
 						} catch (err) {
-							Alert.alert('Error Deleting Assessment', err.message);
+								setStatusType('error');
+								setStatusMessage(`Assessment delete validation failed: ${err.message}`);
+								Alert.alert('Error Deleting Assessment', err.message);
 						} finally {
 							setSaving(false);
 						}
@@ -681,9 +713,9 @@ function AdminAssessment({ route, navigation }) {
 								{assessments.map((a) => (
 									<TouchableOpacity
 										key={a.id}
-										style={[styles.assessmentItem, selectedAssessmentId === a.id && styles.assessmentItemActive]}
+										style={[styles.assessmentItem, sameId(selectedAssessmentId, a.id) && styles.assessmentItemActive]}
 										onPress={() => {
-											setSelectedAssessmentId(a.id);
+											setSelectedAssessmentId(String(a.id));
 											setAssessmentModuleId(String(a.moduleId || ''));
 											setAssessmentTitle(a.title);
 											setAssessmentDuration(String(a.durationMinutes));
@@ -703,7 +735,7 @@ function AdminAssessment({ route, navigation }) {
 							</View>
 						)}
 
-						{selectedAssessmentId && assessments.find((a) => a.id === selectedAssessmentId) && (
+						{selectedAssessmentId && assessments.find((a) => sameId(a.id, selectedAssessmentId)) && (
 							<View style={styles.card}>
 								<View style={styles.cardHeader}>
 									<Text style={styles.cardTitle}>Assessment Settings</Text>
@@ -712,7 +744,7 @@ function AdminAssessment({ route, navigation }) {
 										onPress={deleteAssessmentConfirm}
 										disabled={saving}
 									>
-										<Text style={styles.deleteButtonText}>Delete</Text>
+										<Text style={styles.deleteButtonText}>DELETE V2</Text>
 									</TouchableOpacity>
 								</View>
 
@@ -797,10 +829,10 @@ function AdminAssessment({ route, navigation }) {
 											key={assessment.id}
 											style={[
 												styles.assessmentSelectorButton,
-												selectedAssessmentId === assessment.id && styles.assessmentSelectorButtonActive,
+												sameId(selectedAssessmentId, assessment.id) && styles.assessmentSelectorButtonActive,
 											]}
 											onPress={() => {
-												setSelectedAssessmentId(assessment.id);
+												setSelectedAssessmentId(String(assessment.id));
 												setAssessmentTitle(assessment.title);
 												clearStatus();
 											}}
@@ -808,7 +840,7 @@ function AdminAssessment({ route, navigation }) {
 											<Text
 												style={[
 													styles.assessmentSelectorButtonText,
-													selectedAssessmentId === assessment.id && styles.assessmentSelectorButtonTextActive,
+													sameId(selectedAssessmentId, assessment.id) && styles.assessmentSelectorButtonTextActive,
 												]}
 											>
 												{assessment.title}
@@ -839,14 +871,14 @@ function AdminAssessment({ route, navigation }) {
 									{questions.map((q, index) => (
 										<TouchableOpacity
 											key={q.id}
-											style={[styles.questionTab, selectedQuestionId === q.id && styles.questionTabActive]}
+											style={[styles.questionTab, sameId(selectedQuestionId, q.id) && styles.questionTabActive]}
 											onPress={() => {
 												clearStatus();
-												setSelectedQuestionId(q.id);
+												setSelectedQuestionId(String(q.id));
 											}}
 											activeOpacity={0.7}
 										>
-											<Text style={[styles.questionTabText, selectedQuestionId === q.id && styles.questionTabTextActive]}>
+											<Text style={[styles.questionTabText, sameId(selectedQuestionId, q.id) && styles.questionTabTextActive]}>
 												Q{index + 1}
 											</Text>
 										</TouchableOpacity>
@@ -865,7 +897,7 @@ function AdminAssessment({ route, navigation }) {
 										disabled={saving}
 										activeOpacity={0.8}
 									>
-										<Text style={styles.deleteButtonText}>Delete</Text>
+										<Text style={styles.deleteButtonText}>DELETE V2</Text>
 									</TouchableOpacity>
 								</View>
 
@@ -1325,15 +1357,23 @@ const styles = StyleSheet.create({
 		paddingBottom: 6,
 	},
 	deleteButton: {
-		backgroundColor: '#FFE8E8',
-		borderRadius: 6,
-		paddingVertical: 6,
-		paddingHorizontal: 10,
+		backgroundColor: '#6B0F1A',
+		borderRadius: 12,
+		paddingVertical: 10,
+		paddingHorizontal: 14,
+		borderWidth: 1,
+		borderColor: '#2A060A',
+		shadowColor: '#000000',
+		shadowOpacity: 0.16,
+		shadowRadius: 4,
+		shadowOffset: { width: 0, height: 2 },
+	elevation: 2,
 	},
 	deleteButtonText: {
-		color: '#D63F3F',
-		fontSize: 12,
-		fontWeight: '700',
+		color: '#FFFFFF',
+		fontSize: 13,
+		fontWeight: '800',
+		letterSpacing: 0.6,
 	},
 	saveButton: {
 		backgroundColor: '#4F772D',

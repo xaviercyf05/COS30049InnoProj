@@ -227,13 +227,13 @@ export async function updateAssessmentQuestion(questionId, questionText, questio
 	return response.success ? { error: null } : { error: response.error };
 }
 
-export async function deleteAssessmentQuestion(questionId) {
+export async function deleteAssessmentQuestion(assessmentId, questionId) {
 	const token = await AsyncStorage.getItem('innopapp_auth_token');
 	if (!token) {
 		return { error: 'Authentication required' };
 	}
 
-	const response = await requestAssessmentApi(`/api/v1/admin/assessments/questions/${questionId}`, token, {
+	const response = await requestAssessmentApi(`/api/v1/admin/assessments/${assessmentId}/questions/${questionId}`, token, {
 		method: 'DELETE',
 	});
 

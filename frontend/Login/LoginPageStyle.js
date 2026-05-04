@@ -256,4 +256,10 @@ export const styles = StyleSheet.create({
     fontSize: 12,
     marginLeft: 6,
   },
+  mfaDescription: {
+    color: '#A8C2A3',
+    fontSize: 14,
+    marginBottom: 18,
+    lineHeight: 20,
+  },
 });

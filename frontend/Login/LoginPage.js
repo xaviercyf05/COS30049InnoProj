@@ -21,6 +21,16 @@ export default function LoginPage({ navigation }) {
   const [stayLoggedIn, setStayLoggedIn] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
+  
+  // MFA states
+  const [mfaRequired, setMFARequired] = useState(false);
+  const [mfaTempToken, setMFATempToken] = useState('');
+  const [mfaCode, setMFACode] = useState('');
+  const [mfaRecoveryCode, setMFARecoveryCode] = useState('');
+  const [useRecoveryCode, setUseRecoveryCode] = useState(false);
+  const [mfaLoading, setMFALoading] = useState(false);
+  const [mfaUserId, setMFAUserId] = useState(null);
+  const [mfaUser, setMFAUser] = useState(null);
 
   const API_ORIGIN = 'https://api.innopappserver.xyz';
 
@@ -114,6 +124,13 @@ export default function LoginPage({ navigation }) {
           routes: [{ name: 'Home' }],
         });
         console.log('Logged in:', data.data.user);
+      } else if (response.ok && data?.success && data?.mfaRequired) {
+        // MFA is required
+        setMFATempToken(data.data.tempToken);
+        setMFAUserId(data.data.userId);
+        setMFAUser(data.data.user);
+        setMFARequired(true);
+        setErrorMessage('');
       } else {
         const fallbackMessage = response.status >= 500
           ? 'Login service is temporarily unavailable. Please try again later.'
@@ -135,6 +152,99 @@ export default function LoginPage({ navigation }) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleMFAVerification = async () => {
+    if (useRecoveryCode && !mfaRecoveryCode.trim()) {
+      setErrorMessage('Please enter your recovery code.');
+      return;
+    }
+
+    if (!useRecoveryCode && !mfaCode.trim()) {
+      setErrorMessage('Please enter the 6-digit code from your authenticator app.');
+      return;
+    }
+
+    if (!useRecoveryCode && mfaCode.length !== 6) {
+      setErrorMessage('Code must be exactly 6 digits.');
+      return;
+    }
+
+    setMFALoading(true);
+    setErrorMessage('');
+
+    try {
+      const verifyResponse = await fetch(`${API_ORIGIN}/api/v1/auth/mfa/verify-token`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId: mfaUserId,
+          token: useRecoveryCode ? undefined : mfaCode,
+          recoveryCode: useRecoveryCode ? mfaRecoveryCode.toUpperCase() : undefined,
+        }),
+      });
+
+      const verifyData = await verifyResponse.json();
+
+      if (verifyResponse.ok && verifyData?.success) {
+        // MFA verified successfully, now complete login
+        const completeResponse = await fetch(`${API_ORIGIN}/api/v1/auth/mfa/complete-login`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            tempToken: mfaTempToken,
+            remember: stayLoggedIn,
+          }),
+        });
+
+        const completeData = await completeResponse.json();
+
+        if (completeResponse.ok && completeData?.success && completeData?.data?.token) {
+          const resolvedRole = completeData.data.user?.role || '';
+          const resolvedUserId = completeData.data.user?.userId;
+          const resolvedUsername = completeData.data.user?.username || '';
+
+          await persistAuthSession({
+            accessToken: completeData.data.token,
+            refreshToken: completeData.data.refreshToken || '',
+            role: resolvedRole,
+            username: resolvedUsername,
+            userId: resolvedUserId,
+            stayLoggedIn,
+          });
+
+          navigation.reset({
+            index: 0,
+            routes: [{ name: 'Home' }],
+          });
+          console.log('Logged in after MFA:', completeData.data.user);
+        } else {
+          setErrorMessage(completeData?.message || 'Failed to complete login after MFA verification.');
+        }
+      } else {
+        setErrorMessage(verifyData?.message || 'MFA verification failed. Please try again.');
+      }
+    } catch (error) {
+      setErrorMessage('Unable to verify MFA code. Please check your connection.');
+      console.error(error);
+    } finally {
+      setMFALoading(false);
+    }
+  };
+
+  const handleCancelMFA = () => {
+    setMFARequired(false);
+    setMFATempToken('');
+    setMFACode('');
+    setMFARecoveryCode('');
+    setUseRecoveryCode(false);
+    setMFAUserId(null);
+    setMFAUser(null);
+    setErrorMessage('');
   };
 
   return (
@@ -172,12 +282,96 @@ export default function LoginPage({ navigation }) {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.loginLabel}>Sign In</Text>
+            {mfaRequired ? (
+              <>
+                <Text style={styles.loginLabel}>Two-Factor Authentication</Text>
+                <Text style={styles.mfaDescription}>
+                  Verify your identity to continue. Enter the 6-digit code from your authenticator app or use a recovery code.
+                </Text>
 
-            <View style={styles.inputContainer}>
-              <User color="#2D5A27" size={20} style={styles.icon} />
-              <TextInput
-                style={styles.input}
+                {!useRecoveryCode ? (
+                  <>
+                    <View style={styles.inputContainer}>
+                      <ShieldCheck color="#2D5A27" size={20} style={styles.icon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="6-digit code"
+                        placeholderTextColor="#7E8A7A"
+                        value={mfaCode}
+                        onChangeText={(text) => {
+                          setMFACode(text.replace(/[^0-9]/g, '').slice(0, 6));
+                          if (errorMessage) setErrorMessage('');
+                        }}
+                        keyboardType="number-pad"
+                        maxLength={6}
+                        editable={!mfaLoading}
+                      />
+                    </View>
+                  </>
+                ) : (
+                  <>
+                    <View style={styles.inputContainer}>
+                      <Lock color="#2D5A27" size={20} style={styles.icon} />
+                      <TextInput
+                        style={styles.input}
+                        placeholder="Recovery code (e.g., XXXX-XXXX)"
+                        placeholderTextColor="#7E8A7A"
+                        value={mfaRecoveryCode}
+                        onChangeText={(text) => {
+                          setMFARecoveryCode(text.toUpperCase());
+                          if (errorMessage) setErrorMessage('');
+                        }}
+                        autoCapitalize="characters"
+                        autoCorrect={false}
+                        editable={!mfaLoading}
+                      />
+                    </View>
+                  </>
+                )}
+
+                {!!errorMessage && (
+                  <Text style={styles.inlineErrorText}>{errorMessage}</Text>
+                )}
+
+                <TouchableOpacity
+                  style={[styles.loginButton, mfaLoading && styles.loginButtonDisabled]}
+                  onPress={handleMFAVerification}
+                  disabled={mfaLoading}
+                  activeOpacity={0.85}
+                >
+                  {mfaLoading ? (
+                    <ActivityIndicator color="#FFF" />
+                  ) : (
+                    <Text style={styles.loginButtonText}>VERIFY</Text>
+                  )}
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={() => setUseRecoveryCode(!useRecoveryCode)}
+                  activeOpacity={0.8}
+                  style={styles.registerLinkWrap}
+                >
+                  <Text style={styles.registerLinkText}>
+                    {useRecoveryCode ? 'Use authenticator app' : 'Use recovery code instead'}
+                  </Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={handleCancelMFA}
+                  activeOpacity={0.8}
+                  style={styles.registerLinkWrap}
+                >
+                  <Text style={[styles.registerLinkText, { color: '#E85D5D' }]}>Cancel</Text>
+                </TouchableOpacity>
+              </>
+            ) : (
+              <>
+                <Text style={styles.loginLabel}>Sign In</Text>
+
+                <View style={styles.inputContainer}>
+                  <User color="#2D5A27" size={20} style={styles.icon} />
+                  <TextInput
+                    style={styles.input}
                 placeholder="Username or User ID"
                 placeholderTextColor="#7E8A7A"
                 value={username}
@@ -261,6 +455,8 @@ export default function LoginPage({ navigation }) {
             >
               <Text style={styles.registerLinkText}>No account yet? Register here</Text>
             </TouchableOpacity>
+              </>
+            )}
           </View>
 
           <View style={styles.footer}>

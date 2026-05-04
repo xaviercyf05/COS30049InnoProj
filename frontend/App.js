@@ -20,6 +20,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import LoginPage from './Login/LoginPage.js';
 import LoadingScreen from './Login/LoadingScreen.js';
+import ForgotPasswordScreen from './ForgotPassword/ForgotPasswordScreen.js';
 import RegisterScreen from './Register/RegisterScreen.js';
 import SubmissionScreen from './Register/SubmissionScreen.js';
 import ModuleScreen from './Module/ModuleScreen.js';
@@ -525,29 +526,30 @@ function HomeScreen({ navigation }) {
 				</View>
 			</View>
 
-			<Text style={styles.pageTitle}>{isAdmin ? 'Admin Dashboard' : 'Dashboard'}</Text>
+						<ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 36 }}>
+							<Text style={styles.pageTitle}>{isAdmin ? 'Admin Dashboard' : 'Dashboard'}</Text>
 
-			{isAdmin && (
-				<View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
-					<Text style={styles.sectionLabel}>Module Management</Text>
-					<View style={[styles.adminActions, isMobile && styles.adminActionsMobile]}>
-						<TouchableOpacity
-							style={[styles.secondaryAddButton, isMobile && styles.secondaryAddButtonMobile]}
-							onPress={() => navigation.navigate('AdminModules')}
-						>
-							<Text style={styles.secondaryAddButtonText}>Manage Modules</Text>
-						</TouchableOpacity>
-						<TouchableOpacity
-							style={[styles.addButton, isMobile && styles.addButtonMobile]}
-							onPress={() => navigation.navigate('AddModule')}
-						>
-							<Text style={styles.addButtonText}>Add Module</Text>
-						</TouchableOpacity>
-					</View>
-				</View>
-			)}
+							{isAdmin && (
+								<View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
+									<Text style={styles.sectionLabel}>Module Management</Text>
+									<View style={[styles.adminActions, isMobile && styles.adminActionsMobile]}>
+										<TouchableOpacity
+											style={[styles.secondaryAddButton, isMobile && styles.secondaryAddButtonMobile]}
+											onPress={() => navigation.navigate('AdminModules')}
+										>
+											<Text style={styles.secondaryAddButtonText}>Manage Modules</Text>
+										</TouchableOpacity>
+										<TouchableOpacity
+											style={[styles.addButton, isMobile && styles.addButtonMobile]}
+											onPress={() => navigation.navigate('AddModule')}
+										>
+											<Text style={styles.addButtonText}>Add Module</Text>
+										</TouchableOpacity>
+									</View>
+								</View>
+							)}
 
-			<View style={styles.cardContainer}>
+							<View style={styles.cardContainer}>
 				{modulesLoading ? (
 					<View style={styles.modulesStatusCard}>
 						<ActivityIndicator size="small" color="#2E6B4D" />
@@ -593,8 +595,9 @@ function HomeScreen({ navigation }) {
 						</TouchableOpacity>
 					))
 					)}
-		</View>
-		</View>
+					</View>
+					</ScrollView>
+					</View>
 	);
 }
 
@@ -642,6 +645,11 @@ export default function App() {
 			<Stack.Navigator initialRouteName="Loading" screenOptions={{ headerShown: false }}>
 				<Stack.Screen name="Loading" component={LoadingScreen} />
 				<Stack.Screen name="Login" component={LoginPage} />
+				<Stack.Screen
+					name="ForgotPassword"
+					component={ForgotPasswordScreen}
+					options={{ headerShown: false, title: 'Forgot Password' }}
+				/>
 				<Stack.Screen
 					name="Register"
 					component={RegisterScreen}

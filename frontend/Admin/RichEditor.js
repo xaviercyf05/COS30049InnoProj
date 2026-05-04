@@ -172,16 +172,28 @@ export default function RichEditor({ value, onChange }) {
                 ['link', 'image', 'video', 'table'],
                 ['codeView', 'showBlocks']
               ],
-              defaultStyle: "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; color: #2f4a3d;"
+              defaultStyle: "font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; color: #2f4a3d;",
+              onChange: function(contents) {
+                if (isApplyingExternalValue) {
+                  return;
+                }
+
+                window.ReactNativeWebView.postMessage(sanitizeEditorHtml(contents));
+              }
             });
 
-            editor.onChange = function(contents) {
-              if (isApplyingExternalValue) {
-                return;
-              }
+            // Compatibility fallback: also set the onChange handler after creation
+            try {
+              editor.onChange = function(contents) {
+                if (isApplyingExternalValue) {
+                  return;
+                }
 
-              window.ReactNativeWebView.postMessage(sanitizeEditorHtml(contents));
-            };
+                window.ReactNativeWebView.postMessage(sanitizeEditorHtml(contents));
+              };
+            } catch (_e) {
+              // ignore if unsupported
+            }
 
             window.__setEditorHtml = function(nextHtml) {
               if (typeof nextHtml !== 'string') {

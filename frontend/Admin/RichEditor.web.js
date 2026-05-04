@@ -59,6 +59,7 @@ function setEditorHtml(editor, html) {
 export default function RichEditor({ value, onChange }) {
   const hostRef = useRef(null);
   const editorRef = useRef(null);
+  const editorObserverRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const isApplyingExternalValueRef = useRef(false);
   const latestValueRef = useRef(sanitizeEditorHtml(value));
@@ -72,6 +73,24 @@ export default function RichEditor({ value, onChange }) {
     latestValueRef.current = sanitizeEditorHtml(value);
   }, [value]);
 
+  const emitEditorContentChange = (contents) => {
+    const sanitized = sanitizeEditorHtml(contents);
+
+    if (isApplyingExternalValueRef.current) {
+      return;
+    }
+
+    if (sanitized === latestValueRef.current) {
+      return;
+    }
+
+    latestValueRef.current = sanitized;
+
+    if (onChangeRef.current) {
+      onChangeRef.current(sanitized);
+    }
+  };
+
   const editorOptions = useMemo(
     () => ({
       defaultTag: 'p',
@@ -83,6 +102,9 @@ export default function RichEditor({ value, onChange }) {
       resizingBar: false,
       defaultStyle:
         "font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; font-size: 15px; color: #2f4a3d;",
+      onChange: (contents) => {
+        emitEditorContentChange(contents);
+      },
     }),
     []
   );
@@ -111,15 +133,30 @@ export default function RichEditor({ value, onChange }) {
       editorRef.current = editor;
       setLoadState('ready');
 
-      editor.onChange = (contents) => {
-        if (isApplyingExternalValueRef.current) {
-          return;
-        }
+      const syncTarget = editor?.$?.frameContext?.get?.('wysiwyg') || null;
 
-        if (onChangeRef.current) {
-          onChangeRef.current(sanitizeEditorHtml(contents));
-        }
-      };
+      if (syncTarget && typeof MutationObserver !== 'undefined') {
+        const observer = new MutationObserver(() => {
+          emitEditorContentChange(getEditorHtml(editor));
+        });
+
+        observer.observe(syncTarget, {
+          childList: true,
+          subtree: true,
+          characterData: true,
+          attributes: true,
+        });
+
+        editorObserverRef.current = observer;
+      }
+
+      try {
+        editor.onChange = (contents) => {
+          emitEditorContentChange(contents);
+        };
+      } catch (_err) {
+        // Ignore if assignment not supported
+      }
 
       const initialContent = latestValueRef.current;
       if (initialContent) {
@@ -136,6 +173,11 @@ export default function RichEditor({ value, onChange }) {
 
     return () => {
       isMounted = false;
+
+      if (editorObserverRef.current) {
+        editorObserverRef.current.disconnect();
+        editorObserverRef.current = null;
+      }
 
       if (editorRef.current) {
         editorRef.current.destroy();

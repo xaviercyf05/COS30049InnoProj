@@ -157,6 +157,12 @@ function AddModuleScreen({ navigation }) {
   };
 
   const updateSectionContent = (sectionId, value) => {
+    if (Platform.OS === 'web' && typeof console !== 'undefined') {
+      try {
+        console.debug('AddModuleScreen.updateSectionContent', { sectionId, length: String(value || '').length });
+      } catch (_e) {}
+    }
+
     setSections((previous) =>
       previous.map((section) =>
         section.id === sectionId
@@ -245,6 +251,11 @@ function AddModuleScreen({ navigation }) {
 
       if (moduleLocalImageAsset) {
         normalizedModuleImageUrl = await uploadModuleCoverImage(token, moduleLocalImageAsset);
+      }
+
+      // Debug: log normalized sections before sending to API
+      if (Platform.OS === 'web' && typeof console !== 'undefined') {
+        console.debug('AddModuleScreen: normalizedSections', normalizedSections);
       }
 
       await requestProfileApi('/api/v1/admin/modules', token, {

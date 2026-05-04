@@ -1471,6 +1471,7 @@ function escapeHtml(text) {
 
 module.exports = {
   loginUser,
+  refreshToken,
   getUserProfile,
   updateUserProfile,
   updateUserProfileImage,

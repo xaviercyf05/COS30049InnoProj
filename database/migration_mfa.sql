@@ -1,5 +1,6 @@
 -- MFA (Multi-Factor Authentication) Migration
 -- Adds MFA support to Users table
+USE appdb;
 
 ALTER TABLE Users ADD COLUMN MFAEnabled TINYINT(1) NOT NULL DEFAULT 0;
 ALTER TABLE Users ADD COLUMN MFASecret VARCHAR(255) NULL;

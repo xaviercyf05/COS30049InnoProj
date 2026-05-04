@@ -1,13 +1,17 @@
 const mfaService = require('../services/mfaService');
 const { query } = require('../config/db');
 
+function getAuthenticatedUserId(req) {
+  return req.user?.userId || req.admin?.userId || req.admin?.id || null;
+}
+
 /**
  * Start MFA setup - generates new secret and QR code
  * Returns data needed for user to set up authenticator app
  */
 async function initiateMFASetup(req, res) {
   try {
-    const userId = req.user?.id || req.admin?.id;
+    const userId = getAuthenticatedUserId(req);
 
     if (!userId) {
       return res.status(401).json({
@@ -70,7 +74,7 @@ async function initiateMFASetup(req, res) {
  */
 async function confirmMFASetup(req, res) {
   try {
-    const userId = req.user?.id || req.admin?.id;
+    const userId = getAuthenticatedUserId(req);
     const { secret, token, recoveryCodes } = req.body;
 
     if (!userId) {
@@ -131,7 +135,7 @@ async function confirmMFASetup(req, res) {
  */
 async function disableMFA(req, res) {
   try {
-    const userId = req.user?.id || req.admin?.id;
+    const userId = getAuthenticatedUserId(req);
     const { password } = req.body;
 
     if (!userId) {
@@ -198,7 +202,7 @@ async function disableMFA(req, res) {
  */
 async function getMFAStatus(req, res) {
   try {
-    const userId = req.user?.id || req.admin?.id;
+    const userId = getAuthenticatedUserId(req);
 
     if (!userId) {
       return res.status(401).json({
@@ -306,7 +310,7 @@ async function verifyMFAToken(req, res) {
  */
 async function regenerateRecoveryCodes(req, res) {
   try {
-    const userId = req.user?.id || req.admin?.id;
+    const userId = getAuthenticatedUserId(req);
     const { password } = req.body;
 
     if (!userId) {

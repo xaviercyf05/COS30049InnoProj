@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
+  TextInput,
   ScrollView,
   TouchableOpacity,
   ActivityIndicator,
@@ -9,6 +10,7 @@ import {
   StyleSheet,
   Image,
 } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Settings, Shield, Lock, RefreshCw, Copy, Eye, EyeOff } from 'lucide-react-native';
 
 const MFASettings = ({ token, userId, onMFAStatusChange }) => {
@@ -22,19 +24,61 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
   const [error, setError] = useState('');
   const [apiOrigin] = useState('https://api.innopappserver.xyz');
   const [copiedCode, setCopiedCode] = useState(null);
+  const [authToken, setAuthToken] = useState(token || '');
 
   const API_ORIGIN = apiOrigin;
+  const effectiveToken = authToken || token || '';
 
   useEffect(() => {
-    fetchMFAStatus();
-  }, []);
+    let isMounted = true;
+
+    const loadSessionToken = async () => {
+      try {
+        const storedToken = await AsyncStorage.getItem('innopapp_auth_token');
+
+        if (isMounted) {
+          setAuthToken(storedToken || token || '');
+
+          if (!storedToken && !token) {
+            setError('Please sign in again to manage MFA settings.');
+            setLoading(false);
+          }
+        }
+      } catch (error) {
+        if (isMounted) {
+          setError('Unable to load your session.');
+          setLoading(false);
+        }
+      }
+    };
+
+    void loadSessionToken();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [token]);
+
+  useEffect(() => {
+    if (!effectiveToken) {
+      return;
+    }
+
+    void fetchMFAStatus();
+  }, [effectiveToken]);
 
   const fetchMFAStatus = async () => {
     try {
+      if (!effectiveToken) {
+        setError('Please sign in again to manage MFA settings.');
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       const response = await fetch(`${API_ORIGIN}/api/v1/user/mfa/status`, {
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${effectiveToken}`,
         },
       });
 
@@ -56,11 +100,16 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
 
   const handleInitiateMFA = async () => {
     try {
+      if (!effectiveToken) {
+        setError('Please sign in again to manage MFA settings.');
+        return;
+      }
+
       setLoading(true);
       const response = await fetch(`${API_ORIGIN}/api/v1/user/mfa/setup/initiate`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${effectiveToken}`,
         },
       });
 
@@ -82,27 +131,34 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
   };
 
   const handleConfirmMFA = async () => {
-    if (!verificationCode.trim()) {
+    const normalizedVerificationCode = verificationCode.trim().replace(/\s+/g, '');
+
+    if (!normalizedVerificationCode) {
       setError('Please enter the 6-digit code');
       return;
     }
 
-    if (verificationCode.length !== 6) {
+    if (!/^[0-9]{6}$/.test(normalizedVerificationCode)) {
       setError('Code must be exactly 6 digits');
       return;
     }
 
     try {
+      if (!effectiveToken) {
+        setError('Please sign in again to manage MFA settings.');
+        return;
+      }
+
       setLoading(true);
       const response = await fetch(`${API_ORIGIN}/api/v1/user/mfa/setup/confirm`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${effectiveToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
           secret: setupData.secret,
-          token: verificationCode,
+          token: normalizedVerificationCode,
           recoveryCodes: setupData.recoveryCodes,
         }),
       });
@@ -148,11 +204,16 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
           style: 'destructive',
           onPress: async () => {
             try {
+              if (!effectiveToken) {
+                setError('Please sign in again to manage MFA settings.');
+                return;
+              }
+
               setLoading(true);
               const response = await fetch(`${API_ORIGIN}/api/v1/user/mfa/disable`, {
                 method: 'POST',
                 headers: {
-                  'Authorization': `Bearer ${token}`,
+                  'Authorization': `Bearer ${effectiveToken}`,
                   'Content-Type': 'application/json',
                 },
                 body: JSON.stringify({ password: disablePassword }),
@@ -194,11 +255,16 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
     }
 
     try {
+      if (!effectiveToken) {
+        setError('Please sign in again to manage MFA settings.');
+        return;
+      }
+
       setLoading(true);
       const response = await fetch(`${API_ORIGIN}/api/v1/user/mfa/recovery-codes/regenerate`, {
         method: 'POST',
         headers: {
-          'Authorization': `Bearer ${token}`,
+          'Authorization': `Bearer ${effectiveToken}`,
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({ password: disablePassword }),
@@ -268,7 +334,24 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
           <View style={styles.verificationContainer}>
             <Text style={styles.verificationLabel}>Enter the 6-digit code from your app:</Text>
             <View style={styles.inputContainer}>
-              <Text style={styles.inputCode}>{verificationCode || '______'}</Text>
+              <TextInput
+                style={styles.verificationInput}
+                value={verificationCode}
+                onChangeText={(text) => {
+                  setVerificationCode(text.replace(/[^0-9]/g, '').slice(0, 6));
+                  if (error) {
+                    setError('');
+                  }
+                }}
+                keyboardType="number-pad"
+                inputMode="numeric"
+                maxLength={6}
+                placeholder="123456"
+                placeholderTextColor="#9AA79C"
+                autoComplete="off"
+                autoCorrect={false}
+                autoCapitalize="none"
+              />
             </View>
           </View>
 
@@ -365,6 +448,8 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
               </Text>
             </View>
 
+            {/* Password input moved below the action buttons for better UX */}
+
             <TouchableOpacity
               style={[styles.button, styles.secondaryButton, loading && styles.buttonDisabled]}
               onPress={handleRegenerateRecoveryCodes}
@@ -384,9 +469,30 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
 
             <View style={styles.passwordContainer}>
               <Text style={styles.passwordLabel}>
-                {setupStep === 'disable' ? 'Confirm your password' : 'Enter password to confirm'}:
+                {setupStep === 'disable' ? 'Confirm your password' : 'Enter password to confirm'}
               </Text>
-              {/* Password input would go here - implementation depends on your form library */}
+
+              <View style={styles.inputContainer}>
+                <TextInput
+                  style={styles.passwordInput}
+                  value={disablePassword}
+                  onChangeText={(text) => {
+                    setDisablePassword(text);
+                    if (error) setError('');
+                  }}
+                  placeholder="Enter your password"
+                  placeholderTextColor="#9AA79C"
+                  secureTextEntry
+                  autoComplete="current-password"
+                  textContentType="password"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                />
+              </View>
+
+              <Text style={styles.passwordHint}>
+                This password is required to disable MFA or generate new recovery codes.
+              </Text>
             </View>
           </View>
         )}
@@ -483,11 +589,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     marginBottom: 16,
   },
-  inputCode: {
+  verificationInput: {
     fontSize: 24,
-    fontWeight: '600',
+    fontWeight: '700',
     color: '#2E6B4D',
-    letterSpacing: 8,
+    letterSpacing: 10,
+    textAlign: 'center',
+    paddingVertical: 4,
   },
   statusCard: {
     backgroundColor: '#FFF',
@@ -533,6 +641,27 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     padding: 12,
     marginBottom: 12,
+  },
+  passwordSection: {
+    marginBottom: 14,
+  },
+  passwordLabel: {
+    color: '#2B4133',
+    fontSize: 13,
+    fontWeight: '600',
+    marginBottom: 8,
+  },
+  passwordInput: {
+    color: '#1E2D24',
+    fontSize: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+  },
+  passwordHint: {
+    color: '#6D7E73',
+    fontSize: 12,
+    marginTop: 8,
+    lineHeight: 18,
   },
   recoveryStatus: {
     fontSize: 14,

@@ -179,6 +179,14 @@ export default function ProfileScreen({ navigation }) {
             >
               <Text style={styles.heroButtonText}>Edit Profile</Text>
             </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[styles.heroButton, styles.securityButton, { backgroundColor: '#355C4B' }]}
+              onPress={() => navigation.navigate('Security')}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.heroButtonText}>Security</Text>
+            </TouchableOpacity>
           </View>
         </View>
 

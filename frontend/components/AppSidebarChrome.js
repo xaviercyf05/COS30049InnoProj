@@ -244,6 +244,11 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 		navigation.navigate(isAdmin ? 'AdminAnnouncements' : 'Announcements');
 	};
 
+	const openSecuritySettings = () => {
+		setMenuVisible(false);
+		navigation.navigate('Security');
+	};
+
 	const openAdminModules = () => {
 		setMenuVisible(false);
 		navigation.navigate('AdminModules');
@@ -414,6 +419,10 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 								}}
 							>
 								<Text style={styles.sidebarText}>Profile</Text>
+							</TouchableOpacity>
+
+							<TouchableOpacity style={styles.sidebarItem} onPress={openSecuritySettings}>
+								<Text style={styles.sidebarText}>Security</Text>
 							</TouchableOpacity>
 
 							<TouchableOpacity style={styles.sidebarItem} onPress={openBadges}>

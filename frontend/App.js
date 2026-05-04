@@ -40,6 +40,7 @@ import EditBadgeScreen from './Admin/EditBadgeScreen.js';
 import AdminResultVerificationScreen from './Admin/AdminResultVerificationScreen.js';
 import ProfileScreen from './Profile/ProfileScreen.js';
 import EditProfileScreen from './Profile/EditProfileScreen.js';
+import MFASettings from './auth/MFASettings.js';
 import {
 	pickProfileImagePath,
 	requestProfileApi,
@@ -171,6 +172,7 @@ const EditBadgeScreenWithSidebar = wrapWithChrome(EditBadgeScreen, 'Edit Badge')
 const AdminResultVerificationScreenWithSidebar = wrapWithChrome(AdminResultVerificationScreen, 'Result Verification');
 const ProfileScreenWithSidebar = wrapWithChrome(ProfileScreen, 'My Profile');
 const EditProfileScreenWithSidebar = wrapWithChrome(EditProfileScreen, 'Edit Profile');
+const MFASettingsWithSidebar = wrapWithChrome(MFASettings, 'Security');
 
 function AdminFeatureScreen({ route }) {
 	const title = route?.params?.title || 'Admin Feature';
@@ -920,6 +922,11 @@ export default function App() {
 					name="EditProfile"
 					component={EditProfileScreenWithSidebar}
 					options={{ headerShown: false, title: 'Edit Profile' }}
+				/>
+				<Stack.Screen
+					name="Security"
+					component={MFASettingsWithSidebar}
+					options={{ headerShown: false, title: 'Security' }}
 				/>
 				<Stack.Screen
 					name="AddModule"

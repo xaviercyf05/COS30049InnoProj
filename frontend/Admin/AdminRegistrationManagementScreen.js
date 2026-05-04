@@ -30,7 +30,7 @@ const COLORS = {
   pillText: '#2E6B4D',
 };
 
-function AdminRegistrationManagementScreen({ navigation }) {
+function AdminRegistrationManagementScreen({ navigation, useSharedChrome = false }) {
   const insets = useSafeAreaInsets();
 
   const [applications, setApplications] = useState([]);
@@ -219,21 +219,23 @@ function AdminRegistrationManagementScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View
-        style={[
-          styles.topBar,
-          {
-            paddingTop: Platform.OS === 'web' ? 14 : Math.max(10, insets.top + 4),
-          },
-        ]}
-      >
-        <TouchableOpacity style={styles.navPill} onPress={handleBack}>
-          <Text style={styles.navPillText}>{'< Back'}</Text>
-        </TouchableOpacity>
+      {!useSharedChrome ? (
+        <View
+          style={[
+            styles.topBar,
+            {
+              paddingTop: Platform.OS === 'web' ? 14 : Math.max(10, insets.top + 4),
+            },
+          ]}
+        >
+          <TouchableOpacity style={styles.navPill} onPress={handleBack}>
+            <Text style={styles.navPillText}>{'< Back'}</Text>
+          </TouchableOpacity>
 
-        <Text style={styles.topTitle}>Registration Management</Text>
-        <View style={styles.topSpacer} />
-      </View>
+          <Text style={styles.topTitle}>Registration Management</Text>
+          <View style={styles.topSpacer} />
+        </View>
+      ) : null}
 
       <View style={styles.summaryRow}>
         <View style={styles.summaryCard}>

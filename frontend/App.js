@@ -45,6 +45,7 @@ import {
 	resolveApiAssetUri,
 	resolveProfileImageUri,
 } from './Profile/profileApi.js';
+import { withSidebarChrome } from './components/AppSidebarChrome.js';
 import {
 	getStoredAuthSession,
 	persistAuthSession,
@@ -58,6 +59,26 @@ const SESSION_STORAGE_KEYS = [
 	'innopapp_auth_username',
 	'innopapp_auth_user_id',
 ];
+
+const wrapWithChrome = (Component, title) => withSidebarChrome(Component, { title });
+
+const ModuleScreenWithSidebar = wrapWithChrome(ModuleScreen, 'Training Modules');
+const HomeScreenWithSidebar = wrapWithChrome(HomeScreen, 'Dashboard');
+const GuideAssessmentWithSidebar = wrapWithChrome(GuideAssessment, 'Assessment');
+const AssessmentSubmittedPageWithSidebar = wrapWithChrome(AssessmentSubmittedPage, 'Assessment Submitted');
+const AdminAssessmentWithSidebar = wrapWithChrome(AdminAssessment, 'Assessments');
+const AnnouncementScreenWithSidebar = wrapWithChrome(AnnouncementScreen, 'Announcements');
+const BadgeScreenWithSidebar = wrapWithChrome(BadgeScreen, 'Badges');
+const AddModuleScreenWithSidebar = wrapWithChrome(AddModuleScreen, 'Add Module');
+const AdminModuleManagerScreenWithSidebar = wrapWithChrome(AdminModuleManagerScreen, 'Module Library');
+const AdminAnnouncementScreenWithSidebar = wrapWithChrome(AdminAnnouncementScreen, 'Admin Announcements');
+const AdminRegistrationManagementScreenWithSidebar = wrapWithChrome(AdminRegistrationManagementScreen, 'Registration Requests');
+const BadgeManagementScreenWithSidebar = wrapWithChrome(BadgeManagementScreen, 'Badge Management');
+const AddBadgeScreenWithSidebar = wrapWithChrome(AddBadgeScreen, 'Add Badge');
+const EditBadgeScreenWithSidebar = wrapWithChrome(EditBadgeScreen, 'Edit Badge');
+const AdminResultVerificationScreenWithSidebar = wrapWithChrome(AdminResultVerificationScreen, 'Result Verification');
+const ProfileScreenWithSidebar = wrapWithChrome(ProfileScreen, 'My Profile');
+const EditProfileScreenWithSidebar = wrapWithChrome(EditProfileScreen, 'Edit Profile');
 
 function AdminFeatureScreen({ route }) {
 	const title = route?.params?.title || 'Admin Feature';
@@ -73,7 +94,9 @@ function AdminFeatureScreen({ route }) {
 	);
 }
 
-function HomeScreen({ navigation }) {
+const AdminFeatureScreenWithSidebar = wrapWithChrome(AdminFeatureScreen, 'Admin Feature');
+
+function HomeScreen({ navigation, useSharedChrome = false }) {
 	usePeriodicTokenRefresh();
 	const insets = useSafeAreaInsets();
 	const isMobile = Platform.OS !== 'web';
@@ -325,6 +348,84 @@ function HomeScreen({ navigation }) {
 			<View style={styles.center}>
 				<ActivityIndicator size="large" color="#2E6B4D" />
 				<Text style={styles.centerText}>Loading dashboard...</Text>
+			</View>
+		);
+	}
+
+	if (useSharedChrome) {
+		return (
+			<View style={styles.container}>
+				<ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 36 }}>
+					<Text style={styles.pageTitle}>{isAdmin ? 'Admin Dashboard' : 'Dashboard'}</Text>
+
+					{isAdmin && (
+						<View style={[styles.headerRow, isMobile && styles.headerRowMobile]}>
+							<Text style={styles.sectionLabel}>Module Management</Text>
+							<View style={[styles.adminActions, isMobile && styles.adminActionsMobile]}>
+								<TouchableOpacity
+									style={[styles.secondaryAddButton, isMobile && styles.secondaryAddButtonMobile]}
+									onPress={() => navigation.navigate('AdminModules')}
+								>
+									<Text style={styles.secondaryAddButtonText}>Manage Modules</Text>
+								</TouchableOpacity>
+								<TouchableOpacity
+									style={[styles.addButton, isMobile && styles.addButtonMobile]}
+									onPress={() => navigation.navigate('AddModule')}
+								>
+									<Text style={styles.addButtonText}>Add Module</Text>
+								</TouchableOpacity>
+							</View>
+						</View>
+					)}
+
+					<View style={styles.cardContainer}>
+						{modulesLoading ? (
+							<View style={styles.modulesStatusCard}>
+								<ActivityIndicator size="small" color="#2E6B4D" />
+								<Text style={styles.modulesStatusText}>Loading modules...</Text>
+							</View>
+						) : userModules.length === 0 ? (
+							<View style={styles.modulesStatusCard}>
+								<Text style={styles.modulesStatusTitle}>No modules available yet</Text>
+								<Text style={styles.modulesStatusText}>
+									Your training modules will appear here after they are published.
+								</Text>
+							</View>
+						) : (
+							userModules.map((module) => (
+								<TouchableOpacity
+									key={module.id}
+									onPress={() => {
+										const moduleIndex = userModules.findIndex((item) => item.id === module.id);
+
+										navigation.navigate('Module', {
+											moduleName: module.title,
+											moduleId: module.moduleId,
+											moduleOrder: moduleIndex + 1,
+											totalModules: userModules.length,
+											moduleProgressPercent: module.progressPercent,
+										});
+									}}
+									style={styles.cardWrapper}
+								>
+									<ImageBackground
+										source={{ uri: module.image }}
+										style={styles.card}
+										imageStyle={{ borderRadius: 20 }}
+									>
+										<View style={styles.overlay} />
+										<Text style={styles.cardTitle}>{module.title}</Text>
+
+										<View style={styles.progressBar}>
+											<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
+											<Text style={styles.progressText}>{module.progressPercent}%</Text>
+										</View>
+									</ImageBackground>
+								</TouchableOpacity>
+							))
+						)}
+					</View>
+				</ScrollView>
 			</View>
 		);
 	}
@@ -660,74 +761,76 @@ export default function App() {
 					component={SubmissionScreen}
 					options={{ headerShown: false, title: 'Submission' }}
 				/>
-				<Stack.Screen name="Home" component={HomeScreen} />
-				<Stack.Screen name="Module" component={ModuleScreen} />
-				<Stack.Screen name="Assessment" component={GuideAssessment} />
+				<Stack.Screen name="Home" component={HomeScreenWithSidebar} options={{ headerShown: false }} />
+				<Stack.Screen name="Module" component={ModuleScreenWithSidebar} options={{ headerShown: false }} />
+				<Stack.Screen name="Assessment" component={GuideAssessmentWithSidebar} options={{ headerShown: false }} />
 				<Stack.Screen
 					name="SubmittedPage"
-					component={AssessmentSubmittedPage}
+					component={AssessmentSubmittedPageWithSidebar}
 					options={{ headerShown: false, title: 'Assessment Submitted' }}
 				/>
-				<Stack.Screen name="Announcements" component={AnnouncementScreen} />
-				<Stack.Screen name="AdminAnnouncements" component={AdminAnnouncementScreen} />
+				<Stack.Screen name="Announcements" component={AnnouncementScreenWithSidebar} options={{ headerShown: false }} />
+				<Stack.Screen name="AdminAnnouncements" component={AdminAnnouncementScreenWithSidebar} options={{ headerShown: false }} />
 				<Stack.Screen
 					name="AdminAssessment"
-					component={AdminAssessment}
-					options={{ headerShown: true, title: 'Assessments' }}
+					component={AdminAssessmentWithSidebar}
+					options={{ headerShown: false, title: 'Assessments' }}
 				/>
 				<Stack.Screen
 					name="Badges"
-					component={BadgeScreen}
-					options={{ headerShown: true, title: 'Badges' }}
+					component={BadgeScreenWithSidebar}
+					options={{ headerShown: false, title: 'Badges' }}
 				/>
 				<Stack.Screen
 					name="Profile"
-					component={ProfileScreen}
-					options={{ headerShown: true, title: 'My Profile' }}
+					component={ProfileScreenWithSidebar}
+					options={{ headerShown: false, title: 'My Profile' }}
 				/>
 				<Stack.Screen
 					name="EditProfile"
-					component={EditProfileScreen}
-					options={{ headerShown: true, title: 'Edit Profile' }}
+					component={EditProfileScreenWithSidebar}
+					options={{ headerShown: false, title: 'Edit Profile' }}
 				/>
 				<Stack.Screen
 					name="AddModule"
-					component={AddModuleScreen}
-					options={{ headerShown: true, title: 'Add Module' }}
+					component={AddModuleScreenWithSidebar}
+					options={{ headerShown: false, title: 'Add Module' }}
 				/>
 				<Stack.Screen
 					name="AdminModules"
-					component={AdminModuleManagerScreen}
+					component={AdminModuleManagerScreenWithSidebar}
+					options={{ headerShown: false }}
 				/>
 				<Stack.Screen
 					name="AdminRegistrations"
-					component={AdminRegistrationManagementScreen}
+					component={AdminRegistrationManagementScreenWithSidebar}
+					options={{ headerShown: false }}
 				/>
 				<Stack.Screen
 					name="AdminBadges"
-					component={BadgeManagementScreen}
-					options={{ headerShown: true, title: 'Badge Management' }}
+					component={BadgeManagementScreenWithSidebar}
+					options={{ headerShown: false, title: 'Badge Management' }}
 				/>
 				<Stack.Screen
 					name="AddBadge"
-					component={AddBadgeScreen}
-					options={{ headerShown: true, title: 'Add Badge' }}
+					component={AddBadgeScreenWithSidebar}
+					options={{ headerShown: false, title: 'Add Badge' }}
 				/>
 				<Stack.Screen
 					name="EditBadge"
-					component={EditBadgeScreen}
-					options={{ headerShown: true, title: 'Edit Badge' }}
+					component={EditBadgeScreenWithSidebar}
+					options={{ headerShown: false, title: 'Edit Badge' }}
 				/>
 					<Stack.Screen
 						name="AdminResultVerification"
-						component={AdminResultVerificationScreen}
-						options={{ headerShown: true, title: 'Result Verification' }}
+						component={AdminResultVerificationScreenWithSidebar}
+						options={{ headerShown: false, title: 'Result Verification' }}
 					/>
 				<Stack.Screen
 					name="AdminFeature"
-					component={AdminFeatureScreen}
+					component={AdminFeatureScreenWithSidebar}
 					options={({ route }) => ({
-						headerShown: true,
+						headerShown: false,
 						title: route?.params?.title || 'Admin Feature',
 					})}
 				/>

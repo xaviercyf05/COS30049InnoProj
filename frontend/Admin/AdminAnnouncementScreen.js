@@ -26,7 +26,7 @@ function nowLabel() {
   });
 }
 
-function AdminAnnouncementScreen({ navigation }) {
+function AdminAnnouncementScreen({ navigation, useSharedChrome = false }) {
   const insets = useSafeAreaInsets();
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -215,22 +215,24 @@ function AdminAnnouncementScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View
-        style={[
-          styles.topBar,
-          {
-            paddingTop: Platform.OS === 'web' ? 14 : Math.max(10, insets.top + 4),
-          },
-        ]}
-      >
-        <TouchableOpacity style={styles.navPill} onPress={handleBack}>
-          <Text style={styles.navPillText}>{'< Back'}</Text>
-        </TouchableOpacity>
+      {!useSharedChrome ? (
+        <View
+          style={[
+            styles.topBar,
+            {
+              paddingTop: Platform.OS === 'web' ? 14 : Math.max(10, insets.top + 4),
+            },
+          ]}
+        >
+          <TouchableOpacity style={styles.navPill} onPress={handleBack}>
+            <Text style={styles.navPillText}>{'< Back'}</Text>
+          </TouchableOpacity>
 
-        <Text style={styles.topTitle}>Admin Announcements</Text>
+          <Text style={styles.topTitle}>Admin Announcements</Text>
 
-        <View style={styles.topSpacer} />
-      </View>
+          <View style={styles.topSpacer} />
+        </View>
+      ) : null}
 
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <Text style={styles.subtitle}>Admin publishing board for training updates</Text>

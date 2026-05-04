@@ -86,7 +86,7 @@ function AnnouncementCard({ item }) {
   );
 }
 
-function AnnouncementScreen({ navigation }) {
+function AnnouncementScreen({ navigation, useSharedChrome = false }) {
   const insets = useSafeAreaInsets();
   const [announcements, setAnnouncements] = useState(SAMPLE_ANNOUNCEMENTS);
   const [loading, setLoading] = useState(true);
@@ -163,22 +163,24 @@ function AnnouncementScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View
-        style={[
-          styles.topBar,
-          {
-            paddingTop: Platform.OS === 'web' ? 14 : Math.max(10, insets.top + 4),
-          },
-        ]}
-      >
-        <TouchableOpacity style={styles.navPill} onPress={handleBack}>
-          <Text style={styles.navPillText}>{'< Back'}</Text>
-        </TouchableOpacity>
+      {!useSharedChrome ? (
+        <View
+          style={[
+            styles.topBar,
+            {
+              paddingTop: Platform.OS === 'web' ? 14 : Math.max(10, insets.top + 4),
+            },
+          ]}
+        >
+          <TouchableOpacity style={styles.navPill} onPress={handleBack}>
+            <Text style={styles.navPillText}>{'< Back'}</Text>
+          </TouchableOpacity>
 
-        <Text style={styles.topTitle}>Announcements</Text>
+          <Text style={styles.topTitle}>Announcements</Text>
 
-        <View style={styles.topSpacer} />
-      </View>
+          <View style={styles.topSpacer} />
+        </View>
+      ) : null}
 
       <ScrollView style={styles.container} contentContainerStyle={styles.scrollContent}>
         <Text style={styles.subtitle}>

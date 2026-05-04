@@ -90,7 +90,7 @@ const normalizeResult = (item, fallbackIndex = 0) => {
 	};
 };
 
-function AdminResultVerificationScreen({ navigation, route }) {
+function AdminResultVerificationScreen({ navigation, route, useSharedChrome = false }) {
 	const insets = useSafeAreaInsets();
 	const routeResults = route?.params?.results;
 	const singleResult = route?.params?.result || route?.params || {};
@@ -235,15 +235,17 @@ function AdminResultVerificationScreen({ navigation, route }) {
 	return (
 		<SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
 			<ScrollView contentContainerStyle={styles.scrollContent} showsVerticalScrollIndicator={false}>
-				<View style={[styles.topBar, { paddingTop: headerPaddingTop }]}>
-					<View>
-						<Text style={styles.topKicker}>Admin Review</Text>
-						<Text style={styles.topTitle}>Result Verification</Text>
+				{!useSharedChrome ? (
+					<View style={[styles.topBar, { paddingTop: headerPaddingTop }]}>
+						<View>
+							<Text style={styles.topKicker}>Admin Review</Text>
+							<Text style={styles.topTitle}>Result Verification</Text>
+						</View>
+						<View style={styles.topStatsPill}>
+							<Text style={styles.topStatsText}>{passedCount}/{summaryCount} verified</Text>
+						</View>
 					</View>
-					<View style={styles.topStatsPill}>
-						<Text style={styles.topStatsText}>{passedCount}/{summaryCount} verified</Text>
-					</View>
-				</View>
+				) : null}
 
 				{statusMessage ? (
 					<View style={[styles.statusBox, statusType === 'success' ? styles.statusSuccess : styles.statusError]}>

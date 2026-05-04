@@ -148,7 +148,7 @@ function buildRichContentDocument(title, contentHtml) {
 </html>`;
 }
 
-function ModuleScreen({ route, navigation, currentProfile }) {
+function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = false }) {
   const insets = useSafeAreaInsets();
   const isWeb = Platform.OS === 'web';
   const routeModuleId = route?.params?.moduleId || null;
@@ -347,29 +347,31 @@ function ModuleScreen({ route, navigation, currentProfile }) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View
-        style={[
-          styles.topBar,
-          {
-            paddingTop: isWeb ? 14 : Math.max(10, insets.top + 4),
-          },
-        ]}
-      >
-        <TouchableOpacity style={styles.navPill} onPress={handleBack}>
-          <Text style={styles.navPillText}>{'< Back'}</Text>
-        </TouchableOpacity>
-
-        <Text style={styles.topTitle} numberOfLines={1}>
-          {moduleName}
-        </Text>
-
-        <TouchableOpacity
-          style={styles.navPill}
-          onPress={() => navigation.navigate('Announcements')}
+      {!useSharedChrome ? (
+        <View
+          style={[
+            styles.topBar,
+            {
+              paddingTop: isWeb ? 14 : Math.max(10, insets.top + 4),
+            },
+          ]}
         >
-          <Text style={styles.navPillText}>Announcements</Text>
-        </TouchableOpacity>
-      </View>
+          <TouchableOpacity style={styles.navPill} onPress={handleBack}>
+            <Text style={styles.navPillText}>{'< Back'}</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.topTitle} numberOfLines={1}>
+            {moduleName}
+          </Text>
+
+          <TouchableOpacity
+            style={styles.navPill}
+            onPress={() => navigation.navigate('Announcements')}
+          >
+            <Text style={styles.navPillText}>Announcements</Text>
+          </TouchableOpacity>
+        </View>
+      ) : null}
 
       <ScrollView style={styles.scrollView} contentContainerStyle={styles.scrollContent}>
         <ImageBackground

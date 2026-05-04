@@ -112,7 +112,7 @@ function toDraft(moduleEntry) {
   };
 }
 
-function AdminModuleManagerScreen({ navigation }) {
+function AdminModuleManagerScreen({ navigation, useSharedChrome = false }) {
   const insets = useSafeAreaInsets();
 
   const [modules, setModules] = useState([]);
@@ -453,31 +453,33 @@ function AdminModuleManagerScreen({ navigation }) {
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
-      <View
-        style={[
-          styles.topBar,
-          {
-            paddingTop: Platform.OS === 'web' ? 14 : Math.max(10, insets.top + 4),
-          },
-        ]}
-      >
-        <TouchableOpacity
-          style={styles.navPill}
-          onPress={() => {
-            if (navigation.canGoBack()) {
-              navigation.goBack();
-              return;
-            }
-
-            navigation.navigate('Home');
-          }}
+      {!useSharedChrome ? (
+        <View
+          style={[
+            styles.topBar,
+            {
+              paddingTop: Platform.OS === 'web' ? 14 : Math.max(10, insets.top + 4),
+            },
+          ]}
         >
-          <Text style={styles.navPillText}>{'< Back'}</Text>
-        </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.navPill}
+            onPress={() => {
+              if (navigation.canGoBack()) {
+                navigation.goBack();
+                return;
+              }
 
-        <Text style={styles.topTitle}>Manage Modules</Text>
-        <View style={styles.topSpacer} />
-      </View>
+              navigation.navigate('Home');
+            }}
+          >
+            <Text style={styles.navPillText}>{'< Back'}</Text>
+          </TouchableOpacity>
+
+          <Text style={styles.topTitle}>Manage Modules</Text>
+          <View style={styles.topSpacer} />
+        </View>
+      ) : null}
 
       <ScrollView
         style={styles.container}

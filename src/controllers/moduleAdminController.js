@@ -216,6 +216,18 @@ async function createModule(req, res) {
   const requestedQualificationId = Number.parseInt(req.body.qualificationId, 10);
   const sections = normalizeSectionsInput(req.body.sections);
 
+  // Debug logging to verify incoming sections payload
+  try {
+    console.debug('createModule received', {
+      title,
+      moduleImageUrl,
+      sectionsCount: Array.isArray(sections) ? sections.length : 0,
+      firstSectionPreview: sections && sections[0] ? String(sections[0].content).slice(0, 120) : null,
+    });
+  } catch (_e) {
+    // ignore logging errors
+  }
+
   if (!title) {
     return res.status(400).json({
       success: false,

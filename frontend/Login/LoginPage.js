@@ -244,6 +244,14 @@ export default function LoginPage({ navigation }) {
               )}
             </TouchableOpacity>
 
+            <TouchableOpacity
+              onPress={() => navigation.navigate('ForgotPassword')}
+              activeOpacity={0.8}
+              style={styles.registerLinkWrap}
+            >
+              <Text style={styles.registerLinkText}>Forgot password?</Text>
+            </TouchableOpacity>
+
             <Text style={styles.helperText}>Use your user or admin account to continue.</Text>
 
             <TouchableOpacity

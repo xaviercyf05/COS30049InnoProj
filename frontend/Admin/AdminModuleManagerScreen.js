@@ -502,7 +502,12 @@ function AdminModuleManagerScreen({ navigation, useSharedChrome = false }) {
               const isActive = draft.id === moduleIdentifier;
 
               return (
-                <View key={moduleIdentifier} style={[styles.libraryCard, isActive && styles.libraryCardActive]}>
+                <TouchableOpacity
+                  key={moduleIdentifier}
+                  style={[styles.libraryCard, isActive && styles.libraryCardActive]}
+                  onPress={() => openModuleForEdit(moduleNumericId)}
+                  activeOpacity={0.85}
+                >
                   <View style={styles.libraryMeta}>
                     <Text style={styles.libraryName}>{moduleItem.title}</Text>
                     <Text style={styles.librarySubtext}>
@@ -513,19 +518,29 @@ function AdminModuleManagerScreen({ navigation, useSharedChrome = false }) {
                   <View style={styles.libraryActions}>
                     <TouchableOpacity
                       style={styles.libraryActionButton}
-                      onPress={() => openModuleForEdit(moduleNumericId)}
+                      onPress={(event) => {
+                        if (event?.stopPropagation) {
+                          event.stopPropagation();
+                        }
+                        openModuleForEdit(moduleNumericId);
+                      }}
                     >
                       <Text style={styles.libraryActionButtonText}>Edit</Text>
                     </TouchableOpacity>
 
                     <TouchableOpacity
                       style={styles.libraryDeleteButton}
-                      onPress={() => removeModule(moduleNumericId)}
+                      onPress={(event) => {
+                        if (event?.stopPropagation) {
+                          event.stopPropagation();
+                        }
+                        removeModule(moduleNumericId);
+                      }}
                     >
                       <Text style={styles.libraryDeleteButtonText}>Delete</Text>
                     </TouchableOpacity>
                   </View>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>

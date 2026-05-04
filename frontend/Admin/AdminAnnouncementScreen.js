@@ -288,7 +288,9 @@ function AdminAnnouncementScreen({ navigation, useSharedChrome = false }) {
                   </View>
                 </View>
 
-                <Text style={styles.teaser}>{item.teaser}</Text>
+                {expandedId !== item.id && (
+                  <Text style={styles.teaser}>{item.teaser}</Text>
+                )}
 
                 {expandedId === item.id && (
                   <View style={styles.expandedArea}>

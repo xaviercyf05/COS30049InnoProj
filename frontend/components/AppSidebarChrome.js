@@ -338,8 +338,15 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 						<Image source={profileImageSource} style={styles.profileImage} />
 					</TouchableOpacity>
 				</View>
+			</View>
 
-				{notificationVisible && (
+			{notificationVisible && (
+				<View style={styles.notificationOverlay}>
+					<TouchableOpacity
+						style={styles.notificationBackdrop}
+						activeOpacity={1}
+						onPress={() => setNotificationVisible(false)}
+					/>
 					<View style={styles.notificationDropdown}>
 						<Text style={styles.dropdownTitle}>
 							Notifications {showAllNotifications ? `(${notifications.length})` : ''}
@@ -352,14 +359,24 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 							nestedScrollEnabled
 						>
 							{displayedNotifications.map((item) => (
-								<View key={item.id} style={styles.notificationItem}>
-									<View style={styles.notificationContent}>
-										<Text style={[styles.notificationItemTitle, !item.read && styles.unread]}>{item.title}</Text>
-										<Text style={styles.notificationItemMessage} numberOfLines={3}>{item.message}</Text>
-										<Text style={styles.notificationItemTime}>{item.time}</Text>
-									</View>
-									{!item.read && <View style={styles.unreadDot} />}
+							<TouchableOpacity
+								key={item.id}
+								style={styles.notificationItem}
+								onPress={() => {
+									setNotificationVisible(false);
+									if (item.title === 'New Announcement' || item.title?.includes('Announcement')) {
+										navigation.navigate(isAdmin ? 'AdminAnnouncements' : 'Announcements');
+									}
+								}}
+								activeOpacity={0.7}
+							>
+								<View style={styles.notificationContent}>
+									<Text style={[styles.notificationItemTitle, !item.read && styles.unread]}>{item.title}</Text>
+									<Text style={styles.notificationItemMessage} numberOfLines={3}>{item.message}</Text>
+									<Text style={styles.notificationItemTime}>{item.time}</Text>
 								</View>
+								{!item.read && <View style={styles.unreadDot} />}
+							</TouchableOpacity>
 							))}
 						</ScrollView>
 
@@ -374,8 +391,8 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 							</TouchableOpacity>
 						)}
 					</View>
-				)}
-			</View>
+				</View>
+			)}
 
 			<View style={styles.contentShell}>{children}</View>
 
@@ -609,6 +626,16 @@ const styles = StyleSheet.create({
 		fontSize: 10,
 		fontWeight: '800',
 	},
+	notificationOverlay: {
+		...StyleSheet.absoluteFillObject,
+		zIndex: 10050,
+		justifyContent: 'flex-start',
+		pointerEvents: 'box-none',
+	},
+	notificationBackdrop: {
+		...StyleSheet.absoluteFillObject,
+		backgroundColor: 'transparent',
+	},
 	notificationDropdown: {
 		position: 'absolute',
 		top: 58,
@@ -622,7 +649,7 @@ const styles = StyleSheet.create({
 		shadowOpacity: 0.14,
 		shadowRadius: 20,
 		elevation: 10,
-		zIndex: 10006,
+		zIndex: 10051,
 		overflow: 'hidden',
 	},
 	dropdownTitle: {
@@ -647,6 +674,7 @@ const styles = StyleSheet.create({
 		borderBottomWidth: 1,
 		borderBottomColor: '#F2F5EF',
 		gap: 8,
+		backgroundColor: 'transparent',
 	},
 	notificationContent: {
 		flex: 1,

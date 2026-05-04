@@ -70,7 +70,9 @@ function AnnouncementCard({ item }) {
           <Text style={[styles.chevron, expanded && styles.chevronRotated]}>{'>'}</Text>
         </View>
 
-        <Text style={styles.teaser}>{item.teaser}</Text>
+        {!expanded && (
+          <Text style={styles.teaser}>{item.teaser}</Text>
+        )}
 
         {expanded && (
           <View style={styles.expandedArea}>

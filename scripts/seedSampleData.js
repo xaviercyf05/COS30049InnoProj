@@ -279,29 +279,39 @@ Your safety and visitor safety are paramount.
 
   for (let modIndex = 0; modIndex < modules.length; modIndex++) {
     const moduleId = modules[modIndex].ModuleID;
-
-    // Create 5 materials for each section
-    for (const section of SECTIONS) {
+    // Create sections and subsections for each module
+    for (const sectionTitle of SECTIONS) {
+      // Check if a subsection already exists for module/section
       const [existing] = await query(
-        "SELECT MaterialID FROM LearningMaterials WHERE ModuleID = ? AND Chapter = ? LIMIT 1",
-        [moduleId, section]
+        `SELECT sc.SubsectionID FROM Subsections sc
+         JOIN Sections s ON s.SectionID = sc.SectionID
+         WHERE s.ModuleID = ? AND s.Title = ? LIMIT 1`,
+        [moduleId, sectionTitle]
       );
 
       if (existing.length === 0) {
+        // create section
+        const [secInsert] = await query(
+          `INSERT INTO Sections (ModuleID, Title, Ordering) VALUES (?, ?, ?)`,
+          [moduleId, sectionTitle, 0]
+        );
+
+        const sectionId = secInsert.insertId;
+
         const contentKey = Object.keys(contentExamples)[
-          (modIndex * SECTIONS.length + SECTIONS.indexOf(section)) %
+          (modIndex * SECTIONS.length + SECTIONS.indexOf(sectionTitle)) %
             Object.keys(contentExamples).length
         ];
         const content = contentExamples[contentKey];
 
         await query(
-          `INSERT INTO LearningMaterials (ModuleID, Chapter, Title, ContentType, ContentText)
-           VALUES (?, ?, ?, 'text', ?)`,
+          `INSERT INTO Subsections (SectionID, Title, ContentType, ContentText, Ordering)
+           VALUES (?, ?, 'text', ?, ?)`,
           [
-            moduleId,
-            section,
-            `${section} - Module ${modIndex + 1} Content`,
+            sectionId,
+            `${sectionTitle} - Module ${modIndex + 1} Content`,
             content,
+            0,
           ]
         );
 

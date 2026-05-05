@@ -23,13 +23,14 @@ async function getDashboardModules(req, res) {
               m.QualificationID,
               m.ModuleTitle,
               meta.CoverImageUrl,
-              COUNT(DISTINCT lm.MaterialID) AS TotalMaterials,
+              COUNT(DISTINCT sc.SubsectionID) AS TotalMaterials,
               SUM(CASE WHEN mp.IsCompleted = 1 THEN 1 ELSE 0 END) AS CompletedMaterials
          FROM Modules m
          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
-         LEFT JOIN LearningMaterials lm ON lm.ModuleID = m.ModuleID
+         LEFT JOIN Sections s ON s.ModuleID = m.ModuleID
+         LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
          LEFT JOIN MaterialProgress mp
-           ON mp.MaterialID = lm.MaterialID
+           ON mp.SubsectionID = sc.SubsectionID
           AND mp.UserID = ?
         GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, meta.CoverImageUrl
         ORDER BY m.ModuleID ASC`,

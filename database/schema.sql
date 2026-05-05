@@ -54,6 +54,11 @@ CREATE TABLE IF NOT EXISTS Users (
   ProfileImageUrl VARCHAR(255) NULL,
   Progress INT UNSIGNED NOT NULL DEFAULT 0,
   Status VARCHAR(50) NOT NULL DEFAULT 'Inactive',
+  MFAEnabled TINYINT(1) NOT NULL DEFAULT 0,
+  MFASecret VARCHAR(255) NULL,
+  MFAMethod VARCHAR(50) NOT NULL DEFAULT 'TOTP',
+  BackupCodes JSON NULL,
+  MFASetupAt TIMESTAMP NULL,
   RoleID TINYINT UNSIGNED NOT NULL,
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_users_role FOREIGN KEY (RoleID) REFERENCES Roles (RoleID),
@@ -70,6 +75,7 @@ INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID, Status) VALU
   ('user', '$2b$12$JAr3wFTivDH3xBUnbBEJseQOvzGuJPyoxdkK3rXo2ZeBlIe5rhpHq', 'Default User', 'user@default.com', 2, 'Active');
 
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
+CREATE INDEX idx_users_mfa_enabled ON Users (MFAEnabled);
 
 CREATE TABLE IF NOT EXISTS RegistrationRequests (
   RegistrationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -175,13 +181,32 @@ CREATE TABLE IF NOT EXISTS LearningMaterials (
   CONSTRAINT fk_learning_materials_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- New structure: Sections and Subsections for module content
+CREATE TABLE IF NOT EXISTS Sections (
+  SectionID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ModuleID INT UNSIGNED NOT NULL,
+  Title VARCHAR(160) NOT NULL,
+  Ordering DECIMAL(6,2) NOT NULL DEFAULT 0,
+  CONSTRAINT fk_sections_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS Subsections (
+  SubsectionID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  SectionID INT UNSIGNED NOT NULL,
+  Title VARCHAR(160) NOT NULL,
+  ContentType VARCHAR(50) NOT NULL DEFAULT 'html',
+  ContentText LONGTEXT NOT NULL,
+  Ordering DECIMAL(6,2) NOT NULL DEFAULT 0,
+  CONSTRAINT fk_subsections_section FOREIGN KEY (SectionID) REFERENCES Sections (SectionID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS MaterialProgress (
   MaterialProgressID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  MaterialID INT UNSIGNED NOT NULL,
+  SubsectionID INT UNSIGNED NOT NULL,
   UserID INT UNSIGNED NOT NULL,
   IsCompleted TINYINT(1) NOT NULL DEFAULT 0,
-  UNIQUE KEY uq_material_progress (MaterialID, UserID),
-  CONSTRAINT fk_material_progress_material FOREIGN KEY (MaterialID) REFERENCES LearningMaterials (MaterialID) ON DELETE CASCADE,
+  UNIQUE KEY uq_material_progress (SubsectionID, UserID),
+  CONSTRAINT fk_material_progress_subsection FOREIGN KEY (SubsectionID) REFERENCES Subsections (SubsectionID) ON DELETE CASCADE,
   CONSTRAINT fk_material_progress_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 

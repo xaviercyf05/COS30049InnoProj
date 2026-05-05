@@ -100,6 +100,10 @@ function normalizeModuleType(value, fallback = 'general') {
 	return fallback;
 }
 
+function getModuleTypeValue(module) {
+	return module?.moduleType || module?.type || module?.module_type || module?.category;
+}
+
 function groupModulesByType(modules) {
 	const grouped = {
 		general: [],
@@ -112,10 +116,8 @@ function groupModulesByType(modules) {
 	}
 
 	modules.forEach((module, index) => {
-		const fallbackType = resolveModuleStageByIndex(index);
 		const normalizedType = normalizeModuleType(
-			module?.moduleType || module?.type || module?.module_type || module?.category,
-			fallbackType
+			module?.moduleType || module?.type || module?.module_type || module?.category
 		);
 		if (grouped[normalizedType]) {
 			grouped[normalizedType].push(module);
@@ -154,27 +156,9 @@ function buildProgressionModules(modules, isAdmin) {
 		return [];
 	}
 
-	const generalModules = modules.filter(
-		(module, index) =>
-			normalizeModuleType(
-				module?.moduleType || module?.type || module?.module_type || module?.category,
-				resolveModuleStageByIndex(index)
-			) === 'general'
-	);
-	const parkSpecificModules = modules.filter(
-		(module, index) =>
-			normalizeModuleType(
-				module?.moduleType || module?.type || module?.module_type || module?.category,
-				resolveModuleStageByIndex(index)
-			) === 'park-specific'
-	);
-	const onSiteModules = modules.filter(
-		(module, index) =>
-			normalizeModuleType(
-				module?.moduleType || module?.type || module?.module_type || module?.category,
-				resolveModuleStageByIndex(index)
-			) === 'on-site'
-	);
+	const generalModules = modules.filter((module) => normalizeModuleType(getModuleTypeValue(module)) === 'general');
+	const parkSpecificModules = modules.filter((module) => normalizeModuleType(getModuleTypeValue(module)) === 'park-specific');
+	const onSiteModules = modules.filter((module) => normalizeModuleType(getModuleTypeValue(module)) === 'on-site');
 	const generalModule = generalModules[0] || null;
 	const passedModuleIds = new Set(
 		modules
@@ -183,10 +167,7 @@ function buildProgressionModules(modules, isAdmin) {
 	);
 
 	return modules.map((module, index) => {
-		const stage = normalizeModuleType(
-			module?.moduleType || module?.type || module?.module_type || module?.category,
-			resolveModuleStageByIndex(index)
-		);
+		const stage = normalizeModuleType(getModuleTypeValue(module));
 		let prerequisiteModuleId = null;
 		let unlocked = true;
 		let lockReason = '';
@@ -377,17 +358,26 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 			}
 
 			if (Array.isArray(modulesResponse?.data) && modulesResponse.data.length > 0) {
-				const baseModules = modulesResponse.data.map((module, index) => ({
-					id: String(module.moduleId || index + 1),
-					moduleId: module.moduleId,
-					title: module.title || `Module ${index + 1}`,
-					moduleType: normalizeModuleType(
-						module.moduleType || module.type || module.category,
-						resolveModuleStageByIndex(index)
-					),
-					image: resolveApiAssetUri(module.image) || module.image,
-					progressPercent: Number(module.progressPercent || 0),
-				}));
+				const baseModules = modulesResponse.data.map((module, index) => {
+					const hasExplicitType = Boolean(getModuleTypeValue(module));
+					const prev = Array.isArray(userModules)
+						? userModules.find((u) => Number(u.moduleId) === Number(module.moduleId))
+						: null;
+
+					const moduleTypeValue = hasExplicitType
+						? normalizeModuleType(getModuleTypeValue(module))
+						: // preserve previously computed stage where possible, otherwise default to 'general'
+						prev?.stage || 'general';
+
+					return {
+						id: String(module.moduleId || index + 1),
+						moduleId: module.moduleId,
+						title: module.title || `Module ${index + 1}`,
+						moduleType: moduleTypeValue,
+						image: resolveApiAssetUri(module.image) || module.image,
+						progressPercent: Number(module.progressPercent || 0),
+					};
+				});
 
 				const modulesWithHistory = await Promise.all(
 					baseModules.map(async (module) => {

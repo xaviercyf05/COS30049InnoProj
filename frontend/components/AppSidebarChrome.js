@@ -68,6 +68,7 @@ const SCREEN_TITLES = {
 	AddModule: 'Add Module',
 	AdminModules: 'Module Library',
 	AdminRegistrations: 'Registration Requests',
+	AdminEnrollments: 'Enrollment Management',
 	AdminBadges: 'Badge Management',
 	AddBadge: 'Add Badge',
 	EditBadge: 'Edit Badge',
@@ -258,6 +259,11 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 	const openAdminRegistrations = () => {
 		setMenuVisible(false);
 		navigation.navigate('AdminRegistrations');
+	};
+
+	const openAdminEnrollments = () => {
+		setMenuVisible(false);
+		navigation.navigate('AdminEnrollments');
 	};
 
 	return (
@@ -471,6 +477,9 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 									</TouchableOpacity>
 									<TouchableOpacity style={styles.sidebarItem} onPress={openAdminRegistrations}>
 										<Text style={styles.sidebarText}>Registration Requests</Text>
+									</TouchableOpacity>
+									<TouchableOpacity style={styles.sidebarItem} onPress={openAdminEnrollments}>
+										<Text style={styles.sidebarText}>Enrollment Management</Text>
 									</TouchableOpacity>
 									<TouchableOpacity
 										style={styles.sidebarItem}

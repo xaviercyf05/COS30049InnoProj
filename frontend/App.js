@@ -34,11 +34,12 @@ import AddModuleScreen from './Admin/AddModuleScreen.js';
 import AdminModuleManagerScreen from './Admin/AdminModuleManagerScreen.js';
 import AdminAnnouncementScreen from './Admin/AdminAnnouncementScreen.js';
 import AdminRegistrationManagementScreen from './Admin/AdminRegistrationManagementScreen.js';
+import EnrollmentManagementScreen from './Admin/EnrollmentManagement.js';
 import BadgeManagementScreen from './Admin/BadgeManagementScreen.js';
 import AddBadgeScreen from './Admin/AddBadgeScreen.js';
 import EditBadgeScreen from './Admin/EditBadgeScreen.js';
 import AdminResultVerificationScreen from './Admin/AdminResultVerificationScreen.js';
-import AnalyticalDashboard from './Admin/AnalyticalDashboard.js';
+import AnalyticsDashboard from './Admin/AnalyticsDashboard.js';
 import ProfileScreen from './Profile/ProfileScreen.js';
 import EditProfileScreen from './Profile/EditProfileScreen.js';
 import MFASettings from './auth/MFASettings.js';
@@ -247,11 +248,12 @@ const AddModuleScreenWithSidebar = wrapWithChrome(AddModuleScreen, 'Add Module')
 const AdminModuleManagerScreenWithSidebar = wrapWithChrome(AdminModuleManagerScreen, 'Module Library');
 const AdminAnnouncementScreenWithSidebar = wrapWithChrome(AdminAnnouncementScreen, 'Admin Announcements');
 const AdminRegistrationManagementScreenWithSidebar = wrapWithChrome(AdminRegistrationManagementScreen, 'Registration Requests');
+const EnrollmentManagementScreenWithSidebar = wrapWithChrome(EnrollmentManagementScreen, 'Enrollment Management');
 const BadgeManagementScreenWithSidebar = wrapWithChrome(BadgeManagementScreen, 'Badge Management');
 const AddBadgeScreenWithSidebar = wrapWithChrome(AddBadgeScreen, 'Add Badge');
 const EditBadgeScreenWithSidebar = wrapWithChrome(EditBadgeScreen, 'Edit Badge');
 const AdminResultVerificationScreenWithSidebar = wrapWithChrome(AdminResultVerificationScreen, 'Result Verification');
-const AnalyticalDashboardWithSidebar = wrapWithChrome(AnalyticalDashboard, 'Analytics Dashboard');
+const AnalyticsDashboardWithSidebar = wrapWithChrome(AnalyticsDashboard, 'Analytics Dashboard');
 const ProfileScreenWithSidebar = wrapWithChrome(ProfileScreen, 'My Profile');
 const EditProfileScreenWithSidebar = wrapWithChrome(EditProfileScreen, 'Edit Profile');
 const MFASettingsWithSidebar = wrapWithChrome(MFASettings, 'Security');
@@ -538,6 +540,12 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 		navigation.navigate('AdminRegistrations');
 	};
 
+	const openAdminEnrollments = () => {
+		setMenuVisible(false);
+		setNotificationVisible(false);
+		navigation.navigate('AdminEnrollments');
+	};
+
 	const unreadCount = notifications.filter((item) => !item.read).length;
 	const displayedNotifications = showAllNotifications
 		? notifications
@@ -737,6 +745,9 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 									</TouchableOpacity>
 									<TouchableOpacity style={styles.sidebarItem} onPress={openAdminRegistrations}>
 										<Text style={styles.sidebarText}>Registration Requests</Text>
+									</TouchableOpacity>
+									<TouchableOpacity style={styles.sidebarItem} onPress={openAdminEnrollments}>
+										<Text style={styles.sidebarText}>Enrollment Management</Text>
 									</TouchableOpacity>
 									<TouchableOpacity
 										style={styles.sidebarItem}
@@ -1011,6 +1022,11 @@ export default function App() {
 					options={{ headerShown: false }}
 				/>
 				<Stack.Screen
+					name="AdminEnrollments"
+					component={EnrollmentManagementScreenWithSidebar}
+					options={{ headerShown: false, title: 'Enrollment Management' }}
+				/>
+				<Stack.Screen
 					name="AdminRegistrations"
 					component={AdminRegistrationManagementScreenWithSidebar}
 					options={{ headerShown: false }}
@@ -1037,7 +1053,7 @@ export default function App() {
 				/>
 				<Stack.Screen
 					name="Analytics"
-					component={AnalyticalDashboardWithSidebar}
+					component={AnalyticsDashboardWithSidebar}
 					options={{ headerShown: false, title: 'Analytics Dashboard' }}
 				/>
 				<Stack.Screen

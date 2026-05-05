@@ -345,9 +345,7 @@ export default function AnalyticsDashboard() {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.heroCard}>
         <View style={styles.heroTopRow}>
-          <View style={styles.heroBadge}>
-            <Text style={styles.heroBadgeText}>Analytics Dashboard</Text>
-          </View>
+          <Text style={styles.heroBadgeText}>Analytics Dashboard</Text>
         </View>
 
         <Text style={styles.heroTitle}>{currentSheet.title}</Text>
@@ -442,12 +440,6 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 14
-  },
-  heroBadge: {
-    backgroundColor: '#EDF2E6',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999
   },
   heroBadgeText: {
     color: '#52624F',

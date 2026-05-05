@@ -238,6 +238,11 @@ router.get(
 );
 
 /**
+ * GET /admin/modules/types - Get all available module types
+ */
+router.get("/modules/types", asyncHandler(moduleAdminController.getModuleTypes));
+
+/**
  * GET /admin/modules - List module library for admin management
  */
 router.get("/modules", asyncHandler(moduleAdminController.listModules));

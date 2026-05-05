@@ -435,6 +435,25 @@ async function addAssessmentQuestion(assessmentId, questionText, questionType, o
     );
   }
 
+  // Persist the correct answer text in AssessmentQuestions.CorrectAnswer
+  try {
+    let correctAnswerText = null;
+    if (normalizedType === 'mcq' && optionList.length > 0) {
+      correctAnswerText = String(optionList[correctIndex] || '');
+    } else if (normalizedType === 'fill') {
+      correctAnswerText = String(correctAnswer || '');
+    }
+
+    if (correctAnswerText !== null) {
+      await query(
+        `UPDATE AssessmentQuestions SET CorrectAnswer = ? WHERE QuestionID = ?`,
+        [correctAnswerText, questionId]
+      );
+    }
+  } catch (e) {
+    console.error('Failed to persist CorrectAnswer for question', questionId, e);
+  }
+
   await syncAssessmentQuestionCount(assessmentId);
 
   return { questionId, assessmentId };
@@ -474,6 +493,25 @@ async function updateAssessmentQuestion(questionId, questionText, questionType, 
        VALUES (?, ?, 1)`,
       [questionId, String(correctAnswer || '')]
     );
+  }
+
+  // Persist the correct answer text in AssessmentQuestions.CorrectAnswer
+  try {
+    let correctAnswerText = null;
+    if (normalizedType === 'mcq' && optionList.length > 0) {
+      correctAnswerText = String(optionList[correctIndex] || '');
+    } else if (normalizedType === 'fill') {
+      correctAnswerText = String(correctAnswer || '');
+    }
+
+    if (correctAnswerText !== null) {
+      await query(
+        `UPDATE AssessmentQuestions SET CorrectAnswer = ? WHERE QuestionID = ?`,
+        [correctAnswerText, questionId]
+      );
+    }
+  } catch (e) {
+    console.error('Failed to persist CorrectAnswer for question', questionId, e);
   }
 
   const [rows] = await query(

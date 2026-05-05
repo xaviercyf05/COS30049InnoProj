@@ -67,7 +67,7 @@ function buildRoleAwareProfile(user, viewerRole) {
     progressLabel: `${progressValue}%`,
     createdAt: user.CreatedAt,
     staffId: `${isAdmin ? "ADM" : "PG"}-${String(user.UserID).padStart(6, "0")}`,
-    station: user.QualificationName || (isAdmin ? "Rainforest National Park HQ" : "Not assigned yet"),
+    station: user.QualificationName || (isAdmin ? "Bako National Park" : "Not assigned yet"),
     chapterStatus: isAdmin
       ? null
       : {

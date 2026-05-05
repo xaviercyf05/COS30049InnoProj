@@ -54,6 +54,11 @@ CREATE TABLE IF NOT EXISTS Users (
   ProfileImageUrl VARCHAR(255) NULL,
   Progress INT UNSIGNED NOT NULL DEFAULT 0,
   Status VARCHAR(50) NOT NULL DEFAULT 'Inactive',
+  MFAEnabled TINYINT(1) NOT NULL DEFAULT 0,
+  MFASecret VARCHAR(255) NULL,
+  MFAMethod VARCHAR(50) NOT NULL DEFAULT 'TOTP',
+  BackupCodes JSON NULL,
+  MFASetupAt TIMESTAMP NULL,
   RoleID TINYINT UNSIGNED NOT NULL,
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_users_role FOREIGN KEY (RoleID) REFERENCES Roles (RoleID),
@@ -70,6 +75,7 @@ INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID, Status) VALU
   ('user', '$2b$12$JAr3wFTivDH3xBUnbBEJseQOvzGuJPyoxdkK3rXo2ZeBlIe5rhpHq', 'Default User', 'user@default.com', 2, 'Active');
 
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
+CREATE INDEX idx_users_mfa_enabled ON Users (MFAEnabled);
 
 CREATE TABLE IF NOT EXISTS RegistrationRequests (
   RegistrationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

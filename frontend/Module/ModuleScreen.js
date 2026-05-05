@@ -165,18 +165,35 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
   const [sections, setSections] = useState(MODULE_SECTIONS);
   const [selectedSectionId, setSelectedSectionId] = useState(MODULE_SECTIONS[0].id);
   const [visitedSectionIds, setVisitedSectionIds] = useState(new Set());
+  const [expandedSectionIds, setExpandedSectionIds] = useState(new Set());
   const [loading, setLoading] = useState(Boolean(routeModuleId));
 
-  const selectedSection = useMemo(
-    () => sections.find((section) => section.id === selectedSectionId) || null,
-    [sections, selectedSectionId]
-  );
+  const selectedSection = useMemo(() => {
+    const selectedTopLevelSection = sections.find((section) => section.id === selectedSectionId);
+
+    if (selectedTopLevelSection) {
+      return selectedTopLevelSection;
+    }
+
+    for (const section of sections) {
+      const selectedSubsection = (section.subsections || []).find(
+        (subsection) => subsection.id === selectedSectionId
+      );
+
+      if (selectedSubsection) {
+        return selectedSubsection;
+      }
+    }
+
+    return null;
+  }, [sections, selectedSectionId]);
 
   useEffect(() => {
     if (!routeModuleId) {
       setSections(MODULE_SECTIONS);
       setSelectedSectionId(MODULE_SECTIONS[0]?.id || null);
       setVisitedSectionIds(MODULE_SECTIONS[0]?.id ? new Set([MODULE_SECTIONS[0].id]) : new Set());
+      setExpandedSectionIds(new Set());
       setLoading(false);
       return;
     }
@@ -207,34 +224,80 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
             setSections([]);
             setSelectedSectionId(null);
             setVisitedSectionIds(new Set());
+            setExpandedSectionIds(new Set());
           }
           return;
         }
 
-        const formattedSections = materials.map((material, index) => {
-          // Support both old LearningMaterials and new Subsections structure
-          const sectionPrefix = material.sectionTitle || material.chapter || '';
-          const subTitle = material.title || material.subTitle || '';
-          const combinedTitle = String(sectionPrefix ? `${sectionPrefix} — ${subTitle || ''}` : (subTitle || '')).trim() || `Section ${index + 1}`;
-          const contentHtml = String(material.content || material.contentHtml || '').trim();
+        const groupedSections = [];
+        const sectionIndexByTitle = new Map();
 
-          return {
-            id: String(material.materialId || `section-${index + 1}`),
-            title: combinedTitle,
-            contentHtml,
-            contentText: stripHtmlContent(contentHtml),
-          };
+        materials.forEach((material, index) => {
+          const sectionTitle = String(material.sectionTitle || material.chapter || '').trim();
+          const itemTitle = String(material.title || material.subTitle || '').trim();
+          const contentHtml = String(material.content || material.contentHtml || '').trim();
+          const materialId = String(material.materialId || `material-${index + 1}`);
+
+          if (!sectionTitle) {
+            const fallbackSectionTitle = itemTitle || `Section ${groupedSections.length + 1}`;
+            groupedSections.push({
+              id: `section-${materialId}`,
+              title: fallbackSectionTitle,
+              contentHtml,
+              contentText: stripHtmlContent(contentHtml),
+              subsections: [],
+            });
+            return;
+          }
+
+          const sectionKey = sectionTitle.toLowerCase();
+          let sectionIndex = sectionIndexByTitle.get(sectionKey);
+
+          if (sectionIndex === undefined) {
+            sectionIndex = groupedSections.length;
+            sectionIndexByTitle.set(sectionKey, sectionIndex);
+            groupedSections.push({
+              id: `section-${materialId}`,
+              title: sectionTitle,
+              contentHtml: '',
+              contentText: '',
+              subsections: [],
+            });
+          }
+
+          const section = groupedSections[sectionIndex];
+          const isSubsection = itemTitle && itemTitle.toLowerCase() !== sectionTitle.toLowerCase();
+
+          if (isSubsection) {
+            section.subsections.push({
+              id: `subsection-${materialId}`,
+              title: itemTitle,
+              contentHtml,
+              contentText: stripHtmlContent(contentHtml),
+              parentId: section.id,
+            });
+            return;
+          }
+
+          if (!section.contentHtml) {
+            section.contentHtml = contentHtml;
+            section.contentText = stripHtmlContent(contentHtml);
+          }
         });
+
+        const formattedSections = groupedSections;
 
         if (active) {
           setSections(formattedSections);
           setSelectedSectionId(formattedSections[0]?.id || null);
           setVisitedSectionIds(formattedSections[0]?.id ? new Set([formattedSections[0].id]) : new Set());
+          setExpandedSectionIds(new Set());
         }
       } catch (_error) {
         if (active) {
           setSections([]);
           setSelectedSectionId(null);
+          setExpandedSectionIds(new Set());
         }
       } finally {
         if (active) {
@@ -253,6 +316,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
   useEffect(() => {
     if (!sections.length) {
       setSelectedSectionId(null);
+      setExpandedSectionIds(new Set());
       return;
     }
 
@@ -278,6 +342,38 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
     setVisitedSectionIds((previousVisitedSectionIds) => {
       const nextVisitedSectionIds = new Set(previousVisitedSectionIds);
       nextVisitedSectionIds.add(sectionId);
+      return nextVisitedSectionIds;
+    });
+  };
+
+  const toggleSectionExpansion = (sectionId) => {
+    setExpandedSectionIds((previousExpandedSectionIds) => {
+      const nextExpandedSectionIds = new Set(previousExpandedSectionIds);
+
+      if (nextExpandedSectionIds.has(sectionId)) {
+        nextExpandedSectionIds.delete(sectionId);
+      } else {
+        nextExpandedSectionIds.add(sectionId);
+      }
+
+      return nextExpandedSectionIds;
+    });
+
+    selectSection(sectionId);
+  };
+
+  const selectSubsection = (sectionId, subsectionId) => {
+    setExpandedSectionIds((previousExpandedSectionIds) => {
+      const nextExpandedSectionIds = new Set(previousExpandedSectionIds);
+      nextExpandedSectionIds.add(sectionId);
+      return nextExpandedSectionIds;
+    });
+
+    setSelectedSectionId(subsectionId);
+    setVisitedSectionIds((previousVisitedSectionIds) => {
+      const nextVisitedSectionIds = new Set(previousVisitedSectionIds);
+      nextVisitedSectionIds.add(sectionId);
+      nextVisitedSectionIds.add(subsectionId);
       return nextVisitedSectionIds;
     });
   };
@@ -362,6 +458,13 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
     });
   };
 
+  const goToModuleEditor = () => {
+    navigation.navigate('AdminModules', {
+      moduleId: routeModuleId,
+      moduleName,
+    });
+  };
+
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
       {!useSharedChrome ? (
@@ -421,29 +524,68 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
               </View>
             ) : (
               sections.map((section) => {
-                const isSelected = selectedSection?.id === section.id;
+                const isSectionSelected = selectedSection?.id === section.id;
+                const isSubsectionSelected = (section.subsections || []).some(
+                  (subsection) => subsection.id === selectedSection?.id
+                );
+                const isSelected = isSectionSelected || isSubsectionSelected;
+                const isExpanded = expandedSectionIds.has(section.id);
 
                 return (
                   <View key={section.id}>
                     <TouchableOpacity
                       style={[styles.mainTopic, isSelected && styles.mainTopicActive]}
-                      onPress={() => selectSection(section.id)}
+                      onPress={() => toggleSectionExpansion(section.id)}
                     >
                       <Text style={[styles.mainTopicText, isSelected && styles.mainTopicTextActive]}>
                         {section.title}
                       </Text>
                     </TouchableOpacity>
 
+                    {isExpanded && (section.subsections || []).length > 0 ? (
+                      <View style={styles.subsectionsList}>
+                        {section.subsections.map((subsection) => {
+                          const subsectionActive = selectedSection?.id === subsection.id;
+
+                          return (
+                            <TouchableOpacity
+                              key={subsection.id}
+                              style={[
+                                styles.subsectionTopic,
+                                subsectionActive && styles.subsectionTopicActive,
+                              ]}
+                              onPress={() => selectSubsection(section.id, subsection.id)}
+                            >
+                              <Text
+                                style={[
+                                  styles.subsectionTopicText,
+                                  subsectionActive && styles.subsectionTopicTextActive,
+                                ]}
+                              >
+                                {subsection.title}
+                              </Text>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
+                    ) : null}
+
                     {!isWeb && isSelected && (
                       <View style={styles.mobileContentCard}>
-                        <Text style={styles.contentTitle}>{section.title}</Text>
-                        {renderSectionBody(section, 'mobile')}
+                        <Text style={styles.contentTitle}>{selectedSection?.title || section.title}</Text>
+                        {renderSectionBody(selectedSection || section, 'mobile')}
                       </View>
                     )}
                   </View>
                 );
               })
             )}
+
+            {isAdmin ? (
+              <TouchableOpacity style={styles.editModuleButton} onPress={goToModuleEditor}>
+                <Text style={styles.editModuleButtonText}>Edit This Module</Text>
+              </TouchableOpacity>
+            ) : null}
 
             <TouchableOpacity
               style={[styles.assessmentButton, !canTakeAssessment && styles.assessmentButtonDisabled]}
@@ -629,6 +771,32 @@ const styles = StyleSheet.create({
   mainTopicTextActive: {
     color: '#FFFFFF',
   },
+  subsectionsList: {
+    marginLeft: 16,
+    marginBottom: 8,
+    borderLeftWidth: 2,
+    borderLeftColor: '#D8DDD2',
+    paddingLeft: 8,
+  },
+  subsectionTopic: {
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 9,
+    marginBottom: 4,
+    backgroundColor: '#F4F7F0',
+  },
+  subsectionTopicActive: {
+    backgroundColor: '#DCE8D2',
+  },
+  subsectionTopicText: {
+    color: '#3D5A48',
+    fontWeight: '600',
+    fontSize: 13,
+  },
+  subsectionTopicTextActive: {
+    color: '#2A4636',
+    fontWeight: '700',
+  },
   emptySectionCard: {
     backgroundColor: '#F7FAF3',
     borderWidth: 1,
@@ -700,6 +868,21 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
+  },
+  editModuleButton: {
+    marginTop: 10,
+    borderRadius: 12,
+    backgroundColor: '#ECF2E5',
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#DDE8D6',
+  },
+  editModuleButtonText: {
+    color: '#2A5A40',
+    fontWeight: '800',
+    fontSize: 14,
   },
   assessmentButtonDisabled: {
     backgroundColor: '#F1F4EC',

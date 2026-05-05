@@ -141,8 +141,9 @@ function toDraft(moduleEntry) {
   };
 }
 
-function AdminModuleManagerScreen({ navigation, useSharedChrome = false }) {
+function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }) {
   const insets = useSafeAreaInsets();
+  const routeFocusedModuleId = extractNumericModuleId(route?.params?.moduleId);
 
   const [modules, setModules] = useState([]);
   const [draft, setDraft] = useState(createEmptyDraft());
@@ -248,8 +249,13 @@ function AdminModuleManagerScreen({ navigation, useSharedChrome = false }) {
         return;
       }
 
+      const hasFocusedModuleInLibrary =
+        focusedModuleId !== null &&
+        focusedModuleId !== undefined &&
+        updatedLibrary.some((moduleItem) => Number(moduleItem.moduleId) === Number(focusedModuleId));
+
       const fallbackId =
-        focusedModuleId ||
+        (hasFocusedModuleInLibrary ? focusedModuleId : null) ||
         extractNumericModuleId(draft.id) ||
         updatedLibrary[0].moduleId;
 
@@ -262,14 +268,14 @@ function AdminModuleManagerScreen({ navigation, useSharedChrome = false }) {
   };
 
   useEffect(() => {
-    refreshModules();
+    refreshModules(routeFocusedModuleId);
 
     const unsubscribe = navigation.addListener('focus', () => {
-      refreshModules();
+      refreshModules(routeFocusedModuleId);
     });
 
     return unsubscribe;
-  }, [navigation]);
+  }, [navigation, routeFocusedModuleId]);
 
   const openModuleForEdit = async (moduleId) => {
     try {

@@ -6,7 +6,7 @@ from ultralytics import YOLO  # type: ignore
 # =========================
 # SETTINGS
 # =========================
-MODEL_PATH = "best.pt"
+MODEL_PATH = "best3.pt"
 CAMERA_SOURCE = 0
 CONFIDENCE_THRESHOLD = 0.6
 SAVE_FOLDER = "evidence"

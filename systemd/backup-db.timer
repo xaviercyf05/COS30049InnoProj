@@ -2,7 +2,7 @@
 Description=Run DB backup every 2 days at 02:00
 
 [Timer]
-OnCalendar=*-*-*/2 02:00:00
+OnCalendar=*-*-1/2 02:00:00
 Persistent=true
 
 [Install]

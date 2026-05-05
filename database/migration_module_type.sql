@@ -1,6 +1,6 @@
 -- Migration: Add ModuleType support to Modules table
 -- This allows modules to be organized into correct sections based on their type
-
+USE appdb;
 -- Create ModuleTypes lookup table (if not exists)
 CREATE TABLE IF NOT EXISTS ModuleTypes (
   ModuleTypeID TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

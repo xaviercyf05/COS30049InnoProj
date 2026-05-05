@@ -68,23 +68,47 @@ async function getDashboardModules(req, res) {
 }
 
 /**
- * Get all modules for a qualification
+ * Get all modules for a qualification, organized by module type
  */
 async function getQualificationModules(req, res) {
   try {
     const { qualificationId } = req.params;
 
     const [modules] = await query(
-      "SELECT ModuleID, ModuleTitle FROM Modules WHERE QualificationID = ? ORDER BY ModuleID ASC",
+      `SELECT m.ModuleID,
+              m.ModuleTitle,
+              m.ModuleTypeID,
+              mt.TypeName
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.QualificationID = ?
+        ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC`,
       [qualificationId]
     );
 
-    return res.json({
-      success: true,
-      data: modules.map((m) => ({
+    // Organize modules by their type section
+    const modulesByType = {};
+    for (const m of modules) {
+      const typeName = m.TypeName || "Unassigned";
+      const typeId = m.ModuleTypeID;
+
+      if (!modulesByType[typeName]) {
+        modulesByType[typeName] = {
+          typeId,
+          typeName,
+          modules: [],
+        };
+      }
+
+      modulesByType[typeName].modules.push({
         moduleId: m.ModuleID,
         title: m.ModuleTitle,
-      })),
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: Object.values(modulesByType),
     });
   } catch (error) {
     console.error("Get modules error:", error);
@@ -103,9 +127,17 @@ async function getModuleDetails(req, res) {
     const { userId } = req.user;
     const { moduleId } = req.params;
 
-    // Get module info
+    // Get module info with type details
     const [modules] = await query(
-      "SELECT ModuleID, QualificationID, ModuleTitle FROM Modules WHERE ModuleID = ? LIMIT 1",
+      `SELECT m.ModuleID,
+              m.QualificationID,
+              m.ModuleTitle,
+              m.ModuleTypeID,
+              mt.TypeName
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.ModuleID = ?
+        LIMIT 1`,
       [moduleId]
     );
 
@@ -130,6 +162,8 @@ async function getModuleDetails(req, res) {
         moduleId: module.ModuleID,
         qualificationId: module.QualificationID,
         title: module.ModuleTitle,
+        moduleTypeId: module.ModuleTypeID,
+        moduleType: module.TypeName || "Unassigned",
         chapters,
         materials,
       },

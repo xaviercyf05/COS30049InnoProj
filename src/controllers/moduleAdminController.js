@@ -13,6 +13,29 @@ function createModuleCoverImageUrl(fileName) {
   return `${moduleCoverPathPrefix}${fileName}`;
 }
 
+async function resolveModuleTypeId(execute, requestedModuleTypeId, fallbackModuleTypeId = null) {
+  if (Number.isFinite(requestedModuleTypeId) && requestedModuleTypeId > 0) {
+    const [typeRows] = await execute(
+      "SELECT ModuleTypeID FROM ModuleTypes WHERE ModuleTypeID = ? LIMIT 1",
+      [requestedModuleTypeId]
+    );
+
+    if (typeRows.length > 0) {
+      return requestedModuleTypeId;
+    }
+  }
+
+  if (Number.isFinite(fallbackModuleTypeId) && fallbackModuleTypeId > 0) {
+    return fallbackModuleTypeId;
+  }
+
+  const [defaultTypeRows] = await execute(
+    "SELECT ModuleTypeID FROM ModuleTypes ORDER BY ModuleTypeID ASC LIMIT 1"
+  );
+
+  return defaultTypeRows.length > 0 ? defaultTypeRows[0].ModuleTypeID : null;
+}
+
 function normalizeSectionsInput(sectionsInput) {
   let parsedSections = sectionsInput;
 
@@ -343,17 +366,7 @@ async function createModule(req, res) {
       });
     }
 
-    // Validate ModuleType if provided
-    let moduleTypeId = 1; // Default to 'Theory'
-    if (Number.isFinite(requestedModuleTypeId) && requestedModuleTypeId > 0) {
-      const [typeRows] = await connection.execute(
-        "SELECT ModuleTypeID FROM ModuleTypes WHERE ModuleTypeID = ? LIMIT 1",
-        [requestedModuleTypeId]
-      );
-      if (typeRows.length > 0) {
-        moduleTypeId = requestedModuleTypeId;
-      }
-    }
+    const moduleTypeId = await resolveModuleTypeId(connection.execute.bind(connection), requestedModuleTypeId);
 
     const [moduleInsert] = await connection.execute(
       "INSERT INTO Modules (QualificationID, ModuleTitle, ModuleTypeID) VALUES (?, ?, ?)",
@@ -473,17 +486,17 @@ async function updateModule(req, res) {
       });
     }
 
-    // Validate and get current moduleTypeId
-    let moduleTypeId = 1; // Default
-    if (Number.isFinite(requestedModuleTypeId) && requestedModuleTypeId > 0) {
-      const [typeRows] = await connection.execute(
-        "SELECT ModuleTypeID FROM ModuleTypes WHERE ModuleTypeID = ? LIMIT 1",
-        [requestedModuleTypeId]
-      );
-      if (typeRows.length > 0) {
-        moduleTypeId = requestedModuleTypeId;
-      }
-    }
+    const [currentModuleRows] = await connection.execute(
+      "SELECT ModuleTypeID FROM Modules WHERE ModuleID = ? LIMIT 1",
+      [moduleId]
+    );
+
+    const currentModuleTypeId = currentModuleRows.length > 0 ? currentModuleRows[0].ModuleTypeID : null;
+    const moduleTypeId = await resolveModuleTypeId(
+      connection.execute.bind(connection),
+      requestedModuleTypeId,
+      currentModuleTypeId
+    );
 
     await connection.execute(
       "UPDATE Modules SET ModuleTitle = ?, ModuleTypeID = ? WHERE ModuleID = ?",

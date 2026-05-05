@@ -67,12 +67,24 @@ const GENERAL_MODULE_COUNT = 1;
 const PARK_SPECIFIC_MODULE_COUNT = 5;
 const ON_SITE_MODULE_COUNT = 5;
 const MODULE_TYPE_OPTIONS = [
-	{ value: 'general', label: 'General' },
-	{ value: 'park-specific', label: 'Total Protected Area (TPA) Modules' },
-	{ value: 'on-site', label: 'On Site Training Modules' },
+	{ id: 1, value: 'general', label: 'General' },
+	{ id: 2, value: 'park-specific', label: 'Total Protected Area (TPA) Modules' },
+	{ id: 3, value: 'on-site', label: 'On Site Training Modules' },
 ];
 
 function normalizeModuleType(value, fallback = 'general') {
+	if (value === 1 || value === '1') {
+		return 'general';
+	}
+
+	if (value === 2 || value === '2') {
+		return 'park-specific';
+	}
+
+	if (value === 3 || value === '3') {
+		return 'on-site';
+	}
+
 	const normalized = String(value || '').trim().toLowerCase();
 
 	if (normalized === 'general') {
@@ -100,8 +112,89 @@ function normalizeModuleType(value, fallback = 'general') {
 	return fallback;
 }
 
+function normalizeModuleTypeId(value) {
+	if (value === 1 || value === '1') {
+		return 1;
+	}
+
+	if (value === 2 || value === '2') {
+		return 2;
+	}
+
+	if (value === 3 || value === '3') {
+		return 3;
+	}
+
+	const normalizedType = normalizeModuleType(value);
+	const matchedOption = MODULE_TYPE_OPTIONS.find((option) => option.value === normalizedType);
+	return matchedOption?.id || 1;
+}
+
 function getModuleTypeValue(module) {
-	return module?.moduleType || module?.type || module?.module_type || module?.category;
+	return (
+		module?.moduleType ||
+		module?.module_type ||
+		module?.type ||
+		module?.category ||
+		module?.moduleTypeId ||
+		module?.module_type_id ||
+		module?.typeId
+	);
+}
+
+function getModuleTypeIdValue(module) {
+	return (
+		module?.moduleTypeId ||
+		module?.moduleTypeID ||
+		module?.module_type_id ||
+		module?.module_typeId ||
+		module?.module_typeID ||
+		module?.typeId ||
+		module?.typeID ||
+		module?.type_id ||
+		module?.module_type
+	);
+}
+
+function isNumericTypeId(value) {
+	return value === 1 || value === 2 || value === 3 || value === '1' || value === '2' || value === '3';
+}
+
+function parseModuleTypeId(module) {
+	const rawValue = getModuleTypeIdValue(module);
+	if (rawValue === null || rawValue === undefined || rawValue === '') {
+		return null;
+	}
+
+	if (rawValue === 1 || rawValue === 2 || rawValue === 3) {
+		return rawValue;
+	}
+
+	const parsed = Number.parseInt(String(rawValue).trim(), 10);
+	return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
+function resolveModuleStageByType(module) {
+	const moduleTypeId = parseModuleTypeId(module);
+
+	if (moduleTypeId === 1) {
+		return 'general';
+	}
+
+	if (moduleTypeId === 2) {
+		return 'park-specific';
+	}
+
+	if (moduleTypeId === 3) {
+		return 'on-site';
+	}
+
+	const moduleTypeValue = getModuleTypeValue(module);
+	if (isNumericTypeId(moduleTypeValue)) {
+		return normalizeModuleType(moduleTypeValue);
+	}
+
+	return normalizeModuleType(moduleTypeValue);
 }
 
 function groupModulesByType(modules) {
@@ -116,9 +209,7 @@ function groupModulesByType(modules) {
 	}
 
 	modules.forEach((module, index) => {
-		const normalizedType = normalizeModuleType(
-			module?.moduleType || module?.type || module?.module_type || module?.category
-		);
+		const normalizedType = resolveModuleStageByType(module);
 		if (grouped[normalizedType]) {
 			grouped[normalizedType].push(module);
 		}
@@ -156,9 +247,9 @@ function buildProgressionModules(modules, isAdmin) {
 		return [];
 	}
 
-	const generalModules = modules.filter((module) => normalizeModuleType(getModuleTypeValue(module)) === 'general');
-	const parkSpecificModules = modules.filter((module) => normalizeModuleType(getModuleTypeValue(module)) === 'park-specific');
-	const onSiteModules = modules.filter((module) => normalizeModuleType(getModuleTypeValue(module)) === 'on-site');
+	const generalModules = modules.filter((module) => resolveModuleStageByType(module) === 'general');
+	const parkSpecificModules = modules.filter((module) => resolveModuleStageByType(module) === 'park-specific');
+	const onSiteModules = modules.filter((module) => resolveModuleStageByType(module) === 'on-site');
 	const generalModule = generalModules[0] || null;
 	const passedModuleIds = new Set(
 		modules
@@ -167,7 +258,7 @@ function buildProgressionModules(modules, isAdmin) {
 	);
 
 	return modules.map((module, index) => {
-		const stage = normalizeModuleType(getModuleTypeValue(module));
+		const stage = resolveModuleStageByType(module);
 		let prerequisiteModuleId = null;
 		let unlocked = true;
 		let lockReason = '';
@@ -340,9 +431,10 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 				);
 			}
 
+			const modulesEndpoint = loadedIsAdmin ? '/api/v1/admin/modules' : '/api/v1/modules/dashboard';
 			const [notificationsResponse, modulesResponse] = await Promise.all([
 				requestProfileApi('/api/v1/notifications', token, { method: 'GET' }).catch(() => null),
-				requestProfileApi('/api/v1/modules/dashboard', token, { method: 'GET' }).catch(() => null),
+				requestProfileApi(modulesEndpoint, token, { method: 'GET' }).catch(() => null),
 			]);
 
 			if (Array.isArray(notificationsResponse?.data)) {
@@ -359,23 +451,24 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 
 			if (Array.isArray(modulesResponse?.data) && modulesResponse.data.length > 0) {
 				const baseModules = modulesResponse.data.map((module, index) => {
-					const hasExplicitType = Boolean(getModuleTypeValue(module));
+					const hasExplicitType = Boolean(parseModuleTypeId(module) || getModuleTypeValue(module));
 					const prev = Array.isArray(userModules)
 						? userModules.find((u) => Number(u.moduleId) === Number(module.moduleId))
 						: null;
 
 					const moduleTypeValue = hasExplicitType
-						? normalizeModuleType(getModuleTypeValue(module))
+						? resolveModuleStageByType(module)
 						: // preserve previously computed stage where possible, otherwise default to 'general'
 						prev?.stage || 'general';
 
 					return {
-						id: String(module.moduleId || index + 1),
-						moduleId: module.moduleId,
-						title: module.title || `Module ${index + 1}`,
+						id: String(module.moduleId || module.id || index + 1),
+						moduleId: module.moduleId || module.id,
+						title: module.title || module.name || `Module ${index + 1}`,
 						moduleType: moduleTypeValue,
-						image: resolveApiAssetUri(module.image) || module.image,
-						progressPercent: Number(module.progressPercent || 0),
+						moduleTypeId: parseModuleTypeId(module) || normalizeModuleTypeId(getModuleTypeValue(module)),
+						image: resolveApiAssetUri(module.moduleImageUrl || module.image) || module.moduleImageUrl || module.image,
+						progressPercent: Number(module.progressPercent || module.progress || 0),
 					};
 				});
 

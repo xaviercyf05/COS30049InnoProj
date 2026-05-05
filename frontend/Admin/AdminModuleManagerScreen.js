@@ -60,6 +60,19 @@ function normalizeModuleType(value) {
   return 'general';
 }
 
+function moduleTypeStringToId(normalizedTypeString) {
+  switch (normalizedTypeString) {
+    case 'general':
+      return 1;
+    case 'park-specific':
+      return 2;
+    case 'on-site':
+      return 3;
+    default:
+      return 1; // Default to General Modules
+  }
+}
+
 function createId(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
@@ -625,12 +638,11 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
       }
 
       const normalizedType = normalizeModuleType(draft.moduleType);
+      const moduleTypeId = moduleTypeStringToId(normalizedType);
 
       const modulePayload = {
         title: draft.title.trim(),
-        moduleType: normalizedType,
-        type: normalizedType,
-        module_type: normalizedType,
+        moduleTypeId: moduleTypeId,
         moduleImageUrl: normalizedModuleImageUrl,
         sections: normalizedSections,
       };

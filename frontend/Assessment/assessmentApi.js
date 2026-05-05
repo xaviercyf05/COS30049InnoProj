@@ -55,7 +55,16 @@ export async function fetchAssessmentQuestions(moduleId) {
 		type: question.questionType === 'fill' || question.QuestionType === 'fill' ? 'fill' : 'mcq',
 		topic: question.topic || 'General',
 		question: question.questionText || question.QuestionText || question.question || '',
-		options: (question.options || []).map((option) => option.text || option.OptionText || option),
+		options: (question.options || []).map((option) => {
+			if (option == null) return { id: String(option), text: '' };
+			if (typeof option === 'string' || typeof option === 'number') {
+				return { id: String(option), text: String(option) };
+			}
+			return {
+				id: String(option.id ?? option.optionId ?? option.OptionID ?? option.value ?? option.OptionValue ?? option.OptionId ?? option.OptionId ?? option.text ?? option),
+				text: String(option.text ?? option.OptionText ?? option.label ?? option.OptionLabel ?? option.value ?? option),
+			};
+		}),
 	}));
 
 	const assessmentId = response.data?.data?.assessmentId || response.data?.assessmentId || null;
@@ -99,18 +108,60 @@ export async function checkAttemptEligibility(assessmentId) {
 	};
 }
 
-export async function submitAssessmentAttempt(assessmentId, answers, timeUsedSeconds = 0) {
+export async function submitAssessmentAttempt(assessmentId, answers, timeUsedSeconds = 0, questions = []) {
 	const token = await AsyncStorage.getItem('innopapp_auth_token');
 	if (!token) {
 		return { error: 'Authentication required', score: 0, passed: false };
 	}
 
+	const questionList = Array.isArray(questions) ? questions : [];
+	const questionById = new Map(questionList.map((question) => [String(question.id), question]));
+
 	const answerArray = Array.isArray(answers)
-		? answers.map((value, index) => ({ questionId: String(index + 1), optionId: Number.isInteger(value) ? value : Number.parseInt(value, 10) || 0 }))
-		: Object.entries(answers || {}).map(([questionId, value]) => ({
-			questionId,
-			optionId: Number.isInteger(value) ? value : Number.parseInt(value, 10) || 0,
-		}));
+		? answers.map((value, index) => {
+			const question = questionList[index] || {};
+			const questionId = String(question.id || index + 1);
+
+			if (question.type === 'fill') {
+				return {
+					questionId,
+					answer: String(value || ''),
+				};
+			}
+
+			// Preserve non-numeric option ids (strings) and numeric ids as-is
+			let optionId = value;
+			if (typeof value === 'string' && /^\d+$/.test(value)) {
+				optionId = Number.parseInt(value, 10);
+			}
+
+			return {
+				questionId,
+				optionId,
+				answer: optionId,
+			};
+		})
+		: Object.entries(answers || {}).map(([questionId, value]) => {
+			const question = questionById.get(String(questionId)) || {};
+
+			if (question.type === 'fill') {
+				return {
+					questionId: String(questionId),
+					answer: String(value || ''),
+				};
+			}
+
+			let optionId = value;
+			if (typeof value === 'string' && /^\d+$/.test(value)) {
+				optionId = Number.parseInt(value, 10);
+			}
+
+			return {
+				questionId: String(questionId),
+				optionId,
+				answer: optionId,
+			};
+		});
 
 	const response = await requestAssessmentApi('/api/v1/assessments/submit', token, {
 		method: 'POST',

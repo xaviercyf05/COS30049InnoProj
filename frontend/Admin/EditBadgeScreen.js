@@ -1,6 +1,8 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+  ActivityIndicator,
   Alert,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
@@ -14,6 +16,63 @@ import { requestProfileApi } from '../Profile/profileApi.js';
 function EditBadgeScreen({ route, navigation }) {
   const badge = route?.params?.badge;
   const [name, setName] = useState(badge?.name || '');
+  const [validityMonths, setValidityMonths] = useState(
+    String(badge?.validityMonths || badge?.validity_months || 12)
+  );
+  const [modules, setModules] = useState([]);
+  const [loadingModules, setLoadingModules] = useState(true);
+  const [selectedModuleId, setSelectedModuleId] = useState(
+    String(badge?.linkedModuleId || badge?.moduleId || badge?.linked_module_id || '')
+  );
+
+  useEffect(() => {
+    let active = true;
+
+    const loadModules = async () => {
+      setLoadingModules(true);
+
+      try {
+        const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+        if (!token) {
+          if (active) {
+            setModules([]);
+          }
+          return;
+        }
+
+        const response = await requestProfileApi('/api/v1/admin/modules', token, {
+          method: 'GET',
+        });
+
+        if (!active) {
+          return;
+        }
+
+        const loadedModules = Array.isArray(response.data) ? response.data : [];
+        setModules(
+          loadedModules.map((moduleItem) => ({
+            moduleId: moduleItem.moduleId || moduleItem.id,
+            title: moduleItem.title || moduleItem.name || `Module ${moduleItem.moduleId || moduleItem.id}`,
+          }))
+        );
+      } catch (_error) {
+        if (active) {
+          setModules([]);
+        }
+      } finally {
+        if (active) {
+          setLoadingModules(false);
+        }
+      }
+    };
+
+    loadModules();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const canSave = useMemo(() => name.trim().length > 0, [name]);
 
@@ -26,6 +85,17 @@ function EditBadgeScreen({ route, navigation }) {
 
     if (!canSave) {
       Alert.alert('Missing details', 'Please enter a badge name.');
+      return;
+    }
+
+    if (!selectedModuleId) {
+      Alert.alert('Missing details', 'Please choose a module linked to this badge.');
+      return;
+    }
+
+    const parsedValidityMonths = Number.parseInt(validityMonths, 10);
+    if (!Number.isFinite(parsedValidityMonths) || parsedValidityMonths <= 0) {
+      Alert.alert('Invalid validity', 'Badge validity must be a positive number of months.');
       return;
     }
 
@@ -42,6 +112,15 @@ function EditBadgeScreen({ route, navigation }) {
         body: {
           name: name.trim(),
           iconUrl: badge.image,
+          validityMonths: parsedValidityMonths,
+          moduleId: Number.parseInt(selectedModuleId, 10),
+          linkedModuleId: Number.parseInt(selectedModuleId, 10),
+          eligibilityRules: {
+            requireGeneralModuleCompleted: true,
+            requireAllTPAModulesCompleted: true,
+            requireAllAssessmentsPassed: true,
+            requireOnSiteTrainingCompletedByAdmin: true,
+          },
         },
       });
 
@@ -66,18 +145,64 @@ function EditBadgeScreen({ route, navigation }) {
   }
 
   return (
-    <View style={styles.container}>
+    <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <Text style={styles.title}>Edit Badge</Text>
 
       <View style={styles.card}>
         <Text style={styles.label}>Badge Name</Text>
         <TextInput value={name} onChangeText={setName} style={styles.input} />
 
+        <Text style={styles.label}>Badge Validity (Months)</Text>
+        <TextInput
+          value={validityMonths}
+          onChangeText={setValidityMonths}
+          style={styles.input}
+          keyboardType="number-pad"
+          placeholder="e.g. 12"
+          placeholderTextColor="#A0A9A0"
+        />
+
+        <Text style={styles.label}>Linked Module</Text>
+        <View style={styles.modulePickerWrap}>
+          {loadingModules ? (
+            <View style={styles.loadingModulesRow}>
+              <ActivityIndicator size="small" color="#2E6B4D" />
+              <Text style={styles.loadingModulesText}>Loading modules...</Text>
+            </View>
+          ) : modules.length === 0 ? (
+            <Text style={styles.moduleHintText}>No modules available.</Text>
+          ) : (
+            modules.map((moduleItem) => {
+              const active = String(selectedModuleId) === String(moduleItem.moduleId);
+
+              return (
+                <TouchableOpacity
+                  key={moduleItem.moduleId}
+                  style={[styles.moduleOption, active && styles.moduleOptionActive]}
+                  onPress={() => setSelectedModuleId(String(moduleItem.moduleId))}
+                >
+                  <Text style={[styles.moduleOptionText, active && styles.moduleOptionTextActive]}>
+                    {moduleItem.title}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })
+          )}
+        </View>
+
+        <View style={styles.ruleBox}>
+          <Text style={styles.ruleTitle}>Eligibility Rules</Text>
+          <Text style={styles.ruleItem}>• Must complete General module</Text>
+          <Text style={styles.ruleItem}>• Must complete TPA module track</Text>
+          <Text style={styles.ruleItem}>• Must pass all linked assessments</Text>
+          <Text style={styles.ruleItem}>• On-site training must be marked complete by admin</Text>
+        </View>
+
         <TouchableOpacity style={styles.button} onPress={handleSave}>
           <Text style={styles.buttonText}>Save Changes</Text>
         </TouchableOpacity>
       </View>
-    </View>
+    </ScrollView>
   );
 }
 
@@ -85,7 +210,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: '#FBFCF8',
+  },
+  content: {
     padding: 20,
+    paddingBottom: 32,
   },
   title: {
     fontSize: 24,
@@ -111,6 +239,68 @@ const styles = StyleSheet.create({
     padding: 10,
     borderRadius: 10,
     marginTop: 5,
+    marginBottom: 10,
+  },
+  modulePickerWrap: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#E3E8DC',
+    borderRadius: 10,
+    padding: 10,
+    gap: 8,
+    marginBottom: 12,
+  },
+  loadingModulesRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  loadingModulesText: {
+    color: '#4A5A49',
+    fontSize: 13,
+  },
+  moduleHintText: {
+    color: '#607260',
+    fontSize: 13,
+  },
+  moduleOption: {
+    borderWidth: 1,
+    borderColor: '#E3E8DC',
+    borderRadius: 8,
+    paddingVertical: 9,
+    paddingHorizontal: 10,
+    backgroundColor: '#F7F9F4',
+  },
+  moduleOptionActive: {
+    borderColor: '#8EA77F',
+    backgroundColor: '#E7F0E1',
+  },
+  moduleOptionText: {
+    color: '#2B3A2A',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  moduleOptionTextActive: {
+    color: '#21402D',
+    fontWeight: '700',
+  },
+  ruleBox: {
+    backgroundColor: '#F1F5EB',
+    borderWidth: 1,
+    borderColor: '#D7E2CB',
+    borderRadius: 10,
+    padding: 12,
+    marginBottom: 8,
+  },
+  ruleTitle: {
+    color: '#2B4334',
+    fontWeight: '800',
+    marginBottom: 6,
+  },
+  ruleItem: {
+    color: '#455949',
+    fontSize: 12,
+    marginBottom: 4,
   },
   button: {
     backgroundColor: '#656D4A',

@@ -38,6 +38,7 @@ import BadgeManagementScreen from './Admin/BadgeManagementScreen.js';
 import AddBadgeScreen from './Admin/AddBadgeScreen.js';
 import EditBadgeScreen from './Admin/EditBadgeScreen.js';
 import AdminResultVerificationScreen from './Admin/AdminResultVerificationScreen.js';
+import AnalyticalDashboard from './Admin/AnalyticalDashboard.js';
 import ProfileScreen from './Profile/ProfileScreen.js';
 import EditProfileScreen from './Profile/EditProfileScreen.js';
 import MFASettings from './auth/MFASettings.js';
@@ -250,6 +251,7 @@ const BadgeManagementScreenWithSidebar = wrapWithChrome(BadgeManagementScreen, '
 const AddBadgeScreenWithSidebar = wrapWithChrome(AddBadgeScreen, 'Add Badge');
 const EditBadgeScreenWithSidebar = wrapWithChrome(EditBadgeScreen, 'Edit Badge');
 const AdminResultVerificationScreenWithSidebar = wrapWithChrome(AdminResultVerificationScreen, 'Result Verification');
+const AnalyticalDashboardWithSidebar = wrapWithChrome(AnalyticalDashboard, 'Analytics Dashboard');
 const ProfileScreenWithSidebar = wrapWithChrome(ProfileScreen, 'My Profile');
 const EditProfileScreenWithSidebar = wrapWithChrome(EditProfileScreen, 'Edit Profile');
 const MFASettingsWithSidebar = wrapWithChrome(MFASettings, 'Security');
@@ -1028,11 +1030,16 @@ export default function App() {
 					component={EditBadgeScreenWithSidebar}
 					options={{ headerShown: false, title: 'Edit Badge' }}
 				/>
-					<Stack.Screen
-						name="AdminResultVerification"
-						component={AdminResultVerificationScreenWithSidebar}
-						options={{ headerShown: false, title: 'Result Verification' }}
-					/>
+				<Stack.Screen
+					name="AdminResultVerification"
+					component={AdminResultVerificationScreenWithSidebar}
+					options={{ headerShown: false, title: 'Result Verification' }}
+				/>
+				<Stack.Screen
+					name="Analytics"
+					component={AnalyticalDashboardWithSidebar}
+					options={{ headerShown: false, title: 'Analytics Dashboard' }}
+				/>
 				<Stack.Screen
 					name="AdminFeature"
 					component={AdminFeatureScreenWithSidebar}

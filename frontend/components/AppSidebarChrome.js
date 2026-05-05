@@ -72,6 +72,7 @@ const SCREEN_TITLES = {
 	AddBadge: 'Add Badge',
 	EditBadge: 'Edit Badge',
 	AdminResultVerification: 'Result Verification',
+	Analytics: 'Analytics Dashboard',
 	AdminFeature: 'Admin Feature',
 };
 
@@ -485,6 +486,15 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 										}}
 									>
 										<Text style={styles.sidebarText}>Result Verification</Text>
+									</TouchableOpacity>
+									<TouchableOpacity
+										style={styles.sidebarItem}
+										onPress={() => {
+											setMenuVisible(false);
+											navigation.navigate('Analytics');
+										}}
+									>
+										<Text style={styles.sidebarText}>Analytics Dashboard</Text>
 									</TouchableOpacity>
 								</>
 							)}

@@ -34,8 +34,21 @@ echo "Starting backup of database '$DB_NAME' to $BACKUP_DIR/$FILENAME"
 
 # Use MYSQL_PWD env var to avoid exposing password in the process list (still has tradeoffs)
 export MYSQL_PWD="$DB_PASSWORD"
-# Add --column-statistics=0 to avoid information_schema COLUMN_STATISTICS issues
-mysqldump -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" --single-transaction --quick --lock-tables=false --column-statistics=0 "$DB_NAME" | gzip > "$BACKUP_DIR/$FILENAME"
+
+dump_args=(
+  -h "$DB_HOST"
+  -P "$DB_PORT"
+  -u "$DB_USER"
+  --single-transaction
+  --quick
+  --lock-tables=false
+)
+
+if mysqldump --help 2>/dev/null | grep -q -- '--column-statistics'; then
+  dump_args+=(--column-statistics=0)
+fi
+
+mysqldump "${dump_args[@]}" "$DB_NAME" | gzip > "$BACKUP_DIR/$FILENAME"
 rc=$?
 unset MYSQL_PWD
 

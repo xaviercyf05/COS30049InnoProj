@@ -27,31 +27,84 @@ function normalizeSectionsInput(sectionsInput) {
   if (!Array.isArray(parsedSections)) {
     return [];
   }
-
+  // Support two input formats:
+  // 1) Legacy: [{ title, content }]
+  // 2) New: [{ title, ordering, subsections: [{ title, content, ordering }] }]
   return parsedSections
     .map((section, index) => {
-      const title = String(section?.title || "").trim();
-      const content = String(section?.content || "").trim();
+      const title = String(section?.title || `Section ${index + 1}`).trim();
 
-      if (!title && !content) {
-        return null;
+      // If subsections provided, normalize them
+      if (Array.isArray(section?.subsections)) {
+        const subs = section.subsections
+          .map((s, i) => {
+            const stitle = String(s?.title || `${title} - ${i + 1}`).trim();
+            const scontent = String(s?.content || "").trim();
+            if (!stitle && !scontent) return null;
+            return {
+              title: stitle,
+              content: scontent || "<p>No content provided.</p>",
+              ordering: typeof s?.ordering !== 'undefined' ? Number(s.ordering) : null,
+            };
+          })
+          .filter(Boolean);
+
+        return {
+          title,
+          ordering: typeof section?.ordering !== 'undefined' ? Number(section.ordering) : null,
+          subsections: subs,
+        };
       }
 
+      // Legacy single-content section
+      const content = String(section?.content || "").trim();
+
       return {
-        title: title || `Section ${index + 1}`,
-        content: content || "<p>No content provided.</p>",
+        title,
+        ordering: typeof section?.ordering !== 'undefined' ? Number(section.ordering) : null,
+        subsections: [
+          {
+            title,
+            content: content || "<p>No content provided.</p>",
+            ordering: null,
+          },
+        ],
       };
     })
     .filter(Boolean);
 }
 
-function mapSectionRow(sectionRow) {
-  return {
-    id: `section-${sectionRow.MaterialID}`,
-    materialId: sectionRow.MaterialID,
-    title: sectionRow.Title || sectionRow.Chapter || "Section",
-    content: sectionRow.ContentText || "",
-  };
+function mapSectionRowsToStructure(rows) {
+  // rows: flattened rows from JOIN of Sections and Subsections
+  const sectionsMap = new Map();
+
+  for (const r of rows) {
+    const sid = r.SectionID;
+
+    if (!sectionsMap.has(sid)) {
+      sectionsMap.set(sid, {
+        id: `section-${sid}`,
+        sectionId: sid,
+        title: r.SectionTitle,
+        ordering: r.SectionOrdering,
+        subsections: [],
+      });
+    }
+
+    if (r.SubsectionID) {
+      sectionsMap.get(sid).subsections.push({
+        id: `subsection-${r.SubsectionID}`,
+        subsectionId: r.SubsectionID,
+        title: r.SubTitle,
+        contentType: r.ContentType,
+        content: r.ContentText,
+        ordering: r.SubOrdering,
+      });
+    }
+  }
+
+  // Return ordered array
+  return Array.from(sectionsMap.values()).sort((a, b) => (a.ordering || 0) - (b.ordering || 0));
 }
 
 async function readModuleById(moduleId) {
@@ -75,13 +128,23 @@ async function readModuleById(moduleId) {
 
   const moduleRow = moduleRows[0];
 
-  const [sectionRows] = await query(
-    `SELECT MaterialID, Chapter, Title, ContentText
-       FROM LearningMaterials
-      WHERE ModuleID = ?
-      ORDER BY MaterialID ASC`,
+  const [rows] = await query(
+    `SELECT s.SectionID,
+            s.Title AS SectionTitle,
+            s.Ordering AS SectionOrdering,
+            sc.SubsectionID,
+            sc.Title AS SubTitle,
+            sc.ContentType,
+            sc.ContentText,
+            sc.Ordering AS SubOrdering
+       FROM Sections s
+       LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
+      WHERE s.ModuleID = ?
+      ORDER BY s.Ordering ASC, sc.Ordering ASC`,
     [moduleId]
   );
+
+  const sections = mapSectionRowsToStructure(rows);
 
   return {
     moduleId: moduleRow.ModuleID,
@@ -89,8 +152,8 @@ async function readModuleById(moduleId) {
     qualificationId: moduleRow.QualificationID,
     title: moduleRow.ModuleTitle,
     moduleImageUrl: resolveModuleCoverImage(moduleRow.ModuleID, moduleRow.CoverImageUrl),
-    sections: sectionRows.map((sectionRow) => mapSectionRow(sectionRow)),
-    sectionCount: sectionRows.length,
+    sections,
+    sectionCount: sections.length,
   };
 }
 
@@ -106,10 +169,11 @@ async function listModules(req, res) {
               m.QualificationID,
               m.ModuleTitle,
               meta.CoverImageUrl,
-              COUNT(lm.MaterialID) AS SectionCount
+              COUNT(sc.SubsectionID) AS SectionCount
          FROM Modules m
          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
-         LEFT JOIN LearningMaterials lm ON lm.ModuleID = m.ModuleID
+         LEFT JOIN Sections s ON s.ModuleID = m.ModuleID
+         LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
         GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, meta.CoverImageUrl
         ORDER BY m.ModuleID DESC`
     );
@@ -235,12 +299,12 @@ async function createModule(req, res) {
     });
   }
 
-  if (sections.length === 0) {
-    return res.status(400).json({
-      success: false,
-      message: "At least one section is required.",
-    });
-  }
+    if (sections.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one section is required.",
+      });
+    }
 
   let connection;
 
@@ -279,17 +343,39 @@ async function createModule(req, res) {
       [moduleId, moduleImageUrl || null]
     );
 
+    // Insert sections and subsections
+    let sectionOrderCounter = 0;
     for (const section of sections) {
-      await connection.execute(
-        `INSERT INTO LearningMaterials (
-          ModuleID,
-          Chapter,
-          Title,
-          ContentType,
-          ContentText
-        ) VALUES (?, ?, ?, 'html', ?)`,
-        [moduleId, section.title, section.title, section.content]
+      sectionOrderCounter += 1;
+      const sectionOrdering = typeof section.ordering === 'number' && !Number.isNaN(section.ordering)
+        ? section.ordering
+        : sectionOrderCounter;
+
+      const [secInsert] = await connection.execute(
+        "INSERT INTO Sections (ModuleID, Title, Ordering) VALUES (?, ?, ?)",
+        [moduleId, section.title, sectionOrdering]
       );
+
+      const sectionId = secInsert.insertId;
+
+      let subOrderCounter = 0;
+      for (const sub of (section.subsections || [])) {
+        subOrderCounter += 1;
+        const subOrdering = typeof sub.ordering === 'number' && !Number.isNaN(sub.ordering)
+          ? sub.ordering
+          : subOrderCounter;
+
+        await connection.execute(
+          `INSERT INTO Subsections (
+            SectionID,
+            Title,
+            ContentType,
+            ContentText,
+            Ordering
+          ) VALUES (?, ?, 'html', ?, ?)`,
+          [sectionId, sub.title, sub.content || '<p>No content provided.</p>', subOrdering]
+        );
+      }
     }
 
     await connection.commit();
@@ -374,19 +460,41 @@ async function updateModule(req, res) {
       [moduleId, moduleImageUrl || null]
     );
 
-    await connection.execute("DELETE FROM LearningMaterials WHERE ModuleID = ?", [moduleId]);
+    // Remove existing sections/subsections for module and recreate
+    await connection.execute("DELETE FROM Sections WHERE ModuleID = ?", [moduleId]);
 
+    let sectionOrderCounter2 = 0;
     for (const section of sections) {
-      await connection.execute(
-        `INSERT INTO LearningMaterials (
-          ModuleID,
-          Chapter,
-          Title,
-          ContentType,
-          ContentText
-        ) VALUES (?, ?, ?, 'html', ?)`,
-        [moduleId, section.title, section.title, section.content]
+      sectionOrderCounter2 += 1;
+      const sectionOrdering = typeof section.ordering === 'number' && !Number.isNaN(section.ordering)
+        ? section.ordering
+        : sectionOrderCounter2;
+
+      const [secInsert] = await connection.execute(
+        "INSERT INTO Sections (ModuleID, Title, Ordering) VALUES (?, ?, ?)",
+        [moduleId, section.title, sectionOrdering]
       );
+
+      const sectionId = secInsert.insertId;
+
+      let subOrderCounter2 = 0;
+      for (const sub of (section.subsections || [])) {
+        subOrderCounter2 += 1;
+        const subOrdering = typeof sub.ordering === 'number' && !Number.isNaN(sub.ordering)
+          ? sub.ordering
+          : subOrderCounter2;
+
+        await connection.execute(
+          `INSERT INTO Subsections (
+            SectionID,
+            Title,
+            ContentType,
+            ContentText,
+            Ordering
+          ) VALUES (?, ?, 'html', ?, ?)`,
+          [sectionId, sub.title, sub.content || '<p>No content provided.</p>', subOrdering]
+        );
+      }
     }
 
     await connection.commit();

@@ -71,9 +71,11 @@ async function getQualificationProgress(userId, qualificationId) {
     // For each module, check completion and assessment pass status
     const moduleProgress = [];
     for (const module of modules) {
-      // Check if all materials in module are completed
+      // Check if module has subsections (materials)
       const [materials] = await query(
-        "SELECT MaterialID FROM LearningMaterials WHERE ModuleID = ? LIMIT 1",
+        `SELECT SubsectionID FROM Subsections WHERE SectionID IN (
+           SELECT SectionID FROM Sections WHERE ModuleID = ?
+         ) LIMIT 1`,
         [module.ModuleID]
       );
 
@@ -90,15 +92,27 @@ async function getQualificationProgress(userId, qualificationId) {
         });
       } else {
         const [completedMaterials] = await query(
-          `SELECT COUNT(DISTINCT mp.MaterialID) as completed
+          `SELECT COUNT(DISTINCT mp.SubsectionID) as completed
            FROM MaterialProgress mp
            WHERE mp.UserID = ? AND mp.IsCompleted = 1
-           AND mp.MaterialID IN (SELECT MaterialID FROM LearningMaterials WHERE ModuleID = ?)`,
+           AND mp.SubsectionID IN (
+             SELECT SubsectionID FROM Subsections WHERE SectionID IN (
+               SELECT SectionID FROM Sections WHERE ModuleID = ?
+             )
+           )`,
           [userId, module.ModuleID]
         );
 
         const completed = completedMaterials[0]?.completed || 0;
-        const total = materials.length;
+
+        const [totalCountRows] = await query(
+          `SELECT COUNT(1) as total FROM Subsections WHERE SectionID IN (
+             SELECT SectionID FROM Sections WHERE ModuleID = ?
+           )`,
+          [module.ModuleID]
+        );
+
+        const total = totalCountRows[0]?.total || 0;
 
         // Check if user has passed assessment for this module
         const [assessmentPass] = await query(

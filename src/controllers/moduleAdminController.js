@@ -114,9 +114,12 @@ async function readModuleById(moduleId) {
     `SELECT m.ModuleID,
             m.QualificationID,
             m.ModuleTitle,
+            m.ModuleTypeID,
+            mt.TypeName,
             meta.CoverImageUrl
        FROM Modules m
        LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
+       LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
       WHERE m.ModuleID = ?
       LIMIT 1`,
     [moduleId]
@@ -151,6 +154,8 @@ async function readModuleById(moduleId) {
     id: `module-${moduleRow.ModuleID}`,
     qualificationId: moduleRow.QualificationID,
     title: moduleRow.ModuleTitle,
+    moduleTypeId: moduleRow.ModuleTypeID,
+    moduleType: moduleRow.TypeName || 'General Modules',
     moduleImageUrl: resolveModuleCoverImage(moduleRow.ModuleID, moduleRow.CoverImageUrl),
     sections,
     sectionCount: sections.length,
@@ -168,13 +173,17 @@ async function listModules(req, res) {
       `SELECT m.ModuleID,
               m.QualificationID,
               m.ModuleTitle,
+              m.ModuleTypeID,
+              mt.TypeName,
               meta.CoverImageUrl,
               COUNT(sc.SubsectionID) AS SectionCount
          FROM Modules m
          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
          LEFT JOIN Sections s ON s.ModuleID = m.ModuleID
          LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
-        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, meta.CoverImageUrl
+         LEFT JOIN LearningMaterials lm ON lm.ModuleID = m.ModuleID
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, mt.TypeName, meta.CoverImageUrl
         ORDER BY m.ModuleID DESC`
     );
 
@@ -183,6 +192,8 @@ async function listModules(req, res) {
       id: `module-${row.ModuleID}`,
       qualificationId: row.QualificationID,
       title: row.ModuleTitle,
+      moduleTypeId: row.ModuleTypeID,
+      moduleType: row.TypeName || 'Theory',
       moduleImageUrl: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
       sectionCount: Number(row.SectionCount || 0),
     }));
@@ -278,6 +289,7 @@ async function createModule(req, res) {
   const title = String(req.body.title || "").trim();
   const moduleImageUrl = normalizeModuleCoverImageUrl(req.body.moduleImageUrl);
   const requestedQualificationId = Number.parseInt(req.body.qualificationId, 10);
+  const requestedModuleTypeId = Number.parseInt(req.body.moduleTypeId, 10);
   const sections = normalizeSectionsInput(req.body.sections);
 
   // Debug logging to verify incoming sections payload
@@ -331,9 +343,21 @@ async function createModule(req, res) {
       });
     }
 
+    // Validate ModuleType if provided
+    let moduleTypeId = 1; // Default to 'Theory'
+    if (Number.isFinite(requestedModuleTypeId) && requestedModuleTypeId > 0) {
+      const [typeRows] = await connection.execute(
+        "SELECT ModuleTypeID FROM ModuleTypes WHERE ModuleTypeID = ? LIMIT 1",
+        [requestedModuleTypeId]
+      );
+      if (typeRows.length > 0) {
+        moduleTypeId = requestedModuleTypeId;
+      }
+    }
+
     const [moduleInsert] = await connection.execute(
-      "INSERT INTO Modules (QualificationID, ModuleTitle) VALUES (?, ?)",
-      [qualificationId, title]
+      "INSERT INTO Modules (QualificationID, ModuleTitle, ModuleTypeID) VALUES (?, ?, ?)",
+      [qualificationId, title, moduleTypeId]
     );
 
     const moduleId = moduleInsert.insertId;
@@ -411,6 +435,7 @@ async function updateModule(req, res) {
   const { moduleId } = req.params;
   const title = String(req.body.title || "").trim();
   const moduleImageUrl = normalizeModuleCoverImageUrl(req.body.moduleImageUrl);
+  const requestedModuleTypeId = Number.parseInt(req.body.moduleTypeId, 10);
   const sections = normalizeSectionsInput(req.body.sections);
 
   if (!title) {
@@ -448,9 +473,21 @@ async function updateModule(req, res) {
       });
     }
 
+    // Validate and get current moduleTypeId
+    let moduleTypeId = 1; // Default
+    if (Number.isFinite(requestedModuleTypeId) && requestedModuleTypeId > 0) {
+      const [typeRows] = await connection.execute(
+        "SELECT ModuleTypeID FROM ModuleTypes WHERE ModuleTypeID = ? LIMIT 1",
+        [requestedModuleTypeId]
+      );
+      if (typeRows.length > 0) {
+        moduleTypeId = requestedModuleTypeId;
+      }
+    }
+
     await connection.execute(
-      "UPDATE Modules SET ModuleTitle = ? WHERE ModuleID = ?",
-      [title, moduleId]
+      "UPDATE Modules SET ModuleTitle = ?, ModuleTypeID = ? WHERE ModuleID = ?",
+      [title, moduleTypeId, moduleId]
     );
 
     await connection.execute(
@@ -552,6 +589,36 @@ async function deleteModule(req, res) {
   }
 }
 
+/**
+ * Admin: get all available module types.
+ */
+async function getModuleTypes(req, res) {
+  try {
+    const [rows] = await query(
+      `SELECT ModuleTypeID, TypeName, Description
+         FROM ModuleTypes
+        ORDER BY ModuleTypeID ASC`
+    );
+
+    const data = rows.map((row) => ({
+      moduleTypeId: row.ModuleTypeID,
+      typeName: row.TypeName,
+      description: row.Description || "",
+    }));
+
+    return res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Get module types error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch module types.",
+    });
+  }
+}
+
 module.exports = {
   listModules,
   getModuleById,
@@ -559,4 +626,5 @@ module.exports = {
   createModule,
   updateModule,
   deleteModule,
+  getModuleTypes,
 };

@@ -1,0 +1,9 @@
+[Unit]
+Description=Innopapp DB backup service
+After=network.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/innopapp
+ExecStart=/opt/innopapp/scripts/backup_mysql.sh
+User=root

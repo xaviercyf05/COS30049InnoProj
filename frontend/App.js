@@ -64,6 +64,64 @@ const SESSION_STORAGE_KEYS = [
 const GENERAL_MODULE_COUNT = 1;
 const PARK_SPECIFIC_MODULE_COUNT = 5;
 const ON_SITE_MODULE_COUNT = 5;
+const MODULE_TYPE_OPTIONS = [
+	{ value: 'general', label: 'General' },
+	{ value: 'park-specific', label: 'Total Protected Area (TPA) Modules' },
+	{ value: 'on-site', label: 'On Site Training Modules' },
+];
+
+function normalizeModuleType(value, fallback = 'general') {
+	const normalized = String(value || '').trim().toLowerCase();
+
+	if (normalized === 'general') {
+		return 'general';
+	}
+
+	if (
+		normalized === 'park-specific' ||
+		normalized === 'park_specific' ||
+		normalized === 'tpa' ||
+		normalized === 'total protected area'
+	) {
+		return 'park-specific';
+	}
+
+	if (
+		normalized === 'on-site' ||
+		normalized === 'onsite' ||
+		normalized === 'on_site' ||
+		normalized === 'on site training'
+	) {
+		return 'on-site';
+	}
+
+	return fallback;
+}
+
+function groupModulesByType(modules) {
+	const grouped = {
+		general: [],
+		'park-specific': [],
+		'on-site': [],
+	};
+
+	if (!Array.isArray(modules)) {
+		return grouped;
+	}
+
+	modules.forEach((module, index) => {
+		const fallbackType = resolveModuleStageByIndex(index);
+		const normalizedType = normalizeModuleType(
+			module?.moduleType || module?.type || module?.module_type || module?.category,
+			fallbackType
+		);
+		if (grouped[normalizedType]) {
+			grouped[normalizedType].push(module);
+		}
+	});
+
+	return grouped;
+}
 
 function resolveModuleStageByIndex(index) {
 	if (index < GENERAL_MODULE_COUNT) {
@@ -94,15 +152,28 @@ function buildProgressionModules(modules, isAdmin) {
 		return [];
 	}
 
-	const generalModule = modules[0] || null;
-	const parkSpecificModules = modules.slice(
-		GENERAL_MODULE_COUNT,
-		GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT
+	const generalModules = modules.filter(
+		(module, index) =>
+			normalizeModuleType(
+				module?.moduleType || module?.type || module?.module_type || module?.category,
+				resolveModuleStageByIndex(index)
+			) === 'general'
 	);
-	const onSiteModules = modules.slice(
-		GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT,
-		GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT + ON_SITE_MODULE_COUNT
+	const parkSpecificModules = modules.filter(
+		(module, index) =>
+			normalizeModuleType(
+				module?.moduleType || module?.type || module?.module_type || module?.category,
+				resolveModuleStageByIndex(index)
+			) === 'park-specific'
 	);
+	const onSiteModules = modules.filter(
+		(module, index) =>
+			normalizeModuleType(
+				module?.moduleType || module?.type || module?.module_type || module?.category,
+				resolveModuleStageByIndex(index)
+			) === 'on-site'
+	);
+	const generalModule = generalModules[0] || null;
 	const passedModuleIds = new Set(
 		modules
 			.filter((module) => module.assessmentPassed)
@@ -110,7 +181,10 @@ function buildProgressionModules(modules, isAdmin) {
 	);
 
 	return modules.map((module, index) => {
-		const stage = resolveModuleStageByIndex(index);
+		const stage = normalizeModuleType(
+			module?.moduleType || module?.type || module?.module_type || module?.category,
+			resolveModuleStageByIndex(index)
+		);
 		let prerequisiteModuleId = null;
 		let unlocked = true;
 		let lockReason = '';
@@ -124,7 +198,9 @@ function buildProgressionModules(modules, isAdmin) {
 		}
 
 		if (stage === 'on-site') {
-			const trackIndex = index - (GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT);
+			const trackIndex = onSiteModules.findIndex(
+				(onSiteModule) => String(onSiteModule.moduleId) === String(module.moduleId)
+			);
 			prerequisiteModuleId = parkSpecificModules[trackIndex]?.moduleId ?? null;
 			unlocked = !prerequisiteModuleId || passedModuleIds.has(String(prerequisiteModuleId));
 			lockReason = unlocked
@@ -142,9 +218,13 @@ function buildProgressionModules(modules, isAdmin) {
 			stage,
 			trackIndex:
 				stage === 'park-specific'
-					? index - GENERAL_MODULE_COUNT
+					? parkSpecificModules.findIndex(
+						(parkModule) => String(parkModule.moduleId) === String(module.moduleId)
+					)
 					: stage === 'on-site'
-						? index - (GENERAL_MODULE_COUNT + PARK_SPECIFIC_MODULE_COUNT)
+						? onSiteModules.findIndex(
+							(onSiteModule) => String(onSiteModule.moduleId) === String(module.moduleId)
+						)
 						: null,
 			unlocked,
 			lockReason,
@@ -297,6 +377,10 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 					id: String(module.moduleId || index + 1),
 					moduleId: module.moduleId,
 					title: module.title || `Module ${index + 1}`,
+					moduleType: normalizeModuleType(
+						module.moduleType || module.type || module.category,
+						resolveModuleStageByIndex(index)
+					),
 					image: resolveApiAssetUri(module.image) || module.image,
 					progressPercent: Number(module.progressPercent || 0),
 				}));
@@ -456,6 +540,98 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 	const displayedNotifications = showAllNotifications
 		? notifications
 		: notifications.slice(0, 3);
+	const modulesByType = groupModulesByType(userModules);
+
+	const renderModuleCard = (module) => {
+		return (
+			<TouchableOpacity
+				key={module.id}
+				onPress={() => {
+					if (!module.unlocked) {
+						Alert.alert('Module Locked', module.lockReason || 'Complete prerequisite modules first.');
+						return;
+					}
+
+					const moduleIndex = userModules.findIndex((item) => item.id === module.id);
+
+					navigation.navigate('Module', {
+						moduleName: module.title,
+						moduleId: module.moduleId,
+						moduleOrder: moduleIndex + 1,
+						totalModules: userModules.length,
+						moduleProgressPercent: module.progressPercent,
+						moduleStage: module.stage,
+						moduleTrackIndex: module.trackIndex,
+						progressionUnlocked: module.unlocked,
+						progressionLockReason: module.lockReason,
+						prerequisiteModuleId: module.prerequisiteModuleId,
+					});
+				}}
+				style={[styles.cardWrapper, !module.unlocked && styles.cardWrapperLocked]}
+			>
+				<ImageBackground
+					source={{ uri: module.image }}
+					style={styles.card}
+					imageStyle={{ borderRadius: 20 }}
+				>
+					<View style={styles.overlay} />
+					{!module.unlocked && (
+						<View style={styles.lockBadge}>
+							<Text style={styles.lockBadgeText}>Locked</Text>
+						</View>
+					)}
+					<Text style={styles.cardTitle}>{module.title}</Text>
+					{!module.unlocked && module.lockReason ? (
+						<Text style={styles.lockReasonText}>{module.lockReason}</Text>
+					) : null}
+
+					<View style={styles.progressBar}>
+						<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
+						<Text style={styles.progressText}>{module.progressPercent}%</Text>
+					</View>
+				</ImageBackground>
+			</TouchableOpacity>
+		);
+	};
+
+	const renderModuleGroups = () => {
+		if (modulesLoading) {
+			return (
+				<View style={styles.modulesStatusCard}>
+					<ActivityIndicator size="small" color="#2E6B4D" />
+					<Text style={styles.modulesStatusText}>Loading modules...</Text>
+				</View>
+			);
+		}
+
+		if (userModules.length === 0) {
+			return (
+				<View style={styles.modulesStatusCard}>
+					<Text style={styles.modulesStatusTitle}>No modules available yet</Text>
+					<Text style={styles.modulesStatusText}>
+						Your training modules will appear here after they are published.
+					</Text>
+				</View>
+			);
+		}
+
+		return MODULE_TYPE_OPTIONS.map((typeOption) => {
+			const typedModules = modulesByType[typeOption.value] || [];
+
+			if (typedModules.length === 0) {
+				return null;
+			}
+
+			return (
+				<View key={typeOption.value} style={styles.moduleTypeSection}>
+					<Text style={styles.moduleTypeTitle}>{typeOption.label}</Text>
+					<View style={styles.cardContainer}>
+						{typedModules.map((module) => renderModuleCard(module))}
+					</View>
+				</View>
+			);
+		});
+	};
 
 	if (profileLoading && !profile) {
 		return (
@@ -493,51 +669,7 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 					)}
 
 					<View style={styles.cardContainer}>
-						{modulesLoading ? (
-							<View style={styles.modulesStatusCard}>
-								<ActivityIndicator size="small" color="#2E6B4D" />
-								<Text style={styles.modulesStatusText}>Loading modules...</Text>
-							</View>
-						) : userModules.length === 0 ? (
-							<View style={styles.modulesStatusCard}>
-								<Text style={styles.modulesStatusTitle}>No modules available yet</Text>
-								<Text style={styles.modulesStatusText}>
-									Your training modules will appear here after they are published.
-								</Text>
-							</View>
-						) : (
-							userModules.map((module) => (
-								<TouchableOpacity
-									key={module.id}
-									onPress={() => {
-										const moduleIndex = userModules.findIndex((item) => item.id === module.id);
-
-										navigation.navigate('Module', {
-											moduleName: module.title,
-											moduleId: module.moduleId,
-											moduleOrder: moduleIndex + 1,
-											totalModules: userModules.length,
-											moduleProgressPercent: module.progressPercent,
-										});
-									}}
-									style={styles.cardWrapper}
-								>
-									<ImageBackground
-										source={{ uri: module.image }}
-										style={styles.card}
-										imageStyle={{ borderRadius: 20 }}
-									>
-										<View style={styles.overlay} />
-										<Text style={styles.cardTitle}>{module.title}</Text>
-
-										<View style={styles.progressBar}>
-											<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
-											<Text style={styles.progressText}>{module.progressPercent}%</Text>
-										</View>
-									</ImageBackground>
-								</TouchableOpacity>
-							))
-						)}
+						{renderModuleGroups()}
 					</View>
 				</ScrollView>
 			</View>
@@ -765,69 +897,7 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 							)}
 
 							<View style={styles.cardContainer}>
-				{modulesLoading ? (
-					<View style={styles.modulesStatusCard}>
-						<ActivityIndicator size="small" color="#2E6B4D" />
-						<Text style={styles.modulesStatusText}>Loading modules...</Text>
-					</View>
-				) : userModules.length === 0 ? (
-					<View style={styles.modulesStatusCard}>
-						<Text style={styles.modulesStatusTitle}>No modules available yet</Text>
-						<Text style={styles.modulesStatusText}>
-							Your training modules will appear here after they are published.
-						</Text>
-					</View>
-				) : (
-					userModules.map((module) => (
-						<TouchableOpacity
-							key={module.id}
-							onPress={() => {
-								if (!module.unlocked) {
-									Alert.alert('Module Locked', module.lockReason || 'Complete prerequisite modules first.');
-									return;
-								}
-
-								const moduleIndex = userModules.findIndex((item) => item.id === module.id);
-
-								navigation.navigate('Module', {
-									moduleName: module.title,
-									moduleId: module.moduleId,
-									moduleOrder: moduleIndex + 1,
-									totalModules: userModules.length,
-									moduleProgressPercent: module.progressPercent,
-									moduleStage: module.stage,
-									moduleTrackIndex: module.trackIndex,
-									progressionUnlocked: module.unlocked,
-									progressionLockReason: module.lockReason,
-									prerequisiteModuleId: module.prerequisiteModuleId,
-								});
-							}}
-							style={[styles.cardWrapper, !module.unlocked && styles.cardWrapperLocked]}
-						>
-							<ImageBackground
-								source={{ uri: module.image }}
-								style={styles.card}
-								imageStyle={{ borderRadius: 20 }}
-							>
-								<View style={styles.overlay} />
-								{!module.unlocked && (
-									<View style={styles.lockBadge}>
-										<Text style={styles.lockBadgeText}>Locked</Text>
-									</View>
-								)}
-								<Text style={styles.cardTitle}>{module.title}</Text>
-								{!module.unlocked && module.lockReason ? (
-									<Text style={styles.lockReasonText}>{module.lockReason}</Text>
-								) : null}
-
-								<View style={styles.progressBar}>
-									<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
-									<Text style={styles.progressText}>{module.progressPercent}%</Text>
-								</View>
-							</ImageBackground>
-						</TouchableOpacity>
-					))
-					)}
+								{renderModuleGroups()}
 					</View>
 					</ScrollView>
 					</View>
@@ -1337,6 +1407,18 @@ const styles = StyleSheet.create({
 		flexWrap: 'wrap',
 		paddingHorizontal: 10,
 		zIndex: 1,
+	},
+	moduleTypeSection: {
+		width: '100%',
+		marginBottom: 6,
+	},
+	moduleTypeTitle: {
+		fontSize: 16,
+		fontWeight: '800',
+		color: '#274334',
+		marginLeft: 10,
+		marginBottom: 2,
+		marginTop: 10,
 	},
 	modulesStatusCard: {
 		width: '100%',

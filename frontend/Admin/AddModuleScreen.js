@@ -26,6 +26,39 @@ const Editor =
     : require('./RichEditor').default;
 
 const PLACEHOLDER_COLOR = '#A8ADA3';
+const MODULE_TYPE_OPTIONS = [
+  { value: 'general', label: 'General' },
+  { value: 'park-specific', label: 'Total Protected Area (TPA) Modules' },
+  { value: 'on-site', label: 'On Site Training Modules' },
+];
+
+function normalizeModuleType(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (normalized === 'general') {
+    return 'general';
+  }
+
+  if (
+    normalized === 'park-specific' ||
+    normalized === 'park_specific' ||
+    normalized === 'tpa' ||
+    normalized === 'total protected area'
+  ) {
+    return 'park-specific';
+  }
+
+  if (
+    normalized === 'on-site' ||
+    normalized === 'onsite' ||
+    normalized === 'on_site' ||
+    normalized === 'on site training'
+  ) {
+    return 'on-site';
+  }
+
+  return 'general';
+}
 
 function createId() {
   return `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
@@ -33,6 +66,7 @@ function createId() {
 
 function AddModuleScreen({ navigation }) {
   const [moduleTitle, setModuleTitle] = useState('');
+  const [moduleType, setModuleType] = useState('general');
   const [moduleImageUrl, setModuleImageUrl] = useState('');
   const [moduleLocalImageUri, setModuleLocalImageUri] = useState('');
   const [moduleLocalImageAsset, setModuleLocalImageAsset] = useState(null);
@@ -314,10 +348,15 @@ function AddModuleScreen({ navigation }) {
         console.debug('AddModuleScreen: normalizedSections', normalizedSections);
       }
 
+      const normalizedType = normalizeModuleType(moduleType);
+
       await requestProfileApi('/api/v1/admin/modules', token, {
         method: 'POST',
         body: {
           title: moduleTitle.trim(),
+          moduleType: normalizedType,
+          type: normalizedType,
+          module_type: normalizedType,
           moduleImageUrl: normalizedModuleImageUrl,
           sections: normalizedSections,
         },
@@ -370,6 +409,26 @@ function AddModuleScreen({ navigation }) {
           onChangeText={setModuleTitle}
           style={styles.moduleInput}
         />
+
+        <View style={styles.typeSection}>
+          <Text style={styles.typeLabel}>Module Type</Text>
+          <View style={styles.typeOptionsRow}>
+            {MODULE_TYPE_OPTIONS.map((option) => {
+              const isActive = moduleType === option.value;
+              return (
+                <TouchableOpacity
+                  key={option.value}
+                  style={[styles.typeOptionButton, isActive && styles.typeOptionButtonActive]}
+                  onPress={() => setModuleType(option.value)}
+                >
+                  <Text style={[styles.typeOptionText, isActive && styles.typeOptionTextActive]}>
+                    {option.label}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+        </View>
 
         <View style={styles.imageSection}>
           <Text style={styles.imageLabel}>Module Cover Image</Text>
@@ -514,6 +573,41 @@ const styles = StyleSheet.create({
     marginBottom: 15,
     borderWidth: 1,
     borderColor: '#E6EAE0',
+  },
+  typeSection: {
+    marginBottom: 14,
+  },
+  typeLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4A5D23',
+    marginBottom: 8,
+  },
+  typeOptionsRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  typeOptionButton: {
+    backgroundColor: '#F3F6EE',
+    borderWidth: 1,
+    borderColor: '#DDE6D4',
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+  },
+  typeOptionButtonActive: {
+    backgroundColor: '#DCE8D2',
+    borderColor: '#8BAA77',
+  },
+  typeOptionText: {
+    color: '#35513F',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  typeOptionTextActive: {
+    color: '#1F3A2A',
+    fontWeight: '700',
   },
   imageSection: {
     marginBottom: 14,

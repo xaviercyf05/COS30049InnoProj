@@ -275,7 +275,6 @@ const styles = StyleSheet.create({
   },
   footerText: {
     position: 'absolute',
-    bottom: 12,
     color: COLORS.muted,
     fontSize: 12,
   },

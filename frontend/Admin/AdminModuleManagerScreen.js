@@ -48,7 +48,15 @@ function makeDefaultSection() {
   return {
     id: createId('section'),
     title: '',
-    content: '',
+    ordering: null,
+    subsections: [
+      {
+        id: createId('subsection'),
+        title: '',
+        content: '',
+        ordering: null,
+      },
+    ],
   };
 }
 
@@ -57,30 +65,51 @@ function normalizeSection(section) {
     return makeDefaultSection();
   }
 
-  const composedFromSubsections = Array.isArray(section.subsections)
+  const normalizedSubsections = Array.isArray(section.subsections)
     ? section.subsections
         .map((subSection) => {
-          const subTitle = subSection?.title?.trim();
-          const subContent = subSection?.content?.trim();
+          const subTitle = String(subSection?.title || '').trim();
+          const subContent = String(subSection?.content || '').trim();
 
           if (!subTitle && !subContent) {
-            return '';
+            return null;
           }
 
-          if (subTitle && subContent) {
-            return `<h4>${subTitle}</h4>${subContent}`;
-          }
-
-          return subTitle || subContent || '';
+          return {
+            id: subSection?.id || createId('subsection'),
+            title: subTitle,
+            content: subContent,
+            ordering: typeof subSection?.ordering === 'number' ? subSection.ordering : null,
+          };
         })
         .filter(Boolean)
-        .join('<hr />')
-    : '';
+    : [];
+
+  const composedFromSubsections = normalizedSubsections
+    .map((subSection) => {
+      if (subSection.title && subSection.content) {
+        return `<h4>${subSection.title}</h4>${subSection.content}`;
+      }
+
+      return subSection.title || subSection.content || '';
+    })
+    .filter(Boolean)
+    .join('<hr />');
 
   return {
     id: section.id || createId('section'),
     title: section.title || '',
-    content: section.content || composedFromSubsections,
+    ordering: typeof section.ordering === 'number' ? section.ordering : null,
+    subsections: normalizedSubsections.length
+      ? normalizedSubsections
+      : [
+          {
+            id: createId('subsection'),
+            title: section.title || '',
+            content: section.content || composedFromSubsections,
+            ordering: null,
+          },
+        ],
   };
 }
 
@@ -316,14 +345,113 @@ function AdminModuleManagerScreen({ navigation, useSharedChrome = false }) {
     }));
   };
 
-  const updateSectionContent = (sectionId, contentValue) => {
+  const updateSectionOrdering = (sectionId, orderingValue) => {
     setDraft((previous) => ({
       ...previous,
       sections: previous.sections.map((section) =>
         section.id === sectionId
           ? {
               ...section,
-              content: contentValue,
+              ordering: orderingValue,
+            }
+          : section
+      ),
+    }));
+  };
+
+  const addSubsection = (sectionId) => {
+    setDraft((previous) => ({
+      ...previous,
+      sections: previous.sections.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              subsections: [
+                ...section.subsections,
+                {
+                  id: createId('subsection'),
+                  title: '',
+                  content: '',
+                  ordering: null,
+                },
+              ],
+            }
+          : section
+      ),
+    }));
+  };
+
+  const deleteSubsection = (sectionId, subsectionId) => {
+    setDraft((previous) => ({
+      ...previous,
+      sections: previous.sections.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              subsections: section.subsections.filter((subsection) => subsection.id !== subsectionId),
+            }
+          : section
+      ),
+    }));
+  };
+
+  const updateSubsectionTitle = (sectionId, subsectionId, titleValue) => {
+    setDraft((previous) => ({
+      ...previous,
+      sections: previous.sections.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              subsections: section.subsections.map((subsection) =>
+                subsection.id === subsectionId
+                  ? {
+                      ...subsection,
+                      title: titleValue,
+                    }
+                  : subsection
+              ),
+            }
+          : section
+      ),
+    }));
+  };
+
+  const updateSubsectionContent = (sectionId, subsectionId, contentValue) => {
+    setDraft((previous) => ({
+      ...previous,
+      sections: previous.sections.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              subsections: section.subsections.map((subsection) =>
+                subsection.id === subsectionId
+                  ? {
+                      ...subsection,
+                      content: contentValue,
+                    }
+                  : subsection
+              ),
+            }
+          : section
+      ),
+    }));
+  };
+
+  const updateSubsectionOrdering = (sectionId, subsectionId, orderingValue) => {
+    setDraft((previous) => ({
+      ...previous,
+      sections: previous.sections.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              subsections: section.subsections.map((subsection) =>
+                subsection.id === subsectionId
+                  ? {
+                      ...subsection,
+                      ordering: orderingValue,
+                    }
+                  : subsection
+              ),
             }
           : section
       ),
@@ -387,15 +515,50 @@ function AdminModuleManagerScreen({ navigation, useSharedChrome = false }) {
     const normalizedSections = draft.sections
       .map((section, index) => {
         const normalizedTitle = String(section.title || '').trim();
-        const normalizedContent = String(section.content || '').trim();
+        const normalizedOrdering =
+          section.ordering === null || section.ordering === undefined || section.ordering === ''
+            ? null
+            : Number.parseFloat(section.ordering);
 
-        if (!normalizedTitle && !normalizedContent) {
+        const normalizedSubsections = Array.isArray(section.subsections)
+          ? section.subsections
+              .map((subsection, subsectionIndex) => {
+                const normalizedSubTitle = String(subsection.title || '').trim();
+                const normalizedSubContent = String(subsection.content || '').trim();
+                const normalizedSubOrdering =
+                  subsection.ordering === null || subsection.ordering === undefined || subsection.ordering === ''
+                    ? null
+                    : Number.parseFloat(subsection.ordering);
+
+                if (!normalizedSubTitle && !normalizedSubContent) {
+                  return null;
+                }
+
+                return {
+                  title: normalizedSubTitle || `Subsection ${subsectionIndex + 1}`,
+                  content: normalizedSubContent || '<p>No content provided.</p>',
+                  ordering: Number.isFinite(normalizedSubOrdering) ? normalizedSubOrdering : null,
+                };
+              })
+              .filter(Boolean)
+          : [];
+
+        if (!normalizedTitle && normalizedSubsections.length === 0) {
           return null;
         }
 
         return {
           title: normalizedTitle || `Section ${index + 1}`,
-          content: normalizedContent || '<p>No content provided.</p>',
+          ordering: Number.isFinite(normalizedOrdering) ? normalizedOrdering : null,
+          subsections: normalizedSubsections.length
+            ? normalizedSubsections
+            : [
+                {
+                  title: normalizedTitle || `Subsection ${index + 1}`,
+                  content: '<p>No content provided.</p>',
+                  ordering: null,
+                },
+              ],
         };
       })
       .filter(Boolean);
@@ -626,12 +789,62 @@ function AdminModuleManagerScreen({ navigation, useSharedChrome = false }) {
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.editorBox}>
-                <Editor
-                  value={section.content}
-                  onChange={(html) => updateSectionContent(section.id, html)}
+              <View style={styles.orderingRow}>
+                <TextInput
+                  placeholder="Ordering e.g. 1.0"
+                  placeholderTextColor={PLACEHOLDER_COLOR}
+                  value={section.ordering === null || section.ordering === undefined ? '' : String(section.ordering)}
+                  onChangeText={(value) => updateSectionOrdering(section.id, value)}
+                  style={styles.orderingInput}
+                  keyboardType={Platform.OS === 'web' ? 'text' : 'decimal-pad'}
                 />
               </View>
+
+              <View style={styles.subsectionToolbar}>
+                <Text style={styles.subsectionToolbarTitle}>Subsections</Text>
+                <TouchableOpacity style={styles.subsectionAddButton} onPress={() => addSubsection(section.id)}>
+                  <Text style={styles.subsectionAddButtonText}>+ Add Subsection</Text>
+                </TouchableOpacity>
+              </View>
+
+              {section.subsections.map((subsection) => (
+                <View key={subsection.id} style={styles.subsectionBoxInner}>
+                  <View style={styles.subsectionHeaderRow}>
+                    <TextInput
+                      placeholder="Subsection Title"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={subsection.title}
+                      onChangeText={(value) => updateSubsectionTitle(section.id, subsection.id, value)}
+                      style={styles.subsectionTitleInput}
+                    />
+
+                    <TouchableOpacity
+                      style={styles.subsectionDeleteButton}
+                      onPress={() => deleteSubsection(section.id, subsection.id)}
+                    >
+                      <Text style={styles.deleteX}>X</Text>
+                    </TouchableOpacity>
+                  </View>
+
+                  <View style={styles.subsectionOrderingRow}>
+                    <TextInput
+                      placeholder="Ordering e.g. 1.1"
+                      placeholderTextColor={PLACEHOLDER_COLOR}
+                      value={subsection.ordering === null || subsection.ordering === undefined ? '' : String(subsection.ordering)}
+                      onChangeText={(value) => updateSubsectionOrdering(section.id, subsection.id, value)}
+                      style={styles.orderingInput}
+                      keyboardType={Platform.OS === 'web' ? 'text' : 'decimal-pad'}
+                    />
+                  </View>
+
+                  <View style={styles.editorBox}>
+                    <Editor
+                      value={subsection.content}
+                      onChange={(html) => updateSubsectionContent(section.id, subsection.id, html)}
+                    />
+                  </View>
+                </View>
+              ))}
             </View>
           ))}
 
@@ -906,6 +1119,71 @@ const styles = StyleSheet.create({
     borderColor: '#D9DED2',
     padding: 10,
     marginRight: 8,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  orderingRow: {
+    marginBottom: 12,
+  },
+  subsectionToolbar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  subsectionToolbarTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#4A5D23',
+  },
+  subsectionAddButton: {
+    backgroundColor: '#EAF2E3',
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  subsectionAddButtonText: {
+    color: '#2E6B4D',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  subsectionBoxInner: {
+    backgroundColor: '#FBFCF8',
+    borderWidth: 1,
+    borderColor: '#EEF2EA',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 12,
+  },
+  subsectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  subsectionTitleInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D9DED2',
+    padding: 10,
+    marginRight: 8,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  subsectionDeleteButton: {
+    width: 22,
+    height: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'transparent',
+  },
+  subsectionOrderingRow: {
+    marginBottom: 10,
+  },
+  orderingInput: {
+    borderWidth: 1,
+    borderColor: '#D9DED2',
+    padding: 10,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
   },

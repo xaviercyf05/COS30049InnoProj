@@ -212,13 +212,15 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
         }
 
         const formattedSections = materials.map((material, index) => {
-          const sectionTitle =
-            String(material.chapter || material.title || '').trim() || `Section ${index + 1}`;
-          const contentHtml = String(material.content || '').trim();
+          // Support both old LearningMaterials and new Subsections structure
+          const sectionPrefix = material.sectionTitle || material.chapter || '';
+          const subTitle = material.title || material.subTitle || '';
+          const combinedTitle = String(sectionPrefix ? `${sectionPrefix} — ${subTitle || ''}` : (subTitle || '')).trim() || `Section ${index + 1}`;
+          const contentHtml = String(material.content || material.contentHtml || '').trim();
 
           return {
             id: String(material.materialId || `section-${index + 1}`),
-            title: sectionTitle,
+            title: combinedTitle,
             contentHtml,
             contentText: stripHtmlContent(contentHtml),
           };

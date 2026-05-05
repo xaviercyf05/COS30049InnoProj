@@ -42,7 +42,10 @@ function AddModuleScreen({ navigation }) {
     {
       id: createId(),
       title: '',
-      content: '',
+      ordering: null,
+      subsections: [
+        { id: createId(), title: '', content: '', ordering: null },
+      ],
     },
   ]);
 
@@ -140,7 +143,7 @@ function AddModuleScreen({ navigation }) {
   const addSection = () => {
     setSections((previous) => [
       ...previous,
-      { id: createId(), title: '', content: '' },
+      { id: createId(), title: '', ordering: null, subsections: [{ id: createId(), title: '', content: '', ordering: null }] },
     ]);
   };
 
@@ -155,11 +158,49 @@ function AddModuleScreen({ navigation }) {
       )
     );
   };
+  const addSubsection = (sectionId) => {
+    setSections((previous) =>
+      previous.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              subsections: [
+                ...section.subsections,
+                { id: createId(), title: '', content: '', ordering: null },
+              ],
+            }
+          : section
+      )
+    );
+  };
 
-  const updateSectionContent = (sectionId, value) => {
+  const deleteSubsection = (sectionId, subId) => {
+    setSections((previous) =>
+      previous.map((section) =>
+        section.id === sectionId
+          ? { ...section, subsections: section.subsections.filter((s) => s.id !== subId) }
+          : section
+      )
+    );
+  };
+
+  const updateSubsectionTitle = (sectionId, subId, value) => {
+    setSections((previous) =>
+      previous.map((section) =>
+        section.id === sectionId
+          ? {
+              ...section,
+              subsections: section.subsections.map((s) => (s.id === subId ? { ...s, title: value } : s)),
+            }
+          : section
+      )
+    );
+  };
+
+  const updateSubsectionContent = (sectionId, subId, value) => {
     if (Platform.OS === 'web' && typeof console !== 'undefined') {
       try {
-        console.debug('AddModuleScreen.updateSectionContent', { sectionId, length: String(value || '').length });
+        console.debug('AddModuleScreen.updateSubsectionContent', { sectionId, subId, length: String(value || '').length });
       } catch (_e) {}
     }
 
@@ -168,7 +209,7 @@ function AddModuleScreen({ navigation }) {
         section.id === sectionId
           ? {
               ...section,
-              content: value,
+              subsections: section.subsections.map((s) => (s.id === subId ? { ...s, content: value } : s)),
             }
           : section
       )
@@ -226,15 +267,30 @@ function AddModuleScreen({ navigation }) {
     const normalizedSections = sections
       .map((section, index) => {
         const normalizedTitle = String(section.title || '').trim();
-        const normalizedContent = String(section.content || '').trim();
 
-        if (!normalizedTitle && !normalizedContent) {
-          return null;
-        }
+        const normalizedSubsections = Array.isArray(section.subsections)
+          ? section.subsections
+              .map((sub, si) => {
+                const stitle = String(sub.title || '').trim();
+                const scontent = String(sub.content || '').trim();
+
+                if (!stitle && !scontent) return null;
+
+                return {
+                  title: stitle || `Part ${si + 1}`,
+                  content: scontent || '<p>No content provided.</p>',
+                  ordering: typeof sub.ordering === 'number' ? sub.ordering : null,
+                };
+              })
+              .filter(Boolean)
+          : [];
+
+        if (!normalizedTitle && normalizedSubsections.length === 0) return null;
 
         return {
           title: normalizedTitle || `Section ${index + 1}`,
-          content: normalizedContent || '<p>No content provided.</p>',
+          ordering: typeof section.ordering === 'number' ? section.ordering : null,
+          subsections: normalizedSubsections.length ? normalizedSubsections : [{ title: normalizedTitle || `Section ${index + 1}`, content: '<p>No content provided.</p>', ordering: null }],
         };
       })
       .filter(Boolean);
@@ -372,12 +428,39 @@ function AddModuleScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            <View style={styles.editorBox}>
-              <Editor
-                value={section.content}
-                onChange={(html) => updateSectionContent(section.id, html)}
-              />
+            <View style={styles.subsectionsHeaderRow}>
+              <Text style={styles.subsectionsLabel}>Subsections</Text>
+              <TouchableOpacity style={styles.addSubBtn} onPress={() => addSubsection(section.id)}>
+                <Text style={styles.addSubText}>+ Add Subsection</Text>
+              </TouchableOpacity>
             </View>
+
+            {section.subsections.map((sub) => (
+              <View key={sub.id} style={styles.subsectionBox}>
+                <View style={styles.subsectionHeader}>
+                  <TextInput
+                    placeholder="Subsection Title"
+                    placeholderTextColor={PLACEHOLDER_COLOR}
+                    value={sub.title}
+                    onChangeText={(value) => updateSubsectionTitle(section.id, sub.id, value)}
+                    style={styles.subsectionTitleInput}
+                  />
+                  <TouchableOpacity
+                    style={styles.subsectionDeleteBtn}
+                    onPress={() => deleteSubsection(section.id, sub.id)}
+                  >
+                    <Text style={styles.deleteX}>X</Text>
+                  </TouchableOpacity>
+                </View>
+
+                <View style={styles.editorBox}>
+                  <Editor
+                    value={sub.content}
+                    onChange={(html) => updateSubsectionContent(section.id, sub.id, html)}
+                  />
+                </View>
+              </View>
+            ))}
           </View>
         ))}
 
@@ -523,6 +606,58 @@ const styles = StyleSheet.create({
     marginRight: 8,
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
+  },
+  subsectionsHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  subsectionsLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#4A5D23',
+  },
+  addSubBtn: {
+    backgroundColor: '#E6EFE0',
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+  },
+  addSubText: {
+    color: '#2E6B4D',
+    fontWeight: '600',
+  },
+  subsectionBox: {
+    backgroundColor: '#FBFFFA',
+    borderRadius: 8,
+    padding: 10,
+    marginBottom: 12,
+    borderWidth: 1,
+    borderColor: '#EEF3EA',
+  },
+  subsectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  subsectionTitleInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#D9DED2',
+    padding: 8,
+    marginRight: 8,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+  },
+  subsectionDeleteBtn: {
+    width: 22,
+    height: 22,
+    marginLeft: 8,
+    backgroundColor: 'transparent',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   deleteX: {
     fontSize: 14,

@@ -22,18 +22,21 @@ async function getDashboardModules(req, res) {
       `SELECT m.ModuleID,
               m.QualificationID,
               m.ModuleTitle,
+              m.ModuleTypeID,
+              mt.TypeName,
               meta.CoverImageUrl,
               COUNT(DISTINCT sc.SubsectionID) AS TotalMaterials,
               SUM(CASE WHEN mp.IsCompleted = 1 THEN 1 ELSE 0 END) AS CompletedMaterials
          FROM Modules m
          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
          LEFT JOIN Sections s ON s.ModuleID = m.ModuleID
          LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
          LEFT JOIN MaterialProgress mp
            ON mp.SubsectionID = sc.SubsectionID
           AND mp.UserID = ?
-        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, meta.CoverImageUrl
-        ORDER BY m.ModuleID ASC`,
+        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, mt.TypeName, meta.CoverImageUrl
+        ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC`,
       [userId]
     );
 
@@ -51,6 +54,8 @@ async function getDashboardModules(req, res) {
           moduleId: row.ModuleID,
           qualificationId: row.QualificationID,
           title: row.ModuleTitle,
+          moduleTypeId: row.ModuleTypeID,
+          moduleType: row.TypeName || "Unassigned",
           image: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
           progressPercent,
           totalMaterials,

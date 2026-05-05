@@ -14,6 +14,7 @@ function createModuleCoverImageUrl(fileName) {
 }
 
 async function resolveModuleTypeId(execute, requestedModuleTypeId, fallbackModuleTypeId = null) {
+  // Attempt to use requested type if provided and valid
   if (Number.isFinite(requestedModuleTypeId) && requestedModuleTypeId > 0) {
     const [typeRows] = await execute(
       "SELECT ModuleTypeID FROM ModuleTypes WHERE ModuleTypeID = ? LIMIT 1",
@@ -25,10 +26,12 @@ async function resolveModuleTypeId(execute, requestedModuleTypeId, fallbackModul
     }
   }
 
+  // Fall back to current module's type on update (to preserve existing type if not explicitly changed)
   if (Number.isFinite(fallbackModuleTypeId) && fallbackModuleTypeId > 0) {
     return fallbackModuleTypeId;
   }
 
+  // Default to first available type (no type prerequisites—any type can be created)
   const [defaultTypeRows] = await execute(
     "SELECT ModuleTypeID FROM ModuleTypes ORDER BY ModuleTypeID ASC LIMIT 1"
   );
@@ -307,6 +310,10 @@ async function uploadModuleCoverImage(req, res) {
 
 /**
  * Admin: create module and section content.
+ * 
+ * Note: moduleTypeId can be provided to create a module of any type directly.
+ * No type prerequisites exist—you can create "Total Protected Area Modules" 
+ * or "On-Site Training Modules" without creating "General Modules" first.
  */
 async function createModule(req, res) {
   const title = String(req.body.title || "").trim();
@@ -315,11 +322,13 @@ async function createModule(req, res) {
   const requestedModuleTypeId = Number.parseInt(req.body.moduleTypeId, 10);
   const sections = normalizeSectionsInput(req.body.sections);
 
-  // Debug logging to verify incoming sections payload
+  // Debug logging to verify incoming payload
   try {
     console.debug('createModule received', {
       title,
       moduleImageUrl,
+      requestedQualificationId,
+      requestedModuleTypeId,
       sectionsCount: Array.isArray(sections) ? sections.length : 0,
       firstSectionPreview: sections && sections[0] ? String(sections[0].content).slice(0, 120) : null,
     });
@@ -367,6 +376,8 @@ async function createModule(req, res) {
     }
 
     const moduleTypeId = await resolveModuleTypeId(connection.execute.bind(connection), requestedModuleTypeId);
+
+    console.debug('createModule resolved moduleTypeId:', { requestedModuleTypeId, resolvedModuleTypeId: moduleTypeId });
 
     const [moduleInsert] = await connection.execute(
       "INSERT INTO Modules (QualificationID, ModuleTitle, ModuleTypeID) VALUES (?, ?, ?)",

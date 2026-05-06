@@ -1,58 +1,75 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-
-const initialHistoryData = [
-  { id: 101, name: 'Bako National Park', location: 'Kuching Division', status: 'Motion sensor triggered', timestamp: '2026-04-29 09:12', resolved: false },
-  { id: 102, name: 'Similajau National Park', location: 'Bintulu Division', status: 'Perimeter vibration alert', timestamp: '2026-04-28 16:44', resolved: true },
-  { id: 103, name: 'Kubah National Park', location: 'Kuching Division', status: 'Thermal anomaly detected', timestamp: '2026-04-27 07:20', resolved: true },
-  { id: 104, name: 'Gunung Mulu National Park', location: 'Miri Division', status: 'After-hours movement at cave entrance', timestamp: '2026-04-26 23:05', resolved: false },
-  { id: 105, name: 'Maludam National Park', location: 'Betong Division', status: 'Water-level warning triggered', timestamp: '2026-04-25 11:36', resolved: true }
-];
+import { fetchAdminEvidenceAlerts } from './evidenceApi.js';
 
 export default function AlertHistory({ navigation }) {
-  const [alerts, setAlerts] = useState(initialHistoryData);
+  const [alerts, setAlerts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const totalAlerts = alerts.length;
-  const solvedAlerts = alerts.filter((item) => item.resolved).length;
-  const unsolvedAlerts = totalAlerts - solvedAlerts;
+  useEffect(() => {
+    let active = true;
 
-  const toggleSolved = (id) => {
-    setAlerts((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, resolved: !item.resolved } : item
-      )
-    );
-  };
+    (async () => {
+      const response = await fetchAdminEvidenceAlerts();
+
+      if (!active) {
+        return;
+      }
+
+      setAlerts(response.alerts);
+      setError(response.error || '');
+      setLoading(false);
+    })();
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text style={styles.title}>Alert Overview</Text>
-        <Text style={styles.subtitle}>Recorded alerts with solved and unsolved status</Text>
+        <Text style={styles.subtitle}>Live evidence records pulled from the database</Text>
       </View>
+
+      {loading ? (
+        <View style={styles.loadingCard}>
+          <Text style={styles.loadingTitle}>Loading evidence alerts</Text>
+          <Text style={styles.loadingText}>Refreshing the admin list from the backend.</Text>
+        </View>
+      ) : null}
+
+      {error ? (
+        <View style={styles.errorCard}>
+          <Text style={styles.errorTitle}>Unable to load evidence</Text>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
 
       <View style={styles.summaryGrid}>
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Total Alerts</Text>
-          <Text style={styles.summaryValue}>{totalAlerts}</Text>
+          <Text style={styles.summaryLabel}>Total Evidence</Text>
+          <Text style={styles.summaryValue}>{alerts.length}</Text>
         </View>
 
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Solved Alerts</Text>
-          <Text style={[styles.summaryValue, styles.summarySolved]}>{solvedAlerts}</Text>
+          <Text style={styles.summaryLabel}>With Coordinates</Text>
+          <Text style={[styles.summaryValue, styles.summarySolved]}>{alerts.filter((item) => item.latitude !== null && item.longitude !== null).length}</Text>
         </View>
 
         <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>Unsolved Alerts</Text>
-          <Text style={[styles.summaryValue, styles.summaryUnsolved]}>{unsolvedAlerts}</Text>
+          <Text style={styles.summaryLabel}>With Video</Text>
+          <Text style={[styles.summaryValue, styles.summaryUnsolved]}>{alerts.filter((item) => item.hasVideo).length}</Text>
         </View>
       </View>
 
-      {alerts.map(item => (
+      {alerts.map((item) => (
         <View key={item.id} style={styles.row}>
           <View style={styles.body}>
             <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.meta}>{item.timestamp} · {item.location}</Text>
+            <Text style={styles.meta}>{item.timestamp} · {item.location || 'Location unavailable'}</Text>
             <Text style={styles.status}>{item.status}</Text>
 
             <View style={styles.actionRow}>
@@ -62,24 +79,21 @@ export default function AlertHistory({ navigation }) {
               >
                 <Text style={styles.detailButtonText}>View Details</Text>
               </TouchableOpacity>
-
-              <TouchableOpacity
-                style={[styles.toggleButton, item.resolved ? styles.toggleButtonUnsolve : styles.toggleButtonSolve]}
-                onPress={() => toggleSolved(item.id)}
-              >
-                <Text style={styles.toggleButtonText}>
-                  {item.resolved ? 'Mark as Unsolved' : 'Mark as Solved'}
-                </Text>
-              </TouchableOpacity>
             </View>
           </View>
-          <View style={[styles.badge, item.resolved ? styles.badgeSolved : styles.badgeUnsolved]}>
-            <Text style={[styles.badgeText, item.resolved ? styles.badgeTextSolved : styles.badgeTextUnsolved]}>
-              {item.resolved ? 'Solved' : 'Unsolved'}
-            </Text>
+
+          <View style={styles.badge}>
+            <Text style={styles.badgeText}>{item.eventType || 'Evidence'}</Text>
           </View>
         </View>
       ))}
+
+      {!loading && alerts.length === 0 ? (
+        <View style={styles.emptyCard}>
+          <Text style={styles.emptyTitle}>No evidence records found</Text>
+          <Text style={styles.emptyText}>The backend returned an empty evidence list.</Text>
+        </View>
+      ) : null}
     </ScrollView>
   );
 }
@@ -90,6 +104,12 @@ const styles = StyleSheet.create({
   header: { marginBottom: 12 },
   title: { fontSize: 22, fontWeight: '800', color: '#243424' },
   subtitle: { marginTop: 6, color: '#6C7566' },
+  loadingCard: { backgroundColor: '#FFFFFF', borderRadius: 14, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: '#E8EBE1' },
+  loadingTitle: { color: '#243424', fontSize: 14, fontWeight: '800' },
+  loadingText: { marginTop: 4, color: '#687263', fontSize: 13 },
+  errorCard: { backgroundColor: '#FFF2F2', borderRadius: 14, padding: 12, marginBottom: 14, borderWidth: 1, borderColor: '#F4D8D8' },
+  errorTitle: { color: '#9E3A3A', fontSize: 14, fontWeight: '800' },
+  errorText: { marginTop: 4, color: '#9E3A3A', fontSize: 13 },
   summaryGrid: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -148,49 +168,28 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 12
   },
-  toggleButton: {
-    alignSelf: 'flex-start',
-    borderRadius: 999,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderWidth: 1
-  },
-  toggleButtonSolve: {
-    backgroundColor: '#EAF4EC',
-    borderColor: '#D1E6D7'
-  },
-  toggleButtonUnsolve: {
-    backgroundColor: '#FDF0F0',
-    borderColor: '#F2DCDC'
-  },
-  toggleButtonText: {
-    color: '#344734',
-    fontWeight: '700',
-    fontSize: 12
-  },
   badge: {
     marginLeft: 10,
     borderRadius: 999,
     paddingHorizontal: 10,
     paddingVertical: 6,
-    borderWidth: 1
-  },
-  badgeSolved: {
-    backgroundColor: '#EEF8F1',
-    borderColor: '#D8EEDB'
-  },
-  badgeUnsolved: {
-    backgroundColor: '#FDF0F0',
-    borderColor: '#F2DCDC'
+    borderWidth: 1,
+    backgroundColor: '#F4F7F1',
+    borderColor: '#DDE5D6'
   },
   badgeText: {
     fontSize: 12,
-    fontWeight: '800'
+    fontWeight: '800',
+    color: '#344734'
   },
-  badgeTextSolved: {
-    color: '#2F7D4A'
+  emptyCard: {
+    backgroundColor: '#FFFFFF',
+    borderRadius: 14,
+    padding: 14,
+    marginTop: 6,
+    borderWidth: 1,
+    borderColor: '#E8EBE1'
   },
-  badgeTextUnsolved: {
-    color: '#B04343'
-  }
+  emptyTitle: { color: '#243424', fontWeight: '800' },
+  emptyText: { marginTop: 4, color: '#687263', fontSize: 13 }
 });

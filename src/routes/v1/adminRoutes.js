@@ -564,6 +564,18 @@ router.post(
       .optional({ values: "falsy" })
       .isInt({ min: 0, max: 100 })
       .withMessage("Unlock threshold must be between 0 and 100."),
+    body("isValid")
+      .optional({ values: "falsy" })
+      .isBoolean()
+      .withMessage("isValid must be a boolean."),
+    body("expiryDate")
+      .optional({ values: "falsy" })
+      .isISO8601()
+      .withMessage("Expiry date must be a valid ISO8601 date."),
+    body("linkedModuleId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("Linked module ID must be a valid number."),
   ],
   validate,
   asyncHandler(badgeController.createBadge)
@@ -584,6 +596,18 @@ router.put(
       .optional({ values: "falsy" })
       .isInt({ min: 0, max: 100 })
       .withMessage("Unlock threshold must be between 0 and 100."),
+    body("isValid")
+      .optional({ values: "falsy" })
+      .isBoolean()
+      .withMessage("isValid must be a boolean."),
+    body("expiryDate")
+      .optional({ values: "falsy" })
+      .isISO8601()
+      .withMessage("Expiry date must be a valid ISO8601 date."),
+    body("linkedModuleId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("Linked module ID must be a valid number."),
   ],
   validate,
   asyncHandler(badgeController.updateBadge)

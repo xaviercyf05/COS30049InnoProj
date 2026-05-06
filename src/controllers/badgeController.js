@@ -69,6 +69,11 @@ function mapBadgeRow(badge, unlocked = false) {
     iconUrl: badge.IconUrl || DEFAULT_BADGE_ICON,
     unlocked,
     unlockThreshold: Number(badge.UnlockThreshold || 0),
+    isValid: badge.IsValid === undefined ? true : Number(badge.IsValid) === 1,
+    validity: badge.IsValid === undefined ? true : Number(badge.IsValid) === 1,
+    expiryDate: badge.ExpiryDate || null,
+    linkedModuleId: badge.LinkedModuleID || null,
+    linkedModuleID: badge.LinkedModuleID || null,
   };
 }
 
@@ -125,7 +130,7 @@ async function getAllBadges(req, res) {
     await ensureBadgeSchema();
 
     const [badges] = await query(
-      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold, IsActive
+      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold, IsActive, IsValid, ExpiryDate, LinkedModuleID
          FROM Badges
         ORDER BY BadgeID ASC`
     );
@@ -156,6 +161,9 @@ async function createBadge(req, res) {
     const name = String(req.body.name || req.body.badgeName || "").trim();
     const iconUrl = String(req.body.iconUrl || req.body.image || "").trim();
     const unlockThreshold = toNumberOrDefault(req.body.unlockThreshold, 0);
+    const isValid = req.body.isValid !== undefined ? (Number(req.body.isValid) === 1 ? 1 : 0) : 1;
+    const expiryDate = req.body.expiryDate || null;
+    const linkedModuleId = req.body.linkedModuleId || req.body.linkedModuleID || null;
 
     if (!name) {
       return res.status(400).json({
@@ -165,13 +173,13 @@ async function createBadge(req, res) {
     }
 
     const [insertResult] = await query(
-      `INSERT INTO Badges (BadgeName, IconUrl, UnlockThreshold, IsActive, CreatedBy)
-       VALUES (?, ?, ?, 1, ?)`,
-      [name, iconUrl || DEFAULT_BADGE_ICON, unlockThreshold, userId]
+      `INSERT INTO Badges (BadgeName, IconUrl, UnlockThreshold, IsActive, IsValid, ExpiryDate, LinkedModuleID, CreatedBy)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
+      [name, iconUrl || DEFAULT_BADGE_ICON, unlockThreshold, isValid, expiryDate, linkedModuleId, userId]
     );
 
     const [rows] = await query(
-      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold
+      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold, IsValid, ExpiryDate, LinkedModuleID
          FROM Badges
         WHERE BadgeID = ?
         LIMIT 1`,
@@ -203,6 +211,9 @@ async function updateBadge(req, res) {
     const name = String(req.body.name || req.body.badgeName || "").trim();
     const iconUrl = String(req.body.iconUrl || req.body.image || "").trim();
     const unlockThreshold = toNumberOrDefault(req.body.unlockThreshold, 0);
+    const isValid = req.body.isValid !== undefined ? (Number(req.body.isValid) === 1 ? 1 : 0) : 1;
+    const expiryDate = req.body.expiryDate || null;
+    const linkedModuleId = req.body.linkedModuleId || req.body.linkedModuleID || null;
 
     if (!name) {
       return res.status(400).json({
@@ -215,10 +226,13 @@ async function updateBadge(req, res) {
       `UPDATE Badges
           SET BadgeName = ?,
               IconUrl = ?,
-              UnlockThreshold = ?
+              UnlockThreshold = ?,
+              IsValid = ?,
+              ExpiryDate = ?,
+              LinkedModuleID = ?
         WHERE BadgeID = ?
           AND IsActive = 1`,
-      [name, iconUrl || DEFAULT_BADGE_ICON, unlockThreshold, badgeId]
+      [name, iconUrl || DEFAULT_BADGE_ICON, unlockThreshold, isValid, expiryDate, linkedModuleId, badgeId]
     );
 
     if (result.affectedRows === 0) {
@@ -229,7 +243,7 @@ async function updateBadge(req, res) {
     }
 
     const [rows] = await query(
-      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold
+      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold, IsValid, ExpiryDate, LinkedModuleID
          FROM Badges
         WHERE BadgeID = ?
         LIMIT 1`,

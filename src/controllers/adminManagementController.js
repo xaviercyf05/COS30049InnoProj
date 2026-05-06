@@ -61,10 +61,8 @@ function normaliseEvidenceRow(row) {
     "Unknown location";
   const parkLatitude = Number(row.ParkLatitude);
   const parkLongitude = Number(row.ParkLongitude);
-  const labelsLatitude = Number(getFirstMatchingValue(labels, ["latitude", "lat", "y"], null));
-  const labelsLongitude = Number(getFirstMatchingValue(labels, ["longitude", "lng", "lon", "x"], null));
-  const latitude = Number.isFinite(parkLatitude) ? parkLatitude : labelsLatitude;
-  const longitude = Number.isFinite(parkLongitude) ? parkLongitude : labelsLongitude;
+  const latitude = Number.isFinite(parkLatitude) ? parkLatitude : null;
+  const longitude = Number.isFinite(parkLongitude) ? parkLongitude : null;
   const resolved = Boolean(Number(row.Status));
   const unsolvedCount = Number(row.UnsolvedCount || 0);
   const status =
@@ -662,7 +660,20 @@ async function listEvidenceAlerts(req, res) {
               IFNULL(elu.UnsolvedCount, 0) AS UnsolvedCount
          FROM Evidence e
          LEFT JOIN Park p
-           ON LOWER(TRIM(e.Location)) = LOWER(TRIM(p.ParkName))
+           ON p.ParkID = (
+             SELECT p2.ParkID
+               FROM Park p2
+              WHERE LOWER(TRIM(p2.ParkName)) = LOWER(TRIM(e.Location))
+                 OR LOWER(TRIM(p2.ParkName)) LIKE CONCAT('%', LOWER(TRIM(e.Location)), '%')
+                 OR LOWER(TRIM(e.Location)) LIKE CONCAT('%', LOWER(TRIM(p2.ParkName)), '%')
+              ORDER BY CASE
+                         WHEN LOWER(TRIM(p2.ParkName)) = LOWER(TRIM(e.Location)) THEN 0
+                         WHEN LOWER(TRIM(p2.ParkName)) LIKE CONCAT(LOWER(TRIM(e.Location)), '%') THEN 1
+                         ELSE 2
+                       END,
+                       LENGTH(p2.ParkName)
+              LIMIT 1
+           )
          LEFT JOIN (
            SELECT LOWER(TRIM(Location)) AS LocationKey,
                   SUM(CASE WHEN Status = 0 THEN 1 ELSE 0 END) AS UnsolvedCount

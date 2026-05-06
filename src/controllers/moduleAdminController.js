@@ -141,6 +141,7 @@ async function readModuleById(moduleId) {
             m.QualificationID,
             m.ModuleTitle,
             m.ModuleTypeID,
+            m.LinkedTpaModuleID,
             mt.TypeName,
             meta.CoverImageUrl
        FROM Modules m
@@ -182,6 +183,7 @@ async function readModuleById(moduleId) {
     title: moduleRow.ModuleTitle,
     moduleTypeId: moduleRow.ModuleTypeID,
     moduleType: moduleRow.TypeName || 'General Modules',
+    linkedTpaModuleId: moduleRow.LinkedTpaModuleID || null,
     moduleImageUrl: resolveModuleCoverImage(moduleRow.ModuleID, moduleRow.CoverImageUrl),
     sections,
     sectionCount: sections.length,
@@ -200,6 +202,7 @@ async function listModules(req, res) {
               m.QualificationID,
               m.ModuleTitle,
               m.ModuleTypeID,
+              m.LinkedTpaModuleID,
               mt.TypeName,
               meta.CoverImageUrl,
               COUNT(sc.SubsectionID) AS SectionCount
@@ -209,7 +212,7 @@ async function listModules(req, res) {
          LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
          LEFT JOIN LearningMaterials lm ON lm.ModuleID = m.ModuleID
          LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, mt.TypeName, meta.CoverImageUrl
+        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, m.LinkedTpaModuleID, mt.TypeName, meta.CoverImageUrl
         ORDER BY m.ModuleID DESC`
     );
 
@@ -220,6 +223,7 @@ async function listModules(req, res) {
       title: row.ModuleTitle,
       moduleTypeId: row.ModuleTypeID,
       moduleType: row.TypeName || 'Theory',
+      linkedTpaModuleId: row.LinkedTpaModuleID || null,
       moduleImageUrl: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
       sectionCount: Number(row.SectionCount || 0),
     }));
@@ -320,6 +324,7 @@ async function createModule(req, res) {
   const moduleImageUrl = normalizeModuleCoverImageUrl(req.body.moduleImageUrl);
   const requestedQualificationId = Number.parseInt(req.body.qualificationId, 10);
   const requestedModuleTypeId = Number.parseInt(req.body.moduleTypeId, 10);
+  const requestedLinkedTpaModuleId = Number.parseInt(req.body.linkedTpaModuleId, 10);
   const sections = normalizeSectionsInput(req.body.sections);
 
   // Debug logging to verify incoming payload
@@ -329,6 +334,7 @@ async function createModule(req, res) {
       moduleImageUrl,
       requestedQualificationId,
       requestedModuleTypeId,
+      requestedLinkedTpaModuleId,
       sectionsCount: Array.isArray(sections) ? sections.length : 0,
       firstSectionPreview: sections && sections[0] ? String(sections[0].content).slice(0, 120) : null,
     });
@@ -379,9 +385,28 @@ async function createModule(req, res) {
 
     console.debug('createModule resolved moduleTypeId:', { requestedModuleTypeId, resolvedModuleTypeId: moduleTypeId });
 
+    // Validate linkedTpaModuleId if provided
+    let linkedTpaModuleId = null;
+    if (Number.isFinite(requestedLinkedTpaModuleId) && requestedLinkedTpaModuleId > 0) {
+      const [tpaModuleRows] = await connection.execute(
+        "SELECT ModuleID FROM Modules WHERE ModuleID = ? LIMIT 1",
+        [requestedLinkedTpaModuleId]
+      );
+
+      if (tpaModuleRows.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Linked TPA module does not exist.",
+        });
+      }
+
+      linkedTpaModuleId = requestedLinkedTpaModuleId;
+    }
+
     const [moduleInsert] = await connection.execute(
-      "INSERT INTO Modules (QualificationID, ModuleTitle, ModuleTypeID) VALUES (?, ?, ?)",
-      [qualificationId, title, moduleTypeId]
+      "INSERT INTO Modules (QualificationID, ModuleTitle, ModuleTypeID, LinkedTpaModuleID) VALUES (?, ?, ?, ?)",
+      [qualificationId, title, moduleTypeId, linkedTpaModuleId]
     );
 
     const moduleId = moduleInsert.insertId;
@@ -460,6 +485,7 @@ async function updateModule(req, res) {
   const title = String(req.body.title || "").trim();
   const moduleImageUrl = normalizeModuleCoverImageUrl(req.body.moduleImageUrl);
   const requestedModuleTypeId = Number.parseInt(req.body.moduleTypeId, 10);
+  const requestedLinkedTpaModuleId = Number.parseInt(req.body.linkedTpaModuleId, 10);
   const sections = normalizeSectionsInput(req.body.sections);
 
   if (!title) {
@@ -498,20 +524,43 @@ async function updateModule(req, res) {
     }
 
     const [currentModuleRows] = await connection.execute(
-      "SELECT ModuleTypeID FROM Modules WHERE ModuleID = ? LIMIT 1",
+      "SELECT ModuleTypeID, LinkedTpaModuleID FROM Modules WHERE ModuleID = ? LIMIT 1",
       [moduleId]
     );
 
     const currentModuleTypeId = currentModuleRows.length > 0 ? currentModuleRows[0].ModuleTypeID : null;
+    const currentLinkedTpaModuleId = currentModuleRows.length > 0 ? currentModuleRows[0].LinkedTpaModuleID : null;
     const moduleTypeId = await resolveModuleTypeId(
       connection.execute.bind(connection),
       requestedModuleTypeId,
       currentModuleTypeId
     );
 
+    // Validate linkedTpaModuleId if provided
+    let linkedTpaModuleId = currentLinkedTpaModuleId;
+    if (Number.isFinite(requestedLinkedTpaModuleId) && requestedLinkedTpaModuleId > 0) {
+      const [tpaModuleRows] = await connection.execute(
+        "SELECT ModuleID FROM Modules WHERE ModuleID = ? LIMIT 1",
+        [requestedLinkedTpaModuleId]
+      );
+
+      if (tpaModuleRows.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Linked TPA module does not exist.",
+        });
+      }
+
+      linkedTpaModuleId = requestedLinkedTpaModuleId;
+    } else if (requestedLinkedTpaModuleId === 0) {
+      // Explicitly clear the link if 0 is passed
+      linkedTpaModuleId = null;
+    }
+
     await connection.execute(
-      "UPDATE Modules SET ModuleTitle = ?, ModuleTypeID = ? WHERE ModuleID = ?",
-      [title, moduleTypeId, moduleId]
+      "UPDATE Modules SET ModuleTitle = ?, ModuleTypeID = ?, LinkedTpaModuleID = ? WHERE ModuleID = ?",
+      [title, moduleTypeId, linkedTpaModuleId, moduleId]
     );
 
     await connection.execute(

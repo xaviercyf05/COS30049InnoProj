@@ -1,6 +1,7 @@
 const { query } = require("../config/db");
 const assessmentService = require("../services/assessmentService");
 const notificationService = require("../services/notificationService");
+const qualificationService = require("../services/qualificationService");
 
 /**
  * Controller for assessments - handles questions, submissions, and scoring.
@@ -538,7 +539,7 @@ async function getAssessmentBadge(req, res) {
 async function issueBadgeToUser(req, res) {
   try {
     const issuedBy = req.user.userId;
-    const targetUserId = Number(req.params.userId);
+    const targetUserId = Number(req.body.userId ?? req.params.userId);
     const badgeId = Number(req.body.badgeId);
     const assessmentId = req.body.assessmentId ? Number(req.body.assessmentId) : null;
     const moduleId = req.body.moduleId ? Number(req.body.moduleId) : null;
@@ -549,6 +550,10 @@ async function issueBadgeToUser(req, res) {
 
     if (!Number.isInteger(badgeId) || badgeId <= 0) {
       return res.status(400).json({ success: false, message: 'Invalid badge ID.' });
+    }
+
+    if (!Number.isInteger(assessmentId) || assessmentId <= 0) {
+      return res.status(400).json({ success: false, message: 'assessmentId is required.' });
     }
 
     // Ensure user exists
@@ -563,12 +568,27 @@ async function issueBadgeToUser(req, res) {
       return res.status(404).json({ success: false, message: 'Badge not found or inactive.' });
     }
 
+    const eligibility = await qualificationService.canIssueBadgeForAssessment(targetUserId, assessmentId);
+    if (!eligibility.allowed) {
+      return res.status(400).json({
+        success: false,
+        message: eligibility.reason,
+      });
+    }
+
+    if (moduleId && Number(moduleId) !== Number(eligibility.assessment.ModuleID)) {
+      return res.status(400).json({
+        success: false,
+        message: 'moduleId does not match the assessment module.',
+      });
+    }
+
     // Insert award (unique constraint on UserID,BadgeID prevents duplicates)
     await query(
       `INSERT INTO UserBadges (UserID, BadgeID, IssuedBy, AssessmentID, ModuleID)
        VALUES (?, ?, ?, ?, ?)
        ON DUPLICATE KEY UPDATE IssuedBy = VALUES(IssuedBy), AssessmentID = VALUES(AssessmentID), ModuleID = VALUES(ModuleID), IssuedAt = CURRENT_TIMESTAMP`,
-      [targetUserId, badgeId, issuedBy, assessmentId, moduleId]
+      [targetUserId, badgeId, issuedBy, assessmentId, eligibility.assessment.ModuleID]
     );
 
     return res.json({ success: true, message: 'Badge issued to user.' });

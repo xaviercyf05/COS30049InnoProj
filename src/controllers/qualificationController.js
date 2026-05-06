@@ -203,10 +203,60 @@ async function getQualificationProgress(req, res) {
   }
 }
 
+/**
+ * Admin: mark a module as completed for a user after verification.
+ */
+async function markModuleCompletedAdmin(req, res) {
+  try {
+    const completedBy = req.user.userId;
+    const targetUserId = Number(req.body.userId ?? req.params.userId);
+    const moduleId = Number(req.body.moduleId ?? req.params.moduleId);
+    const assessmentId = req.body.assessmentId ? Number(req.body.assessmentId) : null;
+
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ success: false, message: "Valid userId is required." });
+    }
+
+    if (!Number.isInteger(moduleId) || moduleId <= 0) {
+      return res.status(400).json({ success: false, message: "Valid moduleId is required." });
+    }
+
+    const [userRows] = await query("SELECT UserID FROM Users WHERE UserID = ? LIMIT 1", [targetUserId]);
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Target user not found." });
+    }
+
+    const [moduleRows] = await query("SELECT ModuleID FROM Modules WHERE ModuleID = ? LIMIT 1", [moduleId]);
+    if (moduleRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Module not found." });
+    }
+
+    const result = await qualificationService.markModuleCompletedByAdmin(
+      targetUserId,
+      moduleId,
+      completedBy,
+      assessmentId
+    );
+
+    return res.json({
+      success: true,
+      message: "Module marked as completed.",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Mark module completed admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to mark module as completed.",
+    });
+  }
+}
+
 module.exports = {
   getQualifications,
   getQualificationDetails,
   getUserQualifications,
   enrollInQualification,
   getQualificationProgress,
+  markModuleCompletedAdmin,
 };

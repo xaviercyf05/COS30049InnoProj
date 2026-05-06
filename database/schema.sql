@@ -101,7 +101,9 @@ CREATE TABLE IF NOT EXISTS Modules (
   ModuleID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   QualificationID INT UNSIGNED NOT NULL,
   ModuleTitle VARCHAR(160) NOT NULL,
-  CONSTRAINT fk_modules_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE
+  LinkedTpaModuleID INT UNSIGNED NULL,
+  CONSTRAINT fk_modules_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE,
+  CONSTRAINT fk_modules_linked_tpa_module FOREIGN KEY (LinkedTpaModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS ModuleUiMeta (
@@ -220,6 +222,21 @@ CREATE TABLE IF NOT EXISTS Certificates (
   CONSTRAINT fk_certificates_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
   CONSTRAINT fk_certificates_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE,
   CONSTRAINT chk_certificates_status CHECK (Status IN ('Pending', 'Issued', 'Revoked'))
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ModuleCompletions (
+  ModuleCompletionID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  UserID INT UNSIGNED NOT NULL,
+  ModuleID INT UNSIGNED NOT NULL,
+  AssessmentID INT UNSIGNED NULL,
+  CompletedBy INT UNSIGNED NULL,
+  CompletedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uq_module_completions_user_module (UserID, ModuleID),
+  CONSTRAINT fk_module_completions_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
+  CONSTRAINT fk_module_completions_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE,
+  CONSTRAINT fk_module_completions_assessment FOREIGN KEY (AssessmentID) REFERENCES Assessments (AssessmentID) ON DELETE SET NULL,
+  CONSTRAINT fk_module_completions_completed_by FOREIGN KEY (CompletedBy) REFERENCES Users (UserID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Schedules (

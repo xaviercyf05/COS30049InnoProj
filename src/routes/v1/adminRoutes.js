@@ -9,6 +9,7 @@ const registrationController = require("../../controllers/registrationController
 const moduleAdminController = require("../../controllers/moduleAdminController");
 const badgeController = require("../../controllers/badgeController");
 const assessmentController = require("../../controllers/assessmentController");
+const qualificationController = require("../../controllers/qualificationController");
 
 const router = express.Router();
 
@@ -321,6 +322,10 @@ router.post(
       .optional({ values: "falsy" })
       .isInt({ min: 1 })
       .withMessage("Qualification ID must be a positive integer."),
+    body("linkedTpaModuleId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Linked TPA Module ID must be a positive integer."),
     body("sections")
       .custom((value) => {
         let parsed = value;
@@ -355,6 +360,10 @@ router.put(
       .trim()
       .isLength({ min: 1, max: 160 })
       .withMessage("Module title is required and must be at most 160 characters."),
+    body("linkedTpaModuleId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0 })
+      .withMessage("Linked TPA Module ID must be a positive integer or 0 to clear the link."),
     body("sections")
       .custom((value) => {
         let parsed = value;
@@ -584,6 +593,41 @@ router.post(
       .optional({ values: "falsy" })
       .isInt()
       .withMessage("assessmentId must be a valid integer."),
+    body("moduleId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("moduleId must be a valid integer."),
+  ],
+  validate,
+  asyncHandler(assessmentController.issueBadgeToUser)
+);
+
+/**
+ * POST /admin/users/:userId/modules/:moduleId/complete - Manually mark a module as completed
+ */
+router.post(
+  "/users/:userId/modules/:moduleId/complete",
+  [
+    param("userId").isInt({ min: 1 }).withMessage("Valid user ID is required."),
+    param("moduleId").isInt({ min: 1 }).withMessage("Valid module ID is required."),
+    body("assessmentId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("assessmentId must be a valid integer."),
+  ],
+  validate,
+  asyncHandler(qualificationController.markModuleCompletedAdmin)
+);
+
+/**
+ * POST /admin/badges/issue - Issue a badge to a user (frontend-compatible alias)
+ */
+router.post(
+  "/badges/issue",
+  [
+    body("userId").isInt({ min: 1 }).withMessage("Valid userId is required."),
+    body("badgeId").isInt({ min: 1 }).withMessage("Valid badgeId is required."),
+    body("assessmentId").isInt({ min: 1 }).withMessage("Valid assessmentId is required."),
     body("moduleId")
       .optional({ values: "falsy" })
       .isInt()

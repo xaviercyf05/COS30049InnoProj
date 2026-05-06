@@ -4,6 +4,34 @@ const { query } = require("../config/db");
  * Service for managing user learning progress, qualifications, and enrollments.
  */
 
+let manualCompletionSchemaPromise;
+
+async function ensureManualCompletionSchema() {
+  if (!manualCompletionSchemaPromise) {
+    manualCompletionSchemaPromise = query(
+      `CREATE TABLE IF NOT EXISTS ModuleCompletions (
+        ModuleCompletionID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        UserID INT UNSIGNED NOT NULL,
+        ModuleID INT UNSIGNED NOT NULL,
+        AssessmentID INT UNSIGNED NULL,
+        CompletedBy INT UNSIGNED NULL,
+        CompletedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uq_module_completions_user_module (UserID, ModuleID),
+        CONSTRAINT fk_module_completions_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
+        CONSTRAINT fk_module_completions_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE,
+        CONSTRAINT fk_module_completions_assessment FOREIGN KEY (AssessmentID) REFERENCES Assessments (AssessmentID) ON DELETE SET NULL,
+        CONSTRAINT fk_module_completions_completed_by FOREIGN KEY (CompletedBy) REFERENCES Users (UserID) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+    ).catch((error) => {
+      manualCompletionSchemaPromise = null;
+      throw error;
+    });
+  }
+
+  return manualCompletionSchemaPromise;
+}
+
 /**
  * Enroll a user in a qualification. Creates Certificates entry and provides access to Module 1.
  */
@@ -207,9 +235,122 @@ async function isModuleUnlocked(userId, moduleId) {
   }
 }
 
+async function isAssessmentPassed(userId, assessmentId) {
+  const [rows] = await query(
+    `SELECT 1
+       FROM AssessmentAttempts
+      WHERE UserID = ?
+        AND AssessmentID = ?
+        AND Status = 'Passed'
+      LIMIT 1`,
+    [userId, assessmentId]
+  );
+
+  return rows.length > 0;
+}
+
+async function isModuleCompleted(userId, moduleId) {
+  await ensureManualCompletionSchema();
+
+  const [rows] = await query(
+    `SELECT 1
+       FROM ModuleCompletions
+      WHERE UserID = ?
+        AND ModuleID = ?
+      LIMIT 1`,
+    [userId, moduleId]
+  );
+
+  return rows.length > 0;
+}
+
+async function markModuleCompletedByAdmin(userId, moduleId, completedBy, assessmentId = null) {
+  await ensureManualCompletionSchema();
+
+  await query(
+    `INSERT INTO ModuleCompletions (UserID, ModuleID, AssessmentID, CompletedBy, CompletedAt)
+     VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+     ON DUPLICATE KEY UPDATE
+       AssessmentID = VALUES(AssessmentID),
+       CompletedBy = VALUES(CompletedBy),
+       CompletedAt = CURRENT_TIMESTAMP,
+       UpdatedAt = CURRENT_TIMESTAMP`,
+    [userId, moduleId, assessmentId, completedBy]
+  );
+
+  return {
+    userId,
+    moduleId,
+    assessmentId,
+    completedBy,
+    isCompleted: true,
+  };
+}
+
+async function canIssueBadgeForAssessment(userId, assessmentId) {
+  const [assessmentRows] = await query(
+    `SELECT a.AssessmentID,
+            a.ModuleID,
+            m.ModuleTitle,
+            mt.TypeName
+       FROM Assessments a
+       INNER JOIN Modules m ON m.ModuleID = a.ModuleID
+       LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+      WHERE a.AssessmentID = ?
+      LIMIT 1`,
+    [assessmentId]
+  );
+
+  if (assessmentRows.length === 0) {
+    return {
+      allowed: false,
+      reason: 'Assessment not found',
+    };
+  }
+
+  const assessment = assessmentRows[0];
+  const isOnsiteModule = String(assessment.TypeName || '').trim() === 'On-Site Training Modules';
+
+  if (!isOnsiteModule) {
+    return {
+      allowed: false,
+      reason: 'Badge can only be issued for an on-site module assessment',
+      assessment,
+    };
+  }
+
+  const passedAssessment = await isAssessmentPassed(userId, assessmentId);
+  if (!passedAssessment) {
+    return {
+      allowed: false,
+      reason: 'User has not passed the assessment',
+      assessment,
+    };
+  }
+
+  const completedModule = await isModuleCompleted(userId, assessment.ModuleID);
+  if (!completedModule) {
+    return {
+      allowed: false,
+      reason: 'On-site module must be marked as completed by admin',
+      assessment,
+    };
+  }
+
+  return {
+    allowed: true,
+    reason: null,
+    assessment,
+  };
+}
+
 module.exports = {
   enrollUserInQualification,
   getQualificationProgress,
   getUserQualifications,
   isModuleUnlocked,
+  isAssessmentPassed,
+  isModuleCompleted,
+  markModuleCompletedByAdmin,
+  canIssueBadgeForAssessment,
 };

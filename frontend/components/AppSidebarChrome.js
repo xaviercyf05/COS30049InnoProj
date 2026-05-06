@@ -102,17 +102,24 @@ function AppSidebarChrome({ navigation, route, title, children }) {
   const sidebarTranslateX = useRef(new Animated.Value(-320)).current;
 
   const markSingleAsRead = async (id) => {
-    setNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, read: true } : n)),
+    const updatedNotifications = notifications.map((n) =>
+      n.id === id ? { ...n, read: true } : n,
     );
+    setNotifications(updatedNotifications);
 
     try {
+      await AsyncStorage.setItem(
+        "local_notifications_state",
+        JSON.stringify(updatedNotifications),
+      );
       const token = await AsyncStorage.getItem("innopapp_auth_token");
-      await requestProfileApi(`/api/v1/notifications/${id}/read`, token, {
-        method: "POST",
-      });
+      if (token) {
+        await requestProfileApi(`/api/v1/notifications/${id}/read`, token, {
+          method: "POST",
+        });
+      }
     } catch (error) {
-      console.error("Failed to save read status to database:", error);
+      console.error("Error saving state:", error);
     }
   };
 
@@ -142,15 +149,28 @@ function AppSidebarChrome({ navigation, route, title, children }) {
       ).catch(() => null);
 
       if (Array.isArray(notificationsResponse?.data)) {
-        setNotifications(
-          notificationsResponse.data.map((item, index) => ({
-            id: item.notificationId || index + 1,
-            title: item.title || "Notification",
-            message: item.message || "",
-            time: "Recently",
-            read: item.isRead === true || item.status === "read",
-          })),
+        const savedData = await AsyncStorage.getItem(
+          "local_notifications_state",
         );
+        const localState = savedData ? JSON.parse(savedData) : [];
+
+        const mergedNotifications = notificationsResponse.data.map(
+          (item, index) => {
+            const id = item.notificationId || index + 1;
+            const wasReadLocally = localState.find((n) => n.id === id)?.read;
+
+            return {
+              id: id,
+              title: item.title || "Notification",
+              message: item.message || "",
+              time: "Recently",
+
+              read: item.isRead || wasReadLocally || false,
+            };
+          },
+        );
+
+        setNotifications(mergedNotifications);
       }
     } catch (_error) {
       setProfile(null);

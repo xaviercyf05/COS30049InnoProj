@@ -642,9 +642,10 @@ async function unlinkBadgeFromAssessment(assessmentId) {
 
 async function getAssessmentBadge(assessmentId) {
   const [rows] = await query(
-    `SELECT a.AssessmentID, a.BadgeID, b.BadgeName, b.IconUrl
+    `SELECT a.AssessmentID, a.ModuleID, a.BadgeID, b.BadgeName, b.IconUrl, m.ModuleTitle
      FROM Assessments a
      LEFT JOIN Badges b ON b.BadgeID = a.BadgeID
+     LEFT JOIN Modules m ON m.ModuleID = a.ModuleID
      WHERE a.AssessmentID = ?
      LIMIT 1`,
     [assessmentId]
@@ -656,8 +657,31 @@ async function getAssessmentBadge(assessmentId) {
 
   const row = rows[0];
 
+  const [linkedBadgeRows] = await query(
+    `SELECT b.BadgeID, b.BadgeName, b.IconUrl, GROUP_CONCAT(DISTINCT bm.ModuleID ORDER BY bm.ModuleID) AS LinkedModuleIDs
+       FROM BadgeModules bm
+       INNER JOIN Badges b ON b.BadgeID = bm.BadgeID AND b.IsActive = 1
+      WHERE bm.ModuleID = ?
+      GROUP BY b.BadgeID, b.BadgeName, b.IconUrl
+      ORDER BY b.BadgeID ASC`,
+    [row.ModuleID]
+  );
+
+  const linkedBadges = linkedBadgeRows.map((linkedBadge) => ({
+    id: linkedBadge.BadgeID,
+    badgeId: linkedBadge.BadgeID,
+    name: linkedBadge.BadgeName,
+    iconUrl: linkedBadge.IconUrl,
+    linkedModuleIds: String(linkedBadge.LinkedModuleIDs || '')
+      .split(',')
+      .map((item) => Number.parseInt(item.trim(), 10))
+      .filter((item) => Number.isFinite(item) && item > 0),
+  }));
+
   return {
     assessmentId: row.AssessmentID,
+    moduleId: row.ModuleID,
+    moduleName: row.ModuleTitle,
     badge: row.BadgeID
       ? {
           id: row.BadgeID,
@@ -665,7 +689,13 @@ async function getAssessmentBadge(assessmentId) {
           name: row.BadgeName,
           iconUrl: row.IconUrl,
         }
-      : null,
+      : linkedBadges[0] || null,
+    badges: row.BadgeID ? [{
+      id: row.BadgeID,
+      badgeId: row.BadgeID,
+      name: row.BadgeName,
+      iconUrl: row.IconUrl,
+    }, ...linkedBadges.filter((badge) => badge.badgeId !== row.BadgeID)] : linkedBadges,
   };
 }
 

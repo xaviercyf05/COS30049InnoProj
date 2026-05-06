@@ -565,6 +565,16 @@ router.get(
 );
 
 /**
+ * GET /admin/modules/:moduleId/badges - Get badges linked to a module
+ */
+router.get(
+  "/modules/:moduleId/badges",
+  [param("moduleId").isInt().withMessage("Invalid module ID.")],
+  validate,
+  asyncHandler(badgeController.getBadgesByModule)
+);
+
+/**
  * POST /admin/badges - Create badge
  */
 router.post(
@@ -590,10 +600,25 @@ router.post(
       .optional({ values: "falsy" })
       .isISO8601()
       .withMessage("Expiry date must be a valid ISO8601 date."),
-    body("linkedModuleId")
-      .optional({ values: "falsy" })
-      .isInt()
-      .withMessage("Linked module ID must be a valid number."),
+    body("linkedModuleIds")
+      .optional()
+      .custom((value) => {
+        const values = Array.isArray(value)
+          ? value
+          : typeof value === "string"
+            ? value.split(",")
+            : [value];
+
+        const isValid = values
+          .filter((item) => item !== undefined && item !== null && String(item).trim() !== "")
+          .every((item) => Number.isInteger(Number(item)) && Number(item) > 0);
+
+        if (!isValid) {
+          throw new Error("Linked module IDs must be valid numbers.");
+        }
+
+        return true;
+      }),
   ],
   validate,
   asyncHandler(badgeController.createBadge)
@@ -626,10 +651,25 @@ router.put(
       .optional({ values: "falsy" })
       .isISO8601()
       .withMessage("Expiry date must be a valid ISO8601 date."),
-    body("linkedModuleId")
-      .optional({ values: "falsy" })
-      .isInt()
-      .withMessage("Linked module ID must be a valid number."),
+    body("linkedModuleIds")
+      .optional()
+      .custom((value) => {
+        const values = Array.isArray(value)
+          ? value
+          : typeof value === "string"
+            ? value.split(",")
+            : [value];
+
+        const isValid = values
+          .filter((item) => item !== undefined && item !== null && String(item).trim() !== "")
+          .every((item) => Number.isInteger(Number(item)) && Number(item) > 0);
+
+        if (!isValid) {
+          throw new Error("Linked module IDs must be valid numbers.");
+        }
+
+        return true;
+      }),
   ],
   validate,
   asyncHandler(badgeController.updateBadge)

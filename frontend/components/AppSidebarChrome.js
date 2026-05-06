@@ -21,6 +21,28 @@ import {
   resolveProfileImageUri,
 } from "../Profile/profileApi.js";
 
+const formatTimeAgo = (dateString) => {
+    if (!dateString) return 'Recently';
+    
+    const now = new Date();
+    const past = new Date(dateString);
+    const diffInSeconds = Math.floor((now - past) / 1000);
+
+    if (diffInSeconds < 60) return 'Just now';
+    
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    if (diffInMinutes < 60) return `${diffInMinutes}m ago`;
+    
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    if (diffInHours < 24) return `${diffInHours}h ago`;
+    
+    const diffInDays = Math.floor(diffInHours / 24);
+    if (diffInDays === 1) return 'Yesterday';
+    if (diffInDays < 7) return `${diffInDays}d ago`;
+    
+    return past.toLocaleDateString(); 
+};
+
 const SESSION_STORAGE_KEYS = [
   "innopapp_auth_token",
   "innopapp_auth_role",
@@ -163,8 +185,7 @@ function AppSidebarChrome({ navigation, route, title, children }) {
               id: id,
               title: item.title || "Notification",
               message: item.message || "",
-              time: "Recently",
-
+              time: formatTimeAgo(item.createdAt || item.created_at),
               read: item.isRead || wasReadLocally || false,
             };
           },

@@ -185,6 +185,24 @@ router.get(
 );
 
 /**
+ * GET /admin/evidence - List evidence alerts for the admin dashboard
+ */
+router.get(
+  "/evidence",
+  asyncHandler(adminController.listEvidenceAlerts)
+);
+
+/**
+ * GET /admin/evidence/:evidenceId/video - Stream an evidence video
+ */
+router.get(
+  "/evidence/:evidenceId/video",
+  [param("evidenceId").isInt({ min: 1 }).withMessage("Invalid evidence ID.")],
+  validate,
+  asyncHandler(adminController.streamEvidenceVideo)
+);
+
+/**
  * GET /admin/registrations - List registration requests
  */
 router.get(

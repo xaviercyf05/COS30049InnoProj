@@ -1,6 +1,97 @@
 const { query } = require("../config/db");
 const notificationService = require("../services/notificationService");
 
+function safeJsonParse(value, fallback = {}) {
+  if (value == null) {
+    return fallback;
+  }
+
+  if (typeof value === "object") {
+    return value;
+  }
+
+  if (typeof value !== "string") {
+    return fallback;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed && typeof parsed === "object" ? parsed : fallback;
+  } catch (_error) {
+    return fallback;
+  }
+}
+
+function getFirstMatchingValue(source, keys, fallback = null) {
+  if (!source || typeof source !== "object") {
+    return fallback;
+  }
+
+  for (const key of keys) {
+    if (Object.prototype.hasOwnProperty.call(source, key)) {
+      const value = source[key];
+      if (value !== undefined && value !== null && value !== "") {
+        return value;
+      }
+    }
+  }
+
+  return fallback;
+}
+
+function formatEvidenceTimestamp(value) {
+  if (!value) {
+    return "";
+  }
+
+  const parsedDate = new Date(value);
+
+  if (Number.isNaN(parsedDate.getTime())) {
+    return String(value);
+  }
+
+  return parsedDate.toISOString().replace("T", " ").slice(0, 16);
+}
+
+function normaliseEvidenceRow(row) {
+  const labels = safeJsonParse(row.LabelsJson, {});
+  const resolvedName =
+    getFirstMatchingValue(labels, ["parkName", "park", "siteName", "name", "locationName"]) ||
+    row.Location ||
+    "Unknown location";
+  const latitude = Number(
+    getFirstMatchingValue(labels, ["latitude", "lat", "y"], null)
+  );
+  const longitude = Number(
+    getFirstMatchingValue(labels, ["longitude", "lng", "lon", "x"], null)
+  );
+  const status =
+    getFirstMatchingValue(labels, ["status", "summary", "message", "description", "note"]) ||
+    String(row.EventType || "abnormal_interaction_detected")
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (character) => character.toUpperCase());
+
+  return {
+    evidenceId: row.EvidenceID,
+    id: row.EvidenceID,
+    name: resolvedName,
+    location: row.Location,
+    status,
+    eventType: row.EventType,
+    labels,
+    latitude: Number.isFinite(latitude) ? latitude : null,
+    longitude: Number.isFinite(longitude) ? longitude : null,
+    timestamp: formatEvidenceTimestamp(row.EventTimestamp),
+    createdAt: row.CreatedAt,
+    videoFileName: row.VideoFileName,
+    videoMimeType: row.VideoMimeType,
+    videoSizeBytes: row.VideoSizeBytes,
+    videoSha256: row.VideoSha256,
+    videoPath: `/api/v1/admin/evidence/${row.EvidenceID}/video`,
+    hasVideo: Boolean(row.VideoFileName || row.VideoSizeBytes || row.VideoSha256),
+  };
+}
+
 let announcementSchemaPromise;
 
 async function ensureAnnouncementSchema() {
@@ -542,6 +633,82 @@ async function getUserEnrollmentDetails(req, res) {
   }
 }
 
+async function listEvidenceAlerts(req, res) {
+  try {
+    const limitValue = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(limitValue) && limitValue > 0 ? Math.min(limitValue, 100) : 20;
+
+    const [rows] = await query(
+      `SELECT EvidenceID,
+              EventTimestamp,
+              EventType,
+              LabelsJson,
+              Location,
+              VideoFileName,
+              VideoMimeType,
+              VideoSizeBytes,
+              VideoSha256,
+              CreatedAt
+         FROM Evidence
+        ORDER BY EventTimestamp DESC, EvidenceID DESC
+        LIMIT ?`,
+      [limit]
+    );
+
+    return res.json({
+      success: true,
+      data: rows.map((row) => normaliseEvidenceRow(row)),
+    });
+  } catch (error) {
+    console.error("List evidence alerts error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch evidence alerts.",
+    });
+  }
+}
+
+async function streamEvidenceVideo(req, res) {
+  try {
+    const { evidenceId } = req.params;
+
+    const [rows] = await query(
+      `SELECT EvidenceID,
+              VideoData,
+              VideoMimeType,
+              VideoFileName
+         FROM Evidence
+        WHERE EvidenceID = ?
+        LIMIT 1`,
+      [evidenceId]
+    );
+
+    if (rows.length === 0 || !rows[0].VideoData) {
+      return res.status(404).json({
+        success: false,
+        message: "Evidence video not found.",
+      });
+    }
+
+    const videoRow = rows[0];
+
+    res.setHeader("Content-Type", videoRow.VideoMimeType || "video/mp4");
+    res.setHeader("Content-Length", videoRow.VideoData.length);
+    res.setHeader(
+      "Content-Disposition",
+      `inline; filename="${String(videoRow.VideoFileName || `evidence-${videoRow.EvidenceID}.mp4`).replace(/\"/g, "")}"`
+    );
+
+    return res.send(videoRow.VideoData);
+  } catch (error) {
+    console.error("Stream evidence video error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to stream evidence video.",
+    });
+  }
+}
+
 module.exports = {
   createQualification,
   createAnnouncement,
@@ -552,4 +719,6 @@ module.exports = {
   getAllUsers,
   updateUserStatus,
   getUserEnrollmentDetails,
+  listEvidenceAlerts,
+  streamEvidenceVideo,
 };

@@ -75,6 +75,20 @@ async function submitAssessmentAttempt(req, res) {
   try {
     const { userId } = req.user;
     const { assessmentId, answers, timeUsedSeconds } = req.body;
+    // Debug: log incoming payload shape for troubleshooting 500 errors
+    try {
+      console.debug('Submit assessment attempt incoming:', {
+        userId,
+        assessmentIdType: typeof assessmentId,
+        assessmentIdValue: assessmentId,
+        answersType: Array.isArray(answers) ? 'array' : typeof answers,
+        answersCount: Array.isArray(answers) ? answers.length : 0,
+        sampleAnswers: Array.isArray(answers) ? answers.slice(0, 5) : answers,
+        timeUsedSeconds,
+      });
+    } catch (logErr) {
+      console.error('Failed to log submit payload', logErr);
+    }
 
     if (!assessmentId || !answers || !Array.isArray(answers)) {
       return res.status(400).json({

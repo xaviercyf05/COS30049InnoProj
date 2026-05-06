@@ -13,6 +13,64 @@ const DEFAULT_BADGES = [
 
 let badgeSchemaPromise;
 
+async function addMissingBadgeColumns() {
+  const [columns] = await query(
+    `SELECT COLUMN_NAME
+       FROM INFORMATION_SCHEMA.COLUMNS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'Badges'`
+  );
+
+  const existingColumns = new Set(columns.map((column) => column.COLUMN_NAME));
+  const alterStatements = [];
+
+  if (!existingColumns.has('IsValid')) {
+    alterStatements.push('ADD COLUMN IsValid TINYINT(1) NOT NULL DEFAULT 1 AFTER IsActive');
+  }
+
+  if (!existingColumns.has('ExpiryDate')) {
+    alterStatements.push('ADD COLUMN ExpiryDate DATETIME NULL AFTER IsValid');
+  }
+
+  if (!existingColumns.has('LinkedModuleID')) {
+    alterStatements.push('ADD COLUMN LinkedModuleID INT UNSIGNED NULL AFTER ExpiryDate');
+  }
+
+  if (alterStatements.length > 0) {
+    await query(`ALTER TABLE Badges ${alterStatements.join(', ')}`);
+  }
+
+  const [indexRows] = await query(
+    `SELECT INDEX_NAME
+       FROM INFORMATION_SCHEMA.STATISTICS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'Badges'
+        AND INDEX_NAME = 'idx_badges_linked_module'`
+  );
+
+  if (indexRows.length === 0 && existingColumns.has('LinkedModuleID')) {
+    await query('CREATE INDEX idx_badges_linked_module ON Badges(LinkedModuleID)');
+  }
+
+  const [constraintRows] = await query(
+    `SELECT CONSTRAINT_NAME
+       FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS
+      WHERE TABLE_SCHEMA = DATABASE()
+        AND TABLE_NAME = 'Badges'
+        AND CONSTRAINT_NAME = 'fk_badges_linked_module'`
+  );
+
+  if (constraintRows.length === 0 && existingColumns.has('LinkedModuleID')) {
+    await query(
+      `ALTER TABLE Badges
+         ADD CONSTRAINT fk_badges_linked_module
+         FOREIGN KEY (LinkedModuleID)
+         REFERENCES Modules (ModuleID)
+         ON DELETE SET NULL`
+    );
+  }
+}
+
 async function ensureBadgeSchema() {
   if (!badgeSchemaPromise) {
     badgeSchemaPromise = (async () => {
@@ -32,6 +90,8 @@ async function ensureBadgeSchema() {
             ON DELETE SET NULL
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
       );
+
+      await addMissingBadgeColumns();
 
       const [existingRows] = await query(
         "SELECT BadgeID FROM Badges WHERE IsActive = 1 LIMIT 1"

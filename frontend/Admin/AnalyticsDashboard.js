@@ -36,7 +36,7 @@ function BarChart({ bars, accent }) {
           const barHeight = (heightPercentage / 100) * chartHeight;
 
           return (
-            <View key={item.label} style={[styles.verticalBarContainer, { marginLeft: index === 0 ? spacing : 0 }]}>
+            <View key={`${item.label}-${index}`} style={[styles.verticalBarContainer, { marginLeft: index === 0 ? spacing : 0 }]}>
               <Text style={styles.verticalBarValue}>{item.value}</Text>
               <View
                 style={[
@@ -63,7 +63,7 @@ function PieChart({ slices }) {
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
 
-  // ✅ Normalize + clean data
+  // Normalize + clean data
   const safeSlices = (slices || [])
     .map((slice, index) => ({
       label: slice.label || `Item ${index + 1}`,
@@ -74,7 +74,7 @@ function PieChart({ slices }) {
 
   const total = safeSlices.reduce((sum, slice) => sum + slice.value, 0);
 
-  // ✅ Case 1: No data
+  // No data case
   if (total === 0) {
     return (
       <View style={styles.pieChartBox}>
@@ -85,7 +85,7 @@ function PieChart({ slices }) {
     );
   }
 
-  // ✅ Case 2: Only one slice (draw full circle)
+  // Single slice case
   if (safeSlices.length === 1) {
     return (
       <View style={styles.pieWrap}>
@@ -132,7 +132,7 @@ function PieChart({ slices }) {
     );
   }
 
-  // ✅ Helper functions
+  // Helper functions
   let rotation = -90;
 
   const polarToCartesian = (cx, cy, r, angleInDegrees) => {
@@ -154,22 +154,28 @@ function PieChart({ slices }) {
     ].join(' ');
   };
 
-  // ✅ Normal multi-slice render
   return (
     <View style={styles.pieWrap}>
       <View style={styles.pieChartBox}>
         <Svg width={size} height={size}>
-          {safeSlices.map((slice) => {
+          {safeSlices.map((slice, index) => {
             const sliceAngle = (slice.value / total) * 360;
             const startAngle = rotation;
             const endAngle = rotation + sliceAngle;
-            const arc = describeArc(center, center, radius, startAngle, endAngle);
+
+            const arc = describeArc(
+              center,
+              center,
+              radius,
+              startAngle,
+              endAngle
+            );
 
             rotation = endAngle;
 
             return (
               <Path
-                key={slice.label}
+                key={`${slice.label}-${slice.value}-${index}`}
                 d={`${arc} L ${center} ${center} Z`}
                 fill={slice.color}
               />
@@ -177,7 +183,12 @@ function PieChart({ slices }) {
           })}
 
           {/* Donut hole */}
-          <Circle cx={center} cy={center} r={radius * 0.55} fill="#FFFFFF" />
+          <Circle
+            cx={center}
+            cy={center}
+            r={radius * 0.55}
+            fill="#FFFFFF"
+          />
         </Svg>
 
         {/* Center label */}
@@ -189,11 +200,14 @@ function PieChart({ slices }) {
 
       {/* Legend */}
       <View style={styles.legendList}>
-        {safeSlices.map((slice) => {
+        {safeSlices.map((slice, index) => {
           const share = Math.round((slice.value / total) * 100);
 
           return (
-            <View key={slice.label} style={styles.legendRow}>
+            <View
+              key={`${slice.label}-${slice.value}-${index}`}
+              style={styles.legendRow}
+            >
               <View style={styles.legendNameWrap}>
                 <View
                   style={[
@@ -201,8 +215,11 @@ function PieChart({ slices }) {
                     { backgroundColor: slice.color }
                   ]}
                 />
-                <Text style={styles.legendName}>{slice.label}</Text>
+                <Text style={styles.legendName}>
+                  {slice.label}
+                </Text>
               </View>
+
               <Text style={styles.legendValue}>
                 {slice.value} ppl · {share}%
               </Text>
@@ -214,7 +231,7 @@ function PieChart({ slices }) {
   );
 }
 
-function SheetTable({ columns, rows }) {
+function SheetTable({ columns, rows, activeSheet }) {
   return (
     <View style={styles.tableWrap}>
       <View style={styles.tableHeaderRow}>
@@ -226,11 +243,14 @@ function SheetTable({ columns, rows }) {
       </View>
 
       {rows.map((row, rowIndex) => (
-        <View key={`${row[0]}-${rowIndex}`} style={styles.tableRow}>
+        <View key={`${activeSheet}-row-${rowIndex}`} style={styles.tableRow}>
           {row.map((cell, cellIndex) => (
             <Text
-              key={`${cell}-${cellIndex}`}
-              style={[styles.tableCell, cellIndex === 0 && styles.tableCellStrong]}
+              key={`${activeSheet}-cell-${rowIndex}-${cellIndex}`}
+              style={[
+                styles.tableCell,
+                cellIndex === 0 && styles.tableCellStrong
+              ]}
             >
               {cell}
             </Text>
@@ -336,7 +356,7 @@ export default function AnalyticsDashboard() {
         {(currentSheet.kpis || [])
           .filter((item) => !(activeSheet === 'progress' && item.label?.toLowerCase().includes('hour')))
           .map((item) => (
-            <MetricCard key={item.label} {...item} accent={activeMeta.accent} />
+            <MetricCard key={`${activeSheet}-${item.label}`} {...item} accent={activeMeta.accent} />
           ))}
       </View>
 
@@ -370,7 +390,11 @@ export default function AnalyticsDashboard() {
 
       {currentSheet.columns && currentSheet.rows && currentSheet.columns.length > 0 && (
         <View style={styles.sectionCard}>
-          <SheetTable columns={currentSheet.columns} rows={currentSheet.rows} />
+          <SheetTable
+            columns={currentSheet.columns}
+            rows={currentSheet.rows}
+            activeSheet={activeSheet}
+          />
         </View>
       )}
     </ScrollView>

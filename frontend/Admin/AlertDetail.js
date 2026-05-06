@@ -275,6 +275,13 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#DCE7D0',
     height: 44,
+
+    // 👇 platform-specific spacing
+    ...Platform.select({
+      ios: { marginTop: 16 },
+      android: { marginTop: 16 },
+      web: { marginTop: 0 }
+    })
   },
   solvedButtonStyle: {
     backgroundColor: '#E8F5E9',

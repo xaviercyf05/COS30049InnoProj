@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useMemo, useState, useCallback } from 'react';
 import {
   View,
   Text,
@@ -10,6 +10,7 @@ import { WebView } from 'react-native-webview';
 import { fetchAdminEvidenceAlerts } from './evidenceApi.js';
 
 export default function SensorAlertScreen({ navigation }) {
+  const webRef = useRef(null);
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -45,7 +46,9 @@ export default function SensorAlertScreen({ navigation }) {
 <html>
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
     <link
       rel="stylesheet"
       href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
@@ -177,18 +180,25 @@ export default function SensorAlertScreen({ navigation }) {
             originWhitelist={['*']}
             source={{ html: mapHtml }}
             style={styles.mapWebView}
-            javaScriptEnabled
-            domStorageEnabled
-            startInLoadingState
-            onMessage={(event) => {
-              try {
-                const payload = JSON.parse(event.nativeEvent.data);
-                if (payload?.type === 'alert' && navigation) {
-                  navigation.navigate('AlertDetail', { alert: payload.alert });
+            javaScriptEnabled={true}
+            domStorageEnabled={true}
+            startInLoadingState={true}
+            scalesPageToFit={true}
+            mixedContentMode="always"
+            ref={webRef}
+
+            onLoadEnd={() => {
+              // Force Leaflet to recalc size on mobile
+              setTimeout(() => {
+                if (webRef.current) {
+                  webRef.current.injectJavaScript(`
+                    if (typeof map !== "undefined") {
+                      map.invalidateSize();
+                    }
+                    true;
+                  `);
                 }
-              } catch {
-                // ignore malformed messages
-              }
+              }, 300);
             }}
           />
         </View>

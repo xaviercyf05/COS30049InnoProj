@@ -304,6 +304,7 @@ VideoSizeBytes BIGINT UNSIGNED NULL,
 VideoData LONGBLOB NOT NULL,
 VideoSha256 CHAR(64) NULL,
 CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+Status BOOLEAN NOT NULL DEFAULT 0,
 CONSTRAINT chk_evidence_labels_json CHECK (JSON_VALID(LabelsJson))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -312,3 +313,17 @@ ADD COLUMN IF NOT EXISTS Location VARCHAR(100) NOT NULL AFTER LabelsJson;
 
 CREATE INDEX idx_evidence_event_time ON Evidence (EventTimestamp);
 CREATE INDEX idx_evidence_created_at ON Evidence (CreatedAt);
+
+CREATE TABLE IF NOT EXISTS Park (
+ParkID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+ParkName VARCHAR(150) NOT NULL UNIQUE,
+Longitude DECIMAL(10, 7) NOT NULL,
+Latitude DECIMAL(10, 7) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO Park (ParkName, Longitude, Latitude) VALUES
+  ('Bako National Park', 110.467, 1.716),
+  ('Similajau National Park', 113.155, 3.346),
+  ('Kubah National Park', 110.194, 1.598),
+  ('Gunung Mulu National Park', 114.919, 4.132),
+  ('Maludam National Park', 111.033, 1.65);

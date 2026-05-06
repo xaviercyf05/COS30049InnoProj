@@ -193,6 +193,14 @@ router.get(
 );
 
 /**
+ * GET /admin/analytics/dashboard - Aggregated analytics dashboard data
+ */
+router.get(
+  "/analytics/dashboard",
+  asyncHandler(adminController.getAnalyticsDashboard)
+);
+
+/**
  * PUT /admin/evidence/:evidenceId/status - Update evidence solved status
  * Body: { resolved: boolean }
  */

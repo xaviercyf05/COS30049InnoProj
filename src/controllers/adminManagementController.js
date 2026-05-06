@@ -96,6 +96,20 @@ function normaliseEvidenceRow(row) {
   };
 }
 
+function toSafeNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function formatHours(valueInSeconds) {
+  const hours = toSafeNumber(valueInSeconds, 0) / 3600;
+  return `${hours.toFixed(1)}h`;
+}
+
+function formatPercentage(value) {
+  return `${Math.round(toSafeNumber(value, 0))}%`;
+}
+
 let announcementSchemaPromise;
 
 async function ensureAnnouncementSchema() {
@@ -763,6 +777,347 @@ async function updateEvidenceStatus(req, res) {
   }
 }
 
+async function getAnalyticsDashboard(req, res) {
+  try {
+    const [guideRows] = await query(
+      `SELECT u.UserID,
+              u.FullName,
+              u.Email,
+              u.Username,
+              u.Progress,
+              q.QualificationName AS AssignedPark
+         FROM Users u
+         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+         LEFT JOIN Qualifications q ON q.QualificationID = u.QualificationID
+        WHERE u.IsActive = 1
+        ORDER BY u.UserID ASC`
+    );
+
+    const [enrollmentRows] = await query(
+      `SELECT COUNT(DISTINCT c.UserID) AS EnrolledUsers
+         FROM Certificates c
+         INNER JOIN Users u ON u.UserID = c.UserID
+         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'`
+    );
+
+    const [issuedRows] = await query(
+      `SELECT COUNT(DISTINCT c.UserID) AS IssuedUsers
+         FROM Certificates c
+         INNER JOIN Users u ON u.UserID = c.UserID
+         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+        WHERE c.Status = 'Issued'`
+    );
+
+    const [avgAttemptRows] = await query(
+      `SELECT AVG(aa.TimeUsedSeconds) AS AvgSeconds
+         FROM AssessmentAttempts aa
+         INNER JOIN Users u ON u.UserID = aa.UserID
+         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+        WHERE aa.TimeUsedSeconds > 0`
+    );
+
+    const [userAttemptRows] = await query(
+      `SELECT aa.UserID,
+              SUM(aa.TimeUsedSeconds) AS TotalSeconds
+         FROM AssessmentAttempts aa
+         INNER JOIN Users u ON u.UserID = aa.UserID
+         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+        GROUP BY aa.UserID`
+    );
+
+    const [userBadgeRows] = await query(
+      `SELECT aa.UserID,
+              GROUP_CONCAT(DISTINCT b.BadgeName ORDER BY b.BadgeName SEPARATOR ', ') AS EarnedBadges
+         FROM AssessmentAttempts aa
+         INNER JOIN Assessments a ON a.AssessmentID = aa.AssessmentID
+         INNER JOIN Badges b ON b.BadgeID = a.BadgeID
+        WHERE aa.Status = 'Passed'
+        GROUP BY aa.UserID`
+    );
+
+    const [moduleRows] = await query(
+      `SELECT m.ModuleID,
+              m.ModuleTitle,
+              COUNT(DISTINCT aa.UserID) AS EnrolledGuides,
+              COUNT(DISTINCT CASE WHEN aa.Status = 'Passed' THEN aa.UserID END) AS CompletedGuides
+         FROM Modules m
+         LEFT JOIN Assessments a ON a.ModuleID = m.ModuleID
+         LEFT JOIN AssessmentAttempts aa ON aa.AssessmentID = a.AssessmentID
+         LEFT JOIN Users u ON u.UserID = aa.UserID
+         LEFT JOIN Roles r ON r.RoleID = u.RoleID
+        WHERE r.RoleTitle = 'User' OR r.RoleTitle IS NULL
+        GROUP BY m.ModuleID, m.ModuleTitle
+        ORDER BY EnrolledGuides DESC, m.ModuleID ASC`
+    );
+
+    const [badgeRows] = await query(
+      `SELECT b.BadgeID,
+              b.BadgeName,
+              b.UnlockThreshold,
+              COUNT(DISTINCT CASE WHEN aa.Status = 'Passed' THEN aa.UserID END) AS AwardedCount
+         FROM Badges b
+         LEFT JOIN Assessments a ON a.BadgeID = b.BadgeID
+         LEFT JOIN AssessmentAttempts aa ON aa.AssessmentID = a.AssessmentID
+         LEFT JOIN Users u ON u.UserID = aa.UserID
+         LEFT JOIN Roles r ON r.RoleID = u.RoleID
+        WHERE b.IsActive = 1 AND (r.RoleTitle = 'User' OR r.RoleTitle IS NULL)
+        GROUP BY b.BadgeID, b.BadgeName, b.UnlockThreshold
+        ORDER BY AwardedCount DESC, b.BadgeID ASC`
+    );
+
+    const [parkRows] = await query(
+      `SELECT p.ParkID,
+              p.ParkName,
+              COUNT(DISTINCT CASE WHEN r.RoleTitle = 'User' THEN u.UserID END) AS GuidesAssigned,
+              COUNT(DISTINCT CASE WHEN r.RoleTitle = 'User' AND COALESCE(u.Progress, 0) >= 90 THEN u.UserID END) AS LeadGuides
+         FROM Park p
+         LEFT JOIN Qualifications q ON LOWER(TRIM(q.QualificationName)) = LOWER(TRIM(p.ParkName))
+         LEFT JOIN Users u ON u.QualificationID = q.QualificationID
+         LEFT JOIN Roles r ON r.RoleID = u.RoleID
+        GROUP BY p.ParkID, p.ParkName
+        ORDER BY GuidesAssigned DESC, p.ParkName ASC`
+    );
+
+    const attemptSecondsByUser = userAttemptRows.reduce((accumulator, row) => {
+      accumulator[row.UserID] = toSafeNumber(row.TotalSeconds, 0);
+      return accumulator;
+    }, {});
+
+    const earnedBadgesByUser = userBadgeRows.reduce((accumulator, row) => {
+      accumulator[row.UserID] = row.EarnedBadges || '-';
+      return accumulator;
+    }, {});
+
+    const guides = guideRows.map((row) => {
+      const progress = toSafeNumber(row.Progress, 0);
+      const totalSeconds = toSafeNumber(attemptSecondsByUser[row.UserID], 0);
+
+      return {
+        guideId: row.UserID,
+        fullName: row.FullName || row.Username || `Guide ${row.UserID}`,
+        assignedPark: row.AssignedPark || 'Unassigned',
+        contact: row.Email || '-',
+        progress,
+        totalSeconds,
+        earnedBadges: earnedBadgesByUser[row.UserID] || '-',
+      };
+    });
+
+    const totalGuides = guides.length;
+    const fullyTrained = guides.filter((guide) => guide.progress >= 100).length;
+    const inTraining = guides.filter((guide) => guide.progress > 0 && guide.progress < 100).length;
+    const leadGuides = guides.filter((guide) => guide.progress >= 90).length;
+    const averageProgress =
+      totalGuides > 0
+        ? guides.reduce((sum, guide) => sum + guide.progress, 0) / totalGuides
+        : 0;
+
+    const enrolledGuides = toSafeNumber(enrollmentRows[0] && enrollmentRows[0].EnrolledUsers, 0);
+    const issuedGuides = toSafeNumber(issuedRows[0] && issuedRows[0].IssuedUsers, 0);
+    const avgAttemptSeconds = toSafeNumber(avgAttemptRows[0] && avgAttemptRows[0].AvgSeconds, 0);
+
+    const progressBars = guides
+      .slice()
+      .sort((left, right) => right.progress - left.progress)
+      .slice(0, 8)
+      .map((guide) => ({
+        label: guide.fullName.split(' ')[0],
+        value: Math.round(guide.progress),
+      }));
+
+    const moduleRowsNormalized = moduleRows.map((row) => {
+      const enrolled = toSafeNumber(row.EnrolledGuides, 0);
+      const completed = toSafeNumber(row.CompletedGuides, 0);
+      const training = Math.max(enrolled - completed, 0);
+      const completion = enrolled > 0 ? (completed / enrolled) * 100 : 0;
+
+      return {
+        moduleTitle: row.ModuleTitle || `Module ${row.ModuleID}`,
+        enrolled,
+        completed,
+        training,
+        completion,
+      };
+    });
+
+    const totalModuleEnrollments = moduleRowsNormalized.reduce((sum, row) => sum + row.enrolled, 0);
+    const totalModuleCompletions = moduleRowsNormalized.reduce((sum, row) => sum + row.completed, 0);
+    const averageModuleCompletion =
+      totalModuleEnrollments > 0 ? (totalModuleCompletions / totalModuleEnrollments) * 100 : 0;
+
+    const badgeRowsNormalized = badgeRows.map((row) => {
+      const awarded = toSafeNumber(row.AwardedCount, 0);
+      const unlockThreshold = toSafeNumber(row.UnlockThreshold, 0);
+      const eligible = guides.filter((guide) => guide.progress >= unlockThreshold).length;
+
+      return {
+        badgeName: row.BadgeName || `Badge ${row.BadgeID}`,
+        awarded,
+        eligible,
+        pending: Math.max(eligible - awarded, 0),
+      };
+    });
+
+    const totalAwardedBadges = badgeRowsNormalized.reduce((sum, row) => sum + row.awarded, 0);
+    const totalEligibleGuides = badgeRowsNormalized.reduce((sum, row) => sum + row.eligible, 0);
+    const totalPendingBadges = badgeRowsNormalized.reduce((sum, row) => sum + row.pending, 0);
+
+    const stations = parkRows.map((row) => {
+      const guidesAssigned = toSafeNumber(row.GuidesAssigned, 0);
+      const lead = toSafeNumber(row.LeadGuides, 0);
+      const status = guidesAssigned >= 6 ? 'Optimal' : guidesAssigned >= 4 ? 'Adequate' : 'Understaffed';
+      const notes =
+        status === 'Optimal'
+          ? 'Good coverage'
+          : status === 'Adequate'
+            ? 'Monitor closely'
+            : 'Needs additional trained guides';
+
+      return {
+        parkName: row.ParkName,
+        guidesAssigned,
+        leadGuides: lead,
+        status,
+        notes,
+      };
+    });
+
+    const understaffedCount = stations.filter((station) => station.status === 'Understaffed').length;
+
+    return res.json({
+      success: true,
+      data: {
+        parkGuides: {
+          title: 'Park guides overview',
+          subtitle: 'Complete overview of all guides with assignments and completed modules.',
+          kpis: [
+            { label: 'Total park guides', value: String(totalGuides), note: 'Active user accounts' },
+            { label: 'Fully trained', value: String(fullyTrained), note: 'Progress at 100%' },
+            { label: 'In training', value: String(inTraining), note: 'Progress between 1%-99%' },
+            { label: 'Lead guides', value: String(leadGuides), note: 'Progress at 90%+' },
+          ],
+          columns: ['Guide ID', 'Full Name', 'Assigned Park', 'Contact (Email)'],
+          rows: guides.map((guide) => [
+            `G${String(guide.guideId).padStart(3, '0')}`,
+            guide.fullName,
+            guide.assignedPark,
+            guide.contact,
+          ]),
+        },
+        progress: {
+          title: 'Park guide training progress tracker',
+          subtitle: 'Track individual training completion and time spent on current modules.',
+          chartType: 'bar',
+          kpis: [
+            { label: 'Guides enrolled', value: String(enrolledGuides), note: 'Users with certificate records' },
+            { label: 'Avg. progress', value: formatPercentage(averageProgress), note: 'Across active park guides' },
+            { label: 'Avg. time', value: formatHours(avgAttemptSeconds), note: 'Per assessment attempt' },
+            { label: 'Fast learners', value: String(guides.filter((guide) => guide.progress >= 90).length), note: 'Progress above 90%' },
+          ],
+          chartTitle: 'Training progress distribution by guide',
+          chartSubtitle: 'Completion percentage of currently enrolled modules.',
+          bars: progressBars,
+          columns: ['Guide Name', 'Current Module', 'Progress %', 'Time Spent (hours)', 'Earned Park Badges'],
+          rows: guides.map((guide) => [
+            guide.fullName,
+            guide.assignedPark,
+            formatPercentage(guide.progress),
+            formatHours(guide.totalSeconds),
+            guide.earnedBadges,
+          ]),
+        },
+        modules: {
+          title: 'Module enrollment analysis',
+          subtitle: 'Track enrollment, completion rates, and identify overloaded modules.',
+          chartType: 'pie',
+          kpis: [
+            { label: 'Active modules', value: String(moduleRowsNormalized.length), note: 'Configured in database' },
+            { label: 'Total enrolled', value: String(totalModuleEnrollments), note: 'Distinct user attempts by module' },
+            { label: 'Avg. completion', value: formatPercentage(averageModuleCompletion), note: 'Weighted by enrollment size' },
+            { label: 'Most popular', value: moduleRowsNormalized[0] ? moduleRowsNormalized[0].moduleTitle : '-', note: moduleRowsNormalized[0] ? `${moduleRowsNormalized[0].enrolled} enrolled` : 'No enrollment data yet' },
+          ],
+          chartTitle: 'Module enrollment share',
+          chartSubtitle: 'Each slice shows how many guides attempted each module.',
+          pieSlices: moduleRowsNormalized.map((row) => ({
+            label: row.moduleTitle,
+            value: row.enrolled,
+            completed: row.completed,
+          })),
+          columns: ['Module (Park)', 'Enrolled Guides', 'Completed', 'Training', 'Completion %'],
+          rows: moduleRowsNormalized.map((row) => [
+            row.moduleTitle,
+            String(row.enrolled),
+            String(row.completed),
+            String(row.training),
+            formatPercentage(row.completion),
+          ]),
+        },
+        badges: {
+          title: 'Park badge eligibility and award status',
+          subtitle: 'Track eligible guides and badge award rates.',
+          chartType: 'pie',
+          kpis: [
+            { label: 'Total badge types', value: String(badgeRowsNormalized.length), note: 'Active badge definitions' },
+            { label: 'Awarded badges', value: String(totalAwardedBadges), note: 'From passed linked assessments' },
+            { label: 'Eligible guides', value: String(totalEligibleGuides), note: 'Based on unlock threshold' },
+            { label: 'Pending', value: String(totalPendingBadges), note: 'Eligible not yet awarded' },
+          ],
+          chartTitle: 'Badge unlock share',
+          chartSubtitle: 'Issued badges for each badge type.',
+          pieSlices: badgeRowsNormalized.map((row) => ({
+            label: row.badgeName,
+            value: row.awarded,
+            awarded: row.awarded,
+            eligible: row.eligible,
+          })),
+          columns: ['Badge (Park)', 'Eligible Guides', 'Awarded', 'Pending'],
+          rows: badgeRowsNormalized.map((row) => [
+            row.badgeName,
+            String(row.eligible),
+            String(row.awarded),
+            String(row.pending),
+          ]),
+        },
+        station: {
+          title: 'Park guide distribution by station',
+          subtitle: 'Identify understaffed parks and optimize resource allocation.',
+          chartType: 'bar',
+          kpis: [
+            { label: 'Parks covered', value: String(stations.length), note: 'Total known park stations' },
+            { label: 'Total guides', value: String(totalGuides), note: 'Assigned to parks by qualification' },
+            { label: 'Avg. per park', value: stations.length > 0 ? (totalGuides / stations.length).toFixed(1) : '0.0', note: 'Guides per station' },
+            { label: 'Understaffed', value: String(understaffedCount), note: 'Below 4 assigned guides' },
+          ],
+          chartTitle: 'Guide distribution across parks',
+          chartSubtitle: 'Number of guides per park station.',
+          bars: stations.map((station) => ({
+            label: station.parkName.split(' ')[0],
+            value: station.guidesAssigned,
+          })),
+          columns: ['Park / Station', 'Guides Assigned', 'Lead Guides', 'Status', 'Notes'],
+          rows: stations.map((station) => [
+            station.parkName,
+            String(station.guidesAssigned),
+            String(station.leadGuides),
+            station.status,
+            station.notes,
+          ]),
+        },
+        generatedAt: new Date().toISOString(),
+        certificationSummary: {
+          issuedGuides,
+        },
+      },
+    });
+  } catch (error) {
+    console.error('Get analytics dashboard error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to fetch analytics dashboard data.',
+    });
+  }
+}
+
 module.exports = {
   createQualification,
   createAnnouncement,
@@ -776,4 +1131,5 @@ module.exports = {
   listEvidenceAlerts,
   streamEvidenceVideo,
   updateEvidenceStatus,
+  getAnalyticsDashboard,
 };

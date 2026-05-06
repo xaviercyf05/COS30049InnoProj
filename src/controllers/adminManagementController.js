@@ -808,23 +808,6 @@ async function getAnalyticsDashboard(req, res) {
         WHERE c.Status = 'Issued'`
     );
 
-    const [avgAttemptRows] = await query(
-      `SELECT AVG(aa.TimeUsedSeconds) AS AvgSeconds
-         FROM AssessmentAttempts aa
-         INNER JOIN Users u ON u.UserID = aa.UserID
-         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
-        WHERE aa.TimeUsedSeconds > 0`
-    );
-
-    const [userAttemptRows] = await query(
-      `SELECT aa.UserID,
-              SUM(aa.TimeUsedSeconds) AS TotalSeconds
-         FROM AssessmentAttempts aa
-         INNER JOIN Users u ON u.UserID = aa.UserID
-         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
-        GROUP BY aa.UserID`
-    );
-
     const [userBadgeRows] = await query(
       `SELECT aa.UserID,
               GROUP_CONCAT(DISTINCT b.BadgeName ORDER BY b.BadgeName SEPARATOR ', ') AS EarnedBadges
@@ -878,11 +861,6 @@ async function getAnalyticsDashboard(req, res) {
         ORDER BY GuidesAssigned DESC, p.ParkName ASC`
     );
 
-    const attemptSecondsByUser = userAttemptRows.reduce((accumulator, row) => {
-      accumulator[row.UserID] = toSafeNumber(row.TotalSeconds, 0);
-      return accumulator;
-    }, {});
-
     const earnedBadgesByUser = userBadgeRows.reduce((accumulator, row) => {
       accumulator[row.UserID] = row.EarnedBadges || '-';
       return accumulator;
@@ -890,7 +868,6 @@ async function getAnalyticsDashboard(req, res) {
 
     const guides = guideRows.map((row) => {
       const progress = toSafeNumber(row.Progress, 0);
-      const totalSeconds = toSafeNumber(attemptSecondsByUser[row.UserID], 0);
 
       return {
         guideId: row.UserID,
@@ -898,7 +875,6 @@ async function getAnalyticsDashboard(req, res) {
         assignedPark: row.AssignedPark || 'Unassigned',
         contact: row.Email || '-',
         progress,
-        totalSeconds,
         earnedBadges: earnedBadgesByUser[row.UserID] || '-',
       };
     });
@@ -914,7 +890,6 @@ async function getAnalyticsDashboard(req, res) {
 
     const enrolledGuides = toSafeNumber(enrollmentRows[0] && enrollmentRows[0].EnrolledUsers, 0);
     const issuedGuides = toSafeNumber(issuedRows[0] && issuedRows[0].IssuedUsers, 0);
-    const avgAttemptSeconds = toSafeNumber(avgAttemptRows[0] && avgAttemptRows[0].AvgSeconds, 0);
 
     const progressBars = guides
       .slice()
@@ -1006,23 +981,21 @@ async function getAnalyticsDashboard(req, res) {
         },
         progress: {
           title: 'Park guide training progress tracker',
-          subtitle: 'Track individual training completion and time spent on current modules.',
+          subtitle: 'Track individual training completion on current modules.',
           chartType: 'bar',
           kpis: [
             { label: 'Guides enrolled', value: String(enrolledGuides), note: 'Users with certificate records' },
             { label: 'Avg. progress', value: formatPercentage(averageProgress), note: 'Across active park guides' },
-            { label: 'Avg. time', value: formatHours(avgAttemptSeconds), note: 'Per assessment attempt' },
             { label: 'Fast learners', value: String(guides.filter((guide) => guide.progress >= 90).length), note: 'Progress above 90%' },
           ],
           chartTitle: 'Training progress distribution by guide',
           chartSubtitle: 'Completion percentage of currently enrolled modules.',
           bars: progressBars,
-          columns: ['Guide Name', 'Current Module', 'Progress %', 'Time Spent (hours)', 'Earned Park Badges'],
+          columns: ['Guide Name', 'Current Module', 'Progress %', 'Earned Park Badges'],
           rows: guides.map((guide) => [
             guide.fullName,
             guide.assignedPark,
             formatPercentage(guide.progress),
-            formatHours(guide.totalSeconds),
             guide.earnedBadges,
           ]),
         },

@@ -1,33 +1,57 @@
 import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Linking } from 'react-native';
 
-export default function AlertDetail({ route, navigation }) {
+export default function AlertDetail({ route }) {
   const alert = route?.params?.alert || {};
-  const videoUrl = alert.videoUrl || 'https://interactive-examples.mdn.mozilla.net/media/cc0-videos/flower.mp4';
+  const videoUrl = alert.videoUrl || '';
+  const labelsText = alert.labels ? JSON.stringify(alert.labels, null, 2) : '';
+
+  const openVideo = async () => {
+    if (!videoUrl) {
+      return;
+    }
+
+    await Linking.openURL(videoUrl);
+  };
 
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>{alert.name || 'Alert Detail'}</Text>
-          <Text style={styles.meta}>{alert.location}</Text>
+          <Text style={styles.title}>{alert.name || 'Evidence Detail'}</Text>
+          <Text style={styles.meta}>{alert.location || 'Location unavailable'}</Text>
         </View>
 
-        <View style={styles.videoWrap}>
-          <div style={{ width: '100%', maxWidth: 900 }}>
-            <video controls style={{ width: '100%', borderRadius: 12 }} src={videoUrl} />
-          </div>
-        </View>
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Event summary</Text>
+          <Text style={styles.sectionText}>{alert.status || 'No event summary available.'}</Text>
 
-        <View style={styles.info}>
-          <Text style={styles.infoTitle}>Date & Time</Text>
-          <Text style={styles.infoText}>{alert.timestamp}</Text>
+          <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Date & Time</Text>
+          <Text style={styles.sectionText}>{alert.timestamp || 'Timestamp unavailable'}</Text>
 
-          <Text style={[styles.infoTitle, { marginTop: 12 }]}>Event</Text>
-          <Text style={styles.infoText}>{alert.status}</Text>
+          <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Event type</Text>
+          <Text style={styles.sectionText}>{alert.eventType || 'abnormal_interaction_detected'}</Text>
 
-          <TouchableOpacity style={styles.download} onPress={() => window.open(videoUrl, '_blank')}>
-            <Text style={styles.downloadText}>Open / Download Evidence</Text>
+          <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Coordinates</Text>
+          <Text style={styles.sectionText}>
+            {alert.latitude !== null && alert.latitude !== undefined && alert.longitude !== null && alert.longitude !== undefined
+              ? `${alert.latitude}, ${alert.longitude}`
+              : 'Not available in this record'}
+          </Text>
+
+          {labelsText ? (
+            <>
+              <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Labels</Text>
+              <Text style={styles.codeBlock}>{labelsText}</Text>
+            </>
+          ) : null}
+
+          <TouchableOpacity
+            style={[styles.download, !videoUrl && styles.downloadDisabled]}
+            onPress={openVideo}
+            disabled={!videoUrl}
+          >
+            <Text style={styles.downloadText}>{videoUrl ? 'Open Evidence Video' : 'Video not available'}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>
@@ -41,10 +65,20 @@ const styles = StyleSheet.create({
   header: { marginBottom: 12 },
   title: { fontSize: 20, fontWeight: '800', color: '#243424' },
   meta: { marginTop: 6, color: '#6C7566' },
-  videoWrap: { marginTop: 10, alignItems: 'center' },
-  info: { marginTop: 18, backgroundColor: '#FFFFFF', padding: 16, borderRadius: 12 },
-  infoTitle: { fontWeight: '800', color: '#233322' },
-  infoText: { marginTop: 6, color: '#445244' },
+  card: { marginTop: 10, backgroundColor: '#FFFFFF', padding: 16, borderRadius: 12 },
+  sectionTitle: { fontWeight: '800', color: '#233322' },
+  sectionText: { marginTop: 6, color: '#445244' },
+  sectionSpacing: { marginTop: 12 },
+  codeBlock: {
+    marginTop: 6,
+    backgroundColor: '#F5F7F2',
+    borderRadius: 10,
+    padding: 12,
+    color: '#3E4A3E',
+    fontSize: 12,
+    lineHeight: 18,
+  },
   download: { marginTop: 16, backgroundColor: '#E04545', padding: 10, borderRadius: 8, alignItems: 'center' },
+  downloadDisabled: { backgroundColor: '#C9C9C9' },
   downloadText: { color: '#fff', fontWeight: '800' }
 });

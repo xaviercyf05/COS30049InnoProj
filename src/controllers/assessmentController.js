@@ -530,6 +530,54 @@ async function getAssessmentBadge(req, res) {
   }
 }
 
+/**
+ * Admin: issue a badge to a user (create UserBadges row).
+ * POST /admin/users/:userId/badges
+ * Body: { badgeId, assessmentId?, moduleId? }
+ */
+async function issueBadgeToUser(req, res) {
+  try {
+    const issuedBy = req.user.userId;
+    const targetUserId = Number(req.params.userId);
+    const badgeId = Number(req.body.badgeId);
+    const assessmentId = req.body.assessmentId ? Number(req.body.assessmentId) : null;
+    const moduleId = req.body.moduleId ? Number(req.body.moduleId) : null;
+
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid target user ID.' });
+    }
+
+    if (!Number.isInteger(badgeId) || badgeId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid badge ID.' });
+    }
+
+    // Ensure user exists
+    const [userRows] = await query('SELECT UserID FROM Users WHERE UserID = ? LIMIT 1', [targetUserId]);
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Target user not found.' });
+    }
+
+    // Ensure badge exists and is active
+    const [badgeRows] = await query('SELECT BadgeID FROM Badges WHERE BadgeID = ? AND IsActive = 1 LIMIT 1', [badgeId]);
+    if (badgeRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Badge not found or inactive.' });
+    }
+
+    // Insert award (unique constraint on UserID,BadgeID prevents duplicates)
+    await query(
+      `INSERT INTO UserBadges (UserID, BadgeID, IssuedBy, AssessmentID, ModuleID)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE IssuedBy = VALUES(IssuedBy), AssessmentID = VALUES(AssessmentID), ModuleID = VALUES(ModuleID), IssuedAt = CURRENT_TIMESTAMP`,
+      [targetUserId, badgeId, issuedBy, assessmentId, moduleId]
+    );
+
+    return res.json({ success: true, message: 'Badge issued to user.' });
+  } catch (error) {
+    console.error('Issue badge to user error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to issue badge.' });
+  }
+}
+
 module.exports = {
   getAssessmentQuestions,
   checkAttemptEligibility,
@@ -549,4 +597,5 @@ module.exports = {
   linkAssessmentBadge,
   unlinkAssessmentBadge,
   getAssessmentBadge,
+  issueBadgeToUser,
 };

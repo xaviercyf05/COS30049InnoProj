@@ -182,8 +182,34 @@ async function getUserQualifications(userId) {
   }
 }
 
+/**
+ * Check whether a specific module is unlocked for a user.
+ * Uses the existing getQualificationProgress logic and finds module's isUnlocked flag.
+ */
+async function isModuleUnlocked(userId, moduleId) {
+  try {
+    const [rows] = await query(
+      `SELECT QualificationID FROM Modules WHERE ModuleID = ? LIMIT 1`,
+      [moduleId]
+    );
+
+    if (rows.length === 0) {
+      throw new Error('Module not found');
+    }
+
+    const qualificationId = rows[0].QualificationID;
+    const progress = await getQualificationProgress(userId, qualificationId);
+
+    const found = (progress.moduleProgress || []).find((m) => Number(m.moduleId) === Number(moduleId));
+    return !!(found && found.isUnlocked);
+  } catch (error) {
+    throw error;
+  }
+}
+
 module.exports = {
   enrollUserInQualification,
   getQualificationProgress,
   getUserQualifications,
+  isModuleUnlocked,
 };

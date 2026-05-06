@@ -573,6 +573,27 @@ router.get(
 );
 
 /**
+ * POST /admin/users/:userId/badges - Issue a badge to a user (admin action)
+ */
+router.post(
+  "/users/:userId/badges",
+  [
+    param("userId").isInt().withMessage("Invalid user ID."),
+    body("badgeId").isInt({ min: 1 }).withMessage("Valid badgeId is required."),
+    body("assessmentId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("assessmentId must be a valid integer."),
+    body("moduleId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("moduleId must be a valid integer."),
+  ],
+  validate,
+  asyncHandler(assessmentController.issueBadgeToUser)
+);
+
+/**
  * GET /admin/modules/:moduleId/badges - Get badges linked to a module
  */
 router.get(

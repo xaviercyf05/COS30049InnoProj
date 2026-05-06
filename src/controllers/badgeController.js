@@ -1,4 +1,5 @@
 const { query } = require("../config/db");
+const qualificationService = require("../services/qualificationService");
 
 const DEFAULT_BADGE_ICON =
   "https://cdn-icons-png.flaticon.com/512/16779/16779402.png";
@@ -54,6 +55,22 @@ async function addMissingBadgeColumns() {
         FOREIGN KEY (ModuleID)
         REFERENCES Modules (ModuleID)
         ON DELETE CASCADE
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
+  await query(
+    `CREATE TABLE IF NOT EXISTS UserBadges (
+      UserBadgeID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      UserID INT UNSIGNED NOT NULL,
+      BadgeID INT UNSIGNED NOT NULL,
+      IssuedBy INT UNSIGNED NULL,
+      AssessmentID INT UNSIGNED NULL,
+      ModuleID INT UNSIGNED NULL,
+      IssuedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_user_badge (UserID, BadgeID),
+      CONSTRAINT fk_userbadges_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
+      CONSTRAINT fk_userbadges_badge FOREIGN KEY (BadgeID) REFERENCES Badges (BadgeID) ON DELETE CASCADE,
+      CONSTRAINT fk_userbadges_issued_by FOREIGN KEY (IssuedBy) REFERENCES Users (UserID) ON DELETE SET NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
 
@@ -225,7 +242,7 @@ function monthsUntilDate(dateValue) {
   return diffMonths >= 0 ? diffMonths : 0;
 }
 
-function mapBadgeRow(badge, unlocked = false) {
+function mapBadgeRow(badge, unlocked = false, earned = false) {
   const linkedModules = Array.isArray(badge.linkedModules) ? badge.linkedModules : [];
   const linkedModuleIds = linkedModules.map((module) => module.moduleId);
   const linkedModuleNames = linkedModules.map((module) => module.moduleTitle);
@@ -251,6 +268,7 @@ function mapBadgeRow(badge, unlocked = false) {
     linkedModuleNames,
     linkedModuleName: linkedModuleNames.length > 0 ? linkedModuleNames.join(', ') : null,
     linkedModules,
+    earned: !!earned,
   };
 }
 
@@ -281,35 +299,56 @@ async function getUserBadges(req, res) {
 
     const { userId } = req.user;
 
-    const [progressRows] = await query(
-      "SELECT Progress FROM Users WHERE UserID = ? LIMIT 1",
+    const [userRows] = await query(
+      "SELECT UserID FROM Users WHERE UserID = ? LIMIT 1",
       [userId]
     );
 
-    if (progressRows.length === 0) {
-      return res.status(404).json({
-        success: false,
-        message: "User not found.",
-      });
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: "User not found." });
     }
-
-    const userProgress = Number(progressRows[0].Progress || 0);
 
     const [badges] = await query(
       `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold, IsValid, ValidityMonths, ExpiryDate
          FROM Badges
         WHERE IsActive = 1
-        ORDER BY UnlockThreshold ASC, BadgeID ASC`
+        ORDER BY BadgeID ASC`
     );
 
     const hydratedBadges = await hydrateBadgesWithLinkedModules(badges);
 
-    return res.json({
-      success: true,
-      data: hydratedBadges.map((badge) =>
-        mapBadgeRow(badge, userProgress >= Number(badge.UnlockThreshold || 0))
-      ),
-    });
+    // Get awarded badges for user
+    const [awardedRows] = await query(
+      `SELECT BadgeID FROM UserBadges WHERE UserID = ?`,
+      [userId]
+    );
+
+    const awardedSet = new Set((awardedRows || []).map((r) => Number(r.BadgeID)));
+
+    const result = await Promise.all(
+      hydratedBadges.map(async (badge) => {
+        let isUnlocked = false;
+
+        if (Array.isArray(badge.linkedModules) && badge.linkedModules.length > 0) {
+          for (const lm of badge.linkedModules) {
+            try {
+              const unlocked = await qualificationService.isModuleUnlocked(userId, lm.moduleId);
+              if (unlocked) {
+                isUnlocked = true;
+                break;
+              }
+            } catch (err) {
+              // ignore per-module check errors and continue
+              console.error('Module unlock check failed for', lm.moduleId, err);
+            }
+          }
+        }
+
+        return mapBadgeRow(badge, !!isUnlocked, awardedSet.has(Number(badge.BadgeID)));
+      })
+    );
+
+    return res.json({ success: true, data: result });
   } catch (error) {
     console.error("Get user badges error:", error);
     return res.status(500).json({

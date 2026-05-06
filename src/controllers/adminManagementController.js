@@ -891,11 +891,6 @@ async function getAnalyticsDashboard(req, res) {
     const enrolledGuides = toSafeNumber(enrollmentRows[0] && enrollmentRows[0].EnrolledUsers, 0);
     const issuedGuides = toSafeNumber(issuedRows[0] && issuedRows[0].IssuedUsers, 0);
 
-    const progressBars = moduleRowsNormalized.map((module) => ({
-      label: module.moduleTitle.substring(0, 10) + '...',
-      value: Math.round(module.completion), // avg progress %
-    }));
-
     const moduleRowsNormalized = moduleRows.map((row) => {
       const enrolled = toSafeNumber(row.EnrolledGuides, 0);
       const completed = toSafeNumber(row.CompletedGuides, 0);
@@ -910,6 +905,13 @@ async function getAnalyticsDashboard(req, res) {
         completion,
       };
     });
+
+    const progressBars = moduleRowsNormalized.map((module) => ({
+      label: module.moduleTitle.length > 10
+        ? module.moduleTitle.substring(0, 10) + '...'
+        : module.moduleTitle,
+      value: Math.round(module.completion),
+    }));
 
     const totalModuleEnrollments = moduleRowsNormalized.reduce((sum, row) => sum + row.enrolled, 0);
     const totalModuleCompletions = moduleRowsNormalized.reduce((sum, row) => sum + row.completed, 0);

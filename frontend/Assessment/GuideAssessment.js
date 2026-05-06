@@ -200,9 +200,12 @@ function GuideAssessment({ navigation, route }) {
 				answeredCount: localAnswered,
 				totalQuestions: questions.length,
 				score: result.score || 0,
+				correctCount: result.correctCount ?? null,
 				passed: result.passed === true,
 				feedbackMessage: result.feedbackMessage || '',
 				moduleId,
+				attemptId: result.attemptId,
+				assessmentId: effectiveAssessmentId,
 			});
 		} catch (err) {
 			const errMsg = err.message || err.toString() || 'Unknown error';

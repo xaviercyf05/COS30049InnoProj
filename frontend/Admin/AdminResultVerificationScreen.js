@@ -15,6 +15,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import withRoleGuard from '../auth/withRoleGuard.js';
 import { requestProfileApi } from '../Profile/profileApi.js';
+import { fetchAllAssessments, fetchAssessmentAttempts } from '../Assessment/assessmentApi.js';
 
 const DEFAULT_BADGE_ICON = 'https://cdn-icons-png.flaticon.com/512/16779/16779402.png';
 
@@ -90,10 +91,41 @@ const normalizeResult = (item, fallbackIndex = 0) => {
 	};
 };
 
+const normalizeModuleStage = (module) => {
+	const rawValue = module?.moduleType || module?.module_type || module?.type || module?.category || module?.moduleTypeId || module?.module_type_id;
+	const normalized = String(rawValue || '').trim().toLowerCase();
+
+	if (rawValue === 1 || rawValue === '1' || normalized === 'general') {
+		return 'general';
+	}
+
+	if (rawValue === 2 || rawValue === '2' || normalized === 'park-specific' || normalized === 'park_specific' || normalized === 'tpa' || normalized === 'total protected area') {
+		return 'park-specific';
+	}
+
+	if (rawValue === 3 || rawValue === '3' || normalized === 'on-site' || normalized === 'onsite' || normalized === 'on_site' || normalized === 'on site training') {
+		return 'on-site';
+	}
+
+	return 'other';
+};
+
 function AdminResultVerificationScreen({ navigation, route, useSharedChrome = false }) {
 	const insets = useSafeAreaInsets();
+	const routePayload = route?.params || {};
 	const routeResults = route?.params?.results;
-	const singleResult = route?.params?.result || route?.params || {};
+	const singleResult = route?.params?.result || routePayload;
+	const routeAssessmentId = route?.params?.assessmentId || route?.params?.result?.assessmentId || null;
+	const hasRouteData = Boolean(
+		routeResults ||
+		routePayload.result ||
+		routePayload.parkGuideName ||
+		routePayload.userName ||
+		routePayload.attemptId ||
+		routePayload.assessmentId ||
+		routePayload.finalScore ||
+		routePayload.dateAttempt
+	);
 
 	const initialResults = useMemo(() => {
 		if (Array.isArray(routeResults) && routeResults.length > 0) {
@@ -107,8 +139,15 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		return [];
 	}, [routeResults, singleResult]);
 
-	const [results] = useState(initialResults);
+	const [results, setResults] = useState(initialResults);
 	const [selectedResultId, setSelectedResultId] = useState(initialResults[0]?.id || null);
+	const [assessments, setAssessments] = useState([]);
+	const [selectedAssessmentId, setSelectedAssessmentId] = useState(routeAssessmentId);
+	const [loadingAssessments, setLoadingAssessments] = useState(!hasRouteData);
+	const [loadingAttempts, setLoadingAttempts] = useState(false);
+	const [modules, setModules] = useState([]);
+	const [loadingModules, setLoadingModules] = useState(true);
+	const [onSiteCompletionMap, setOnSiteCompletionMap] = useState({});
 	const [badges, setBadges] = useState([]);
 	const [loadingBadges, setLoadingBadges] = useState(true);
 	const [issuing, setIssuing] = useState(false);
@@ -116,7 +155,72 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const [statusType, setStatusType] = useState('info');
 	const [note, setNote] = useState('');
 
-	const selectedResult = results.find((item) => item.id === selectedResultId) || results[0] || null;
+	const selectedResultBase = results.find((item) => item.id === selectedResultId) || results[0] || null;
+	const selectedAssessment = assessments.find((assessment) => String(assessment.id) === String(selectedAssessmentId))
+		|| assessments.find((assessment) => String(assessment.id) === String(routeAssessmentId))
+		|| null;
+	const selectedAssessmentModule = selectedAssessment
+		? modules.find((module) => String(module.moduleId) === String(selectedAssessment.moduleId)) || null
+		: null;
+	const resolvedModuleName = selectedAssessmentModule?.title
+		|| selectedAssessment?.title
+		|| selectedResultBase?.moduleName
+		|| 'Module';
+	const parkSpecificModules = useMemo(
+		() => modules.filter((module) => normalizeModuleStage(module) === 'park-specific'),
+		[modules]
+	);
+	const onSiteModules = useMemo(
+		() => modules.filter((module) => normalizeModuleStage(module) === 'on-site'),
+		[modules]
+	);
+	const selectedOnSiteModule = useMemo(() => {
+		if (!selectedAssessmentModule || normalizeModuleStage(selectedAssessmentModule) !== 'park-specific') {
+			return null;
+		}
+
+		const parkIndex = parkSpecificModules.findIndex(
+			(module) => String(module.moduleId) === String(selectedAssessmentModule.moduleId)
+		);
+
+		return parkIndex >= 0 ? onSiteModules[parkIndex] || null : null;
+	}, [onSiteModules, parkSpecificModules, selectedAssessmentModule]);
+	const verificationRows = useMemo(() => {
+		const baseRows = results.map((item) => ({
+			...item,
+			rowType: 'assessment',
+			moduleName: item.moduleName || resolvedModuleName,
+			completionStatus: item.passed || Number(item.finalScore) >= 60 ? 'completed' : 'incomplete',
+		}));
+
+		if (!selectedOnSiteModule) {
+			return baseRows;
+		}
+
+		const onSiteRows = results.map((item) => {
+			const onSiteKey = String(item.userId || item.parkGuideName || item.id || '').trim();
+			const completionStatus = onSiteCompletionMap[onSiteKey] || 'incomplete';
+
+			return {
+				...item,
+				id: `onsite-${item.id}`,
+				rowType: 'on-site',
+				moduleName: selectedOnSiteModule.title || `Module ${selectedOnSiteModule.moduleId}`,
+				moduleId: selectedOnSiteModule.moduleId,
+				completionStatus,
+				onSiteKey,
+			};
+		});
+
+		return baseRows.flatMap((item, index) => [item, onSiteRows[index]]);
+	}, [onSiteCompletionMap, results, resolvedModuleName, selectedOnSiteModule]);
+	const selectedResult = verificationRows.find((item) => item.id === selectedResultId) || verificationRows[0] || selectedResultBase;
+	const selectedGuideOnSiteKey = selectedResult
+		? String(selectedResult.onSiteKey || selectedResult.userId || selectedResult.parkGuideName || selectedResult.id || '').trim()
+		: '';
+	const selectedGuideOnSiteCompletion = selectedGuideOnSiteKey
+		? onSiteCompletionMap[selectedGuideOnSiteKey] || 'incomplete'
+		: 'incomplete';
 	const selectedBadge = selectedResult
 		? badges.find((badge) => {
 			const badgeModuleName = String(badge.moduleName || badge.module || badge.assessmentTitle || '').trim().toLowerCase();
@@ -125,9 +229,17 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return badgeModuleName && badgeModuleName === resultModuleName;
 		}) || null
 		: null;
-	const canIssueBadge = Boolean(selectedResult?.userId && selectedBadge);
-	const summaryCount = results.length;
-	const passedCount = results.filter((item) => item.passed || Number(item.finalScore) >= 60).length;
+	const canIssueBadge = Boolean(
+		selectedResult?.userId &&
+		selectedBadge &&
+		(!selectedOnSiteModule || selectedGuideOnSiteCompletion === 'completed') &&
+		(selectedResult.rowType !== 'on-site' || selectedResult.completionStatus === 'completed')
+	);
+	const summaryCount = verificationRows.length;
+	const passedCount = verificationRows.filter((item) =>
+		item.rowType === 'on-site' ? item.completionStatus === 'completed' : item.passed || Number(item.finalScore) >= 60
+	).length;
+	const isSidebarMode = !hasRouteData;
 
 	const loadBadges = async () => {
 		setLoadingBadges(true);
@@ -161,19 +273,116 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		}
 	};
 
+	const loadModules = async () => {
+		setLoadingModules(true);
+
+		try {
+			const token = await AsyncStorage.getItem('innopapp_auth_token');
+
+			if (!token) {
+				throw new Error('Session expired. Please log in again.');
+			}
+
+			const response = await requestProfileApi('/api/v1/admin/modules', token, {
+				method: 'GET',
+			});
+
+			setModules(Array.isArray(response.data) ? response.data : []);
+		} catch (error) {
+			setModules([]);
+			setStatusType('error');
+			setStatusMessage(error?.message || 'Unable to load modules right now.');
+		} finally {
+			setLoadingModules(false);
+		}
+	};
+
+	const loadAssessments = async () => {
+		if (!isSidebarMode) {
+			setLoadingAssessments(false);
+			return;
+		}
+
+		setLoadingAssessments(true);
+		try {
+			const { assessments: fetchedAssessments, error } = await fetchAllAssessments();
+			if (error) throw new Error(error);
+
+			const normalizedAssessments = Array.isArray(fetchedAssessments) ? fetchedAssessments : [];
+			setAssessments(normalizedAssessments);
+
+			if (!selectedAssessmentId && normalizedAssessments.length > 0) {
+				setSelectedAssessmentId(String(normalizedAssessments[0].id));
+			}
+		} catch (error) {
+			setAssessments([]);
+			setStatusType('error');
+			setStatusMessage(error?.message || 'Unable to load assessments right now.');
+		} finally {
+			setLoadingAssessments(false);
+		}
+	};
+
+	const loadAttempts = async (assessmentId) => {
+		if (!assessmentId || !isSidebarMode) {
+			return;
+		}
+
+		setLoadingAttempts(true);
+		try {
+			const { attempts, error } = await fetchAssessmentAttempts(assessmentId);
+			if (error) throw new Error(error);
+
+			const normalizedAttempts = (attempts || []).map((attempt, index) =>
+				normalizeResult(attempt, index)
+			);
+			setResults(normalizedAttempts);
+			setSelectedResultId(normalizedAttempts[0]?.id || null);
+		} catch (error) {
+			setResults([]);
+			setSelectedResultId(null);
+			setStatusType('error');
+			setStatusMessage(error?.message || 'Unable to load attempts right now.');
+		} finally {
+			setLoadingAttempts(false);
+		}
+	};
+
 	useEffect(() => {
 		loadBadges();
+		loadModules();
 
 		const unsubscribe = navigation?.addListener?.('focus', () => {
 			loadBadges();
+			loadModules();
 		});
 
 		return unsubscribe;
 	}, [navigation]);
 
+	useEffect(() => {
+		loadAssessments();
+	}, [isSidebarMode]);
+
+	useEffect(() => {
+		if (isSidebarMode && selectedAssessmentId) {
+			loadAttempts(selectedAssessmentId);
+		}
+	}, [isSidebarMode, selectedAssessmentId]);
+
 	const handleIssueBadge = async () => {
 		if (!selectedResult) {
 			Alert.alert('Select a result', 'Please choose a row from the table first.');
+			return;
+		}
+
+		if (selectedResult.rowType === 'on-site' && selectedResult.completionStatus !== 'completed') {
+			Alert.alert('On-site module incomplete', 'Mark the on-site module as completed before issuing the badge.');
+			return;
+		}
+
+		if (selectedOnSiteModule && selectedGuideOnSiteCompletion !== 'completed') {
+			Alert.alert('On-site module incomplete', 'Mark the on-site module as completed before issuing the badge.');
 			return;
 		}
 
@@ -228,6 +437,22 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		setStatusMessage(`Result for ${selectedResult.parkGuideName} was marked as rejected.`);
 	};
 
+	const updateOnSiteCompletion = (completionStatus) => {
+		if (!selectedResult || selectedResult.rowType !== 'on-site') {
+			return;
+		}
+
+		setOnSiteCompletionMap((previousMap) => ({
+			...previousMap,
+			[selectedResult.onSiteKey]: completionStatus,
+		}));
+
+		setStatusType('success');
+		setStatusMessage(
+			`On-site module for ${selectedResult.parkGuideName} marked as ${completionStatus}.`
+		);
+	};
+
 	const headerPaddingTop = Platform.OS === 'android'
 		? Math.max(12, insets.top + 6)
 		: Math.max(10, insets.top + 4);
@@ -255,11 +480,45 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 				<View style={styles.heroCard}>
 					<Text style={styles.heroKicker}>Park Guide Result Table</Text>
-					<Text style={styles.heroTitleSmall}>{summaryCount} entry {summaryCount === 1 ? '' : 'ies'} ready for review</Text>
+					<Text style={styles.heroTitleSmall}>{summaryCount} {summaryCount === 1 ? 'entry' : 'entries'} ready for review</Text>
 					<Text style={styles.heroSubtitle}>
 						Select any row to inspect the result and issue a badge for that park guide.
 					</Text>
 				</View>
+
+				{isSidebarMode ? (
+					<View style={styles.card}>
+						<Text style={styles.cardTitle}>Select Assessment</Text>
+						{loadingAssessments ? (
+							<View style={styles.loadingWrap}>
+								<ActivityIndicator size="small" color={COLORS.olive} />
+								<Text style={styles.loadingText}>Loading assessments...</Text>
+							</View>
+						) : assessments.length === 0 ? (
+							<View style={styles.emptyBox}>
+								<Text style={styles.emptyText}>No assessments available.</Text>
+							</View>
+						) : (
+							<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assessmentList}>
+								{assessments.map((assessment) => {
+									const isSelectedAssessment = String(assessment.id) === String(selectedAssessmentId);
+
+									return (
+										<TouchableOpacity
+											key={assessment.id}
+											style={[styles.assessmentChip, isSelectedAssessment && styles.assessmentChipActive]}
+											onPress={() => setSelectedAssessmentId(assessment.id)}
+										>
+											<Text style={[styles.assessmentChipText, isSelectedAssessment && styles.assessmentChipTextActive]}>
+												{assessment.title || `Assessment ${assessment.id}`}
+											</Text>
+										</TouchableOpacity>
+									);
+								})}
+							</ScrollView>
+						)}
+					</View>
+				) : null}
 
 				<View style={styles.tableCard}>
 					<View style={styles.tableHeader}>
@@ -268,17 +527,30 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 						<Text style={[styles.headerCell, styles.colDate]}>Date Attempt</Text>
 						<Text style={[styles.headerCell, styles.colTime]}>Time Used</Text>
 						<Text style={[styles.headerCell, styles.colScore]}>Final Score</Text>
+						<Text style={[styles.headerCell, styles.colStatus]}>Status</Text>
 						<Text style={[styles.headerCell, styles.colAction]}>Action</Text>
 					</View>
 
-					{results.length === 0 ? (
+					{loadingAttempts ? (
 						<View style={styles.emptyBox}>
-							<Text style={styles.emptyText}>No result entries available yet.</Text>
+							<Text style={styles.emptyText}>Loading attempts...</Text>
+						</View>
+					) : verificationRows.length === 0 ? (
+						<View style={styles.emptyBox}>
+							<Text style={styles.emptyText}>
+								{isSidebarMode ? 'Select an assessment to view attempts.' : 'No result entries available yet.'}
+							</Text>
 						</View>
 					) : (
-						results.map((item) => {
+						verificationRows.map((item) => {
 							const isSelected = item.id === selectedResult?.id;
 							const passed = item.passed || Number(item.finalScore) >= 60;
+							const statusLabel = item.rowType === 'on-site'
+								? item.completionStatus === 'completed' ? 'Completed' : 'Incomplete'
+								: passed ? 'Passed' : 'Attempt';
+							const statusStyle = item.rowType === 'on-site'
+								? item.completionStatus === 'completed' ? styles.statusPillComplete : styles.statusPillIncomplete
+								: passed ? styles.statusPillComplete : styles.statusPillIncomplete;
 
 							return (
 								<TouchableOpacity
@@ -297,6 +569,9 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 											{Number.isFinite(Number(item.finalScore)) ? `${Number(item.finalScore)}%` : String(item.finalScore || 'N/A')}
 										</Text>
 									</View>
+										<View style={[styles.statusPill, statusStyle]}>
+											<Text style={styles.statusPillText}>{statusLabel}</Text>
+										</View>
 									<View style={styles.rowActionCell}>
 										<Text style={styles.rowActionText}>{isSelected ? 'Selected' : 'Select'}</Text>
 									</View>
@@ -330,6 +605,33 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 								<Text style={styles.detailLabel}>Final Score</Text>
 								<Text style={styles.detailValue}>{Number.isFinite(Number(selectedResult.finalScore)) ? `${Number(selectedResult.finalScore)}%` : String(selectedResult.finalScore || 'N/A')}</Text>
 							</View>
+						</View>
+					</View>
+				) : null}
+
+				{selectedResult?.rowType === 'on-site' ? (
+					<View style={styles.card}>
+						<Text style={styles.cardTitle}>On-Site Module Review</Text>
+						<Text style={styles.cardSubtitle}>
+							Mark this on-site module as completed or incomplete before issuing the badge.
+						</Text>
+						<View style={styles.statusSummaryRow}>
+							<Text style={styles.fieldLabel}>Current Status</Text>
+							<Text style={styles.fieldValue}>{selectedResult.completionStatus === 'completed' ? 'Completed' : 'Incomplete'}</Text>
+						</View>
+						<View style={styles.actionRow}>
+							<TouchableOpacity
+								style={[styles.issueButton, styles.onSiteCompleteButton]}
+								onPress={() => updateOnSiteCompletion('completed')}
+							>
+								<Text style={styles.issueButtonText}>Mark Completed</Text>
+							</TouchableOpacity>
+							<TouchableOpacity
+								style={[styles.rejectButton, styles.onSiteIncompleteButton]}
+								onPress={() => updateOnSiteCompletion('incomplete')}
+							>
+								<Text style={styles.rejectButtonText}>Mark Incomplete</Text>
+							</TouchableOpacity>
 						</View>
 					</View>
 				) : null}
@@ -520,6 +822,7 @@ const styles = StyleSheet.create({
 	colDate: { flex: 1.25 },
 	colTime: { flex: 0.8 },
 	colScore: { flex: 0.75, textAlign: 'center' },
+	colStatus: { flex: 0.9, textAlign: 'center' },
 	colAction: { flex: 0.65, textAlign: 'center' },
 	tableRow: {
 		flexDirection: 'row',
@@ -576,6 +879,25 @@ const styles = StyleSheet.create({
 	rowActionCell: {
 		flex: 0.65,
 		alignItems: 'center',
+	},
+	statusPill: {
+		flex: 0.9,
+		borderRadius: 999,
+		paddingVertical: 6,
+		paddingHorizontal: 8,
+		alignItems: 'center',
+		justifyContent: 'center',
+	},
+	statusPillComplete: {
+		backgroundColor: COLORS.passBg,
+	},
+	statusPillIncomplete: {
+		backgroundColor: COLORS.failBg,
+	},
+	statusPillText: {
+		fontSize: 11,
+		fontWeight: '800',
+		color: COLORS.heading,
 	},
 	rowActionText: {
 		fontSize: 12,
@@ -636,6 +958,18 @@ const styles = StyleSheet.create({
 		color: COLORS.heading,
 		lineHeight: 20,
 	},
+	statusSummaryRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		backgroundColor: COLORS.infoBg,
+		borderRadius: 12,
+		paddingVertical: 12,
+		paddingHorizontal: 12,
+		borderWidth: 1,
+		borderColor: COLORS.sageBorder,
+		marginTop: 8,
+	},
 	card: {
 		backgroundColor: COLORS.white,
 		borderRadius: 18,
@@ -662,6 +996,31 @@ const styles = StyleSheet.create({
 		fontSize: 13,
 		fontWeight: '600',
 		color: COLORS.subHeading,
+	},
+	assessmentList: {
+		paddingTop: 4,
+		paddingBottom: 2,
+	},
+	assessmentChip: {
+		borderWidth: 1,
+		borderColor: COLORS.sageBorder,
+		backgroundColor: '#FAFBF8',
+		borderRadius: 999,
+		paddingVertical: 8,
+		paddingHorizontal: 14,
+		marginRight: 8,
+	},
+	assessmentChipActive: {
+		backgroundColor: COLORS.olive,
+		borderColor: COLORS.olive,
+	},
+	assessmentChipText: {
+		fontSize: 12,
+		fontWeight: '700',
+		color: COLORS.heading,
+	},
+	assessmentChipTextActive: {
+		color: COLORS.white,
 	},
 	selectedBadgeBox: {
 		flexDirection: 'row',
@@ -741,6 +1100,12 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 		fontWeight: '800',
 		color: COLORS.error,
+	},
+	onSiteCompleteButton: {
+		backgroundColor: COLORS.success,
+	},
+	onSiteIncompleteButton: {
+		backgroundColor: COLORS.failBg,
 	},
 	issueButtonText: {
 		fontSize: 14,

@@ -378,7 +378,16 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
     });
   };
 
-  const assessmentUnlocked = sections.length > 0 && sections.every((section) => visitedSectionIds.has(section.id));
+  const assessmentUnlocked =
+    sections.length > 0 &&
+    sections.every((section) => {
+      const subsectionIds = (section.subsections || []).map((subsection) => subsection.id);
+
+      return (
+        visitedSectionIds.has(section.id) &&
+        subsectionIds.every((subsectionId) => visitedSectionIds.has(subsectionId))
+      );
+    });
   const canTakeAssessment = assessmentUnlocked && progressionUnlocked;
 
   const renderSectionBody = (section, variant = 'desktop') => {
@@ -604,7 +613,9 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
             {!progressionUnlocked ? (
               <Text style={styles.assessmentHintText}>{progressionLockReason}</Text>
             ) : !assessmentUnlocked && sections.length > 0 ? (
-              <Text style={styles.assessmentHintText}>Open each section once to unlock the assessment.</Text>
+              <Text style={styles.assessmentHintText}>
+                Open each section and every subsection once to unlock the assessment.
+              </Text>
             ) : null}
           </View>
 

@@ -497,20 +497,23 @@ function AdminAssessment({ route, navigation }) {
 	};
 
 	const openResultVerification = (attempt) => {
+		const resolvedModuleName = moduleNameById[String(assessmentModuleId)] || assessmentTitle || `Module ${assessmentModuleId || ''}`.trim() || 'Module';
+
 		navigation.navigate('AdminResultVerification', {
 			result: {
 				...attempt,
 				parkGuideName: attempt.userName,
-				moduleName: assessmentTitle || 'Assessment',
+				moduleName: resolvedModuleName,
 				assessmentId: selectedAssessmentId,
 				passingScore: Number(assessmentPassingScore) || 60,
 			},
 			parkGuideName: attempt.userName,
-			moduleName: assessmentTitle || 'Assessment',
+			moduleName: resolvedModuleName,
 			dateAttempt: attempt.submittedAt,
 			timeUsedSeconds: attempt.timeUsedSeconds,
 			finalScore: attempt.score,
 			assessmentId: selectedAssessmentId,
+			moduleId: assessmentModuleId,
 			passingScore: Number(assessmentPassingScore) || 60,
 		});
 	};

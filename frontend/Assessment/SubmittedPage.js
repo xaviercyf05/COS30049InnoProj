@@ -9,11 +9,32 @@ function SubmittedPage({ navigation, route }) {
 	const answeredCount = route?.params?.answeredCount || 0;
 	const totalQuestions = route?.params?.totalQuestions || 0;
 	const score = route?.params?.score !== undefined ? route?.params?.score : null;
+	const correctCount = route?.params?.correctCount !== undefined ? route?.params?.correctCount : null;
 	const passed = route?.params?.passed === true;
 	const feedbackMessage = route?.params?.feedbackMessage || '';
+	const attemptId = route?.params?.attemptId;
+	const assessmentId = route?.params?.assessmentId;
 
-	// Calculate score percentage if score was provided
-	const scorePercentage = score !== null ? Math.round((score / totalQuestions) * 100) : null;
+	const scorePercentage =
+		correctCount !== null && totalQuestions > 0
+			? Math.round((Number(correctCount) / totalQuestions) * 100)
+			: score !== null
+				? Math.max(0, Math.min(100, Math.round(Number(score))))
+				: null;
+
+	const handleViewResults = () => {
+		if (attemptId) {
+			navigation.navigate('AdminResultVerificationScreen', {
+				result: {
+					attemptId: attemptId,
+					assessmentId: assessmentId,
+					moduleName: moduleName,
+					score: score,
+					passed: passed,
+				},
+			});
+		}
+	};
 
 	return (
 		<SafeAreaView style={styles.container}>
@@ -35,7 +56,9 @@ function SubmittedPage({ navigation, route }) {
 						<View style={styles.scoreDisplay}>
 							<Text style={styles.scoreValue}>{scorePercentage}%</Text>
 							<Text style={styles.scoreDetail}>
-								{Math.round(score)} / {totalQuestions}
+								{correctCount !== null && totalQuestions > 0
+									? `${Number(correctCount)} / ${totalQuestions} correct`
+									: 'Out of 100 total marks'}
 							</Text>
 						</View>
 					</View>

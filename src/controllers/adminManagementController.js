@@ -891,14 +891,10 @@ async function getAnalyticsDashboard(req, res) {
     const enrolledGuides = toSafeNumber(enrollmentRows[0] && enrollmentRows[0].EnrolledUsers, 0);
     const issuedGuides = toSafeNumber(issuedRows[0] && issuedRows[0].IssuedUsers, 0);
 
-    const progressBars = guides
-      .slice()
-      .sort((left, right) => right.progress - left.progress)
-      .slice(0, 8)
-      .map((guide) => ({
-        label: guide.fullName.split(' ')[0],
-        value: Math.round(guide.progress),
-      }));
+    const progressBars = moduleRowsNormalized.map((module) => ({
+      label: module.moduleTitle.substring(0, 10) + '...',
+      value: Math.round(module.completion), // avg progress %
+    }));
 
     const moduleRowsNormalized = moduleRows.map((row) => {
       const enrolled = toSafeNumber(row.EnrolledGuides, 0);
@@ -985,11 +981,10 @@ async function getAnalyticsDashboard(req, res) {
           chartType: 'bar',
           kpis: [
             { label: 'Guides enrolled', value: String(enrolledGuides), note: 'Users with certificate records' },
-            { label: 'Avg. progress', value: formatPercentage(averageProgress), note: 'Across active park guides' },
-            { label: 'Fast learners', value: String(guides.filter((guide) => guide.progress >= 90).length), note: 'Progress above 90%' },
+            { label: 'Avg. progress', value: formatPercentage(averageProgress), note: 'Across active park guides' }
           ],
-          chartTitle: 'Training progress distribution by guide',
-          chartSubtitle: 'Completion percentage of currently enrolled modules.',
+          chartTitle: 'Average progress by module',
+          chartSubtitle: 'Shows how far guides have progressed in each module.',
           bars: progressBars,
           columns: ['Guide Name', 'Current Module', 'Progress %', 'Earned Park Badges'],
           rows: guides.map((guide) => [

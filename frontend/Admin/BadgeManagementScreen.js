@@ -49,6 +49,16 @@ function BadgeManagementScreen({ navigation, currentProfile }) {
           validityMonths: badge.validityMonths || badge.validity_months || null,
           linkedModuleId: badge.linkedModuleId || badge.moduleId || badge.linked_module_id || null,
           linkedModuleName: badge.linkedModuleName || badge.moduleTitle || badge.moduleName || '',
+          linkedModuleIds: Array.isArray(badge.linkedModuleIds)
+            ? badge.linkedModuleIds
+            : Array.isArray(badge.linked_module_ids)
+              ? badge.linked_module_ids
+              : [],
+          linkedModuleNames: Array.isArray(badge.linkedModuleNames)
+            ? badge.linkedModuleNames
+            : Array.isArray(badge.linked_module_names)
+              ? badge.linked_module_names
+              : [],
         }))
       );
     } catch (_error) {
@@ -81,6 +91,22 @@ function BadgeManagementScreen({ navigation, currentProfile }) {
       uri: 'https://static.vecteezy.com/system/resources/previews/036/280/651/original/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-illustration-vector.jpg',
     };
   }, [currentProfile]);
+
+  const formatLinkedModules = (badge) => {
+    const moduleNames = Array.isArray(badge.linkedModuleNames) ? badge.linkedModuleNames.filter(Boolean) : [];
+
+    if (moduleNames.length > 0) {
+      return moduleNames.join(', ');
+    }
+
+    const moduleIds = Array.isArray(badge.linkedModuleIds) ? badge.linkedModuleIds : [];
+
+    if (moduleIds.length > 0) {
+      return moduleIds.map((moduleId) => `Module ${moduleId}`).join(', ');
+    }
+
+    return badge.linkedModuleName || (badge.linkedModuleId ? `Module ${badge.linkedModuleId}` : 'Not linked');
+  };
 
   const openDeleteModal = (id) => {
     setActiveMenu(null);
@@ -176,7 +202,7 @@ function BadgeManagementScreen({ navigation, currentProfile }) {
                   Validity: {badge.validityMonths ? `${badge.validityMonths} month(s)` : 'Not set'}
                 </Text>
                 <Text style={styles.badgeMetaText} numberOfLines={2}>
-                  Linked Module: {badge.linkedModuleName || (badge.linkedModuleId ? `Module ${badge.linkedModuleId}` : 'Not linked')}
+                  Linked Module{Array.isArray(badge.linkedModuleNames) && badge.linkedModuleNames.length > 1 ? 's' : ''}: {formatLinkedModules(badge)}
                 </Text>
               </View>
             ))}

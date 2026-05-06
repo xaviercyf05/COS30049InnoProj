@@ -290,7 +290,7 @@ export async function fetchAllAssessments(moduleId) {
 	return { error: null, assessments };
 }
 
-export async function addAssessmentQuestion(assessmentId, questionText, questionType, options, correctAnswer) {
+export async function addAssessmentQuestion(assessmentId, questionText, questionType, topic, options, correctAnswer) {
 	const token = await AsyncStorage.getItem('innopapp_auth_token');
 	if (!token) {
 		return { error: 'Authentication required', questionId: null };
@@ -298,7 +298,7 @@ export async function addAssessmentQuestion(assessmentId, questionText, question
 
 	const response = await requestAssessmentApi(`/api/v1/admin/assessments/${assessmentId}/questions`, token, {
 		method: 'POST',
-		body: { questionText, questionType, options, correctAnswer },
+		body: { questionText, questionType, topic, options, correctAnswer },
 	});
 
 	if (!response.success) {
@@ -309,7 +309,7 @@ export async function addAssessmentQuestion(assessmentId, questionText, question
 	return { error: null, questionId: getFieldValue(payload, ['questionId', 'id'], null) };
 }
 
-export async function updateAssessmentQuestion(questionId, questionText, questionType, options, correctAnswer) {
+export async function updateAssessmentQuestion(questionId, questionText, questionType, topic, options, correctAnswer) {
 	const token = await AsyncStorage.getItem('innopapp_auth_token');
 	if (!token) {
 		return { error: 'Authentication required' };
@@ -317,7 +317,7 @@ export async function updateAssessmentQuestion(questionId, questionText, questio
 
 	const response = await requestAssessmentApi(`/api/v1/admin/assessments/questions/${questionId}`, token, {
 		method: 'PUT',
-		body: { questionText, questionType, options, correctAnswer },
+		body: { questionText, questionType, topic, options, correctAnswer },
 	});
 
 	return response.success ? { error: null } : { error: response.error };
@@ -443,6 +443,8 @@ export async function fetchAssessmentAttempts(assessmentId) {
 			submittedAt: getFieldValue(attempt, ['submittedAt', 'createdAt'], new Date().toISOString()),
 			timeUsedSeconds: Number(getFieldValue(attempt, ['timeUsedSeconds', 'timeUsed'], 0)) || 0,
 			passed: status === 'passed',
+			passingScore: Number(getFieldValue(attempt, ['passingScore', 'passScore'], 0)) || null,
+			moduleId: getFieldValue(attempt, ['moduleId', 'module_id'], null),
 		};
 	});
 

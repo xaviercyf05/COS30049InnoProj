@@ -276,6 +276,7 @@ function AdminAssessment({ route, navigation }) {
 					selectedAssessmentId,
 					selectedQuestion.question,
 					selectedQuestion.type,
+					selectedQuestion.topic,
 					selectedQuestion.type === 'mcq' ? selectedQuestion.options : [],
 					selectedQuestion.correctAnswer
 				);
@@ -286,6 +287,7 @@ function AdminAssessment({ route, navigation }) {
 					selectedQuestion.id,
 					selectedQuestion.question,
 					selectedQuestion.type,
+					selectedQuestion.topic,
 					selectedQuestion.type === 'mcq' ? selectedQuestion.options : [],
 					selectedQuestion.correctAnswer
 				);
@@ -497,20 +499,23 @@ function AdminAssessment({ route, navigation }) {
 	};
 
 	const openResultVerification = (attempt) => {
+		const selectedAssessment = assessments.find((assessment) => sameId(assessment.id, selectedAssessmentId));
+		const resolvedModuleId = selectedAssessment?.moduleId || assessmentModuleId;
+		const resolvedModuleName = moduleNameById[String(resolvedModuleId)] || selectedAssessment?.title || assessmentTitle || `Module ${resolvedModuleId || ''}`.trim() || 'Module';
+
 		navigation.navigate('AdminResultVerification', {
-			result: {
-				...attempt,
-				parkGuideName: attempt.userName,
-				moduleName: assessmentTitle || 'Assessment',
+			results: attempts.map((item) => ({
+				...item,
+				parkGuideName: item.userName,
+				moduleName: resolvedModuleName,
 				assessmentId: selectedAssessmentId,
+				moduleId: resolvedModuleId,
 				passingScore: Number(assessmentPassingScore) || 60,
-			},
-			parkGuideName: attempt.userName,
-			moduleName: assessmentTitle || 'Assessment',
-			dateAttempt: attempt.submittedAt,
-			timeUsedSeconds: attempt.timeUsedSeconds,
-			finalScore: attempt.score,
+			})),
+			selectedResultId: String(attempt.id),
 			assessmentId: selectedAssessmentId,
+			moduleId: resolvedModuleId,
+			moduleName: resolvedModuleName,
 			passingScore: Number(assessmentPassingScore) || 60,
 		});
 	};
@@ -1043,6 +1048,7 @@ function AdminAssessment({ route, navigation }) {
 											onPress={() => {
 												setSelectedAssessmentId(assessment.id);
 												setAssessmentTitle(assessment.title);
+															setAssessmentModuleId(String(assessment.moduleId || ''));
 												clearStatus();
 											}}
 										>

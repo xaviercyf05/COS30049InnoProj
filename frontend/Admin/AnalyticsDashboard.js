@@ -1,186 +1,12 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
-
-const workbookSheets = [
-  {
-    key: 'parkGuides',
-    title: 'Park Guides',
-    subtitle: 'Guide roster, park assignment, and active guide coverage',
-    accent: '#6E815D'
-  },
-  {
-    key: 'progress',
-    title: 'Progress',
-    subtitle: 'Learning module progress and earned badges for all park guides',
-    accent: '#3E6F62'
-  },
-  {
-    key: 'modules',
-    title: 'Module Enrollment',
-    subtitle: 'Module enrollment distribution across park guides',
-    accent: '#8A6E46'
-  },
-  {
-    key: 'badges',
-    title: 'Badge Distribution',
-    subtitle: 'Achievement distribution across park guides',
-    accent: '#4D7A72'
-  },
-  {
-    key: 'station',
-    title: 'Station Coverage',
-    subtitle: 'Park guides assigned to each station',
-    accent: '#B55A4C'
-  }
-];
-
-const analyticsData = {
-  parkGuides: {
-    hero: 'Guide directory sheets',
-    title: 'Park guides overview',
-    subtitle: 'Complete overview of all guides with assignments and completed modules.',
-    kpis: [
-      { label: 'Total park guides', value: '28', note: 'Active across all parks' },
-      { label: 'Fully trained', value: '12', note: 'Completed all modules' },
-      { label: 'In training', value: '10', note: 'Currently enrolled' },
-      { label: 'Lead guides', value: '6', note: 'Certified supervisors' }
-    ],
-    columns: ['Guide ID', 'Full Name', 'Assigned Park', 'Contact (Email/Phone)'],
-    rows: [
-      ['G001', 'Aisyah Rahman', 'Bako National Park', 'aisyah@park.gov / +60 12-880 4102'],
-      ['G002', 'Daniel Wong', 'Gunung Mulu National Park', 'daniel@park.gov / +60 16-991 2247'],
-      ['G003', 'Nur Iman', 'Kubah National Park', 'nur@park.gov / +60 13-402 1178'],
-      ['G004', 'Michael Jaya', 'Similajau National Park', 'michael@park.gov / +60 19-723 0094'],
-      ['G005', 'Farah Nabila', 'Maludam National Park', 'farah@park.gov / +60 11-621 7781'],
-      ['G006', 'Kelvin Lau', 'Bako National Park', 'kelvin@park.gov / +60 14-805 8892'],
-      ['G007', 'Siti Hajar', 'Gunung Mulu National Park', 'siti@park.gov / +60 17-552 1015'],
-      ['G008', 'Rina Lim', 'Kubah National Park', 'rina@park.gov / +60 18-605 4432']
-    ]
-  },
-  progress: {
-    hero: 'Individual progress sheets',
-    title: 'Park guide training progress tracker',
-    subtitle: 'Track individual training completion and time spent on current modules.',
-    chartType: 'bar',
-    kpis: [
-      { label: 'Guides enrolled', value: '24', note: 'In active training' },
-      { label: 'Avg. progress', value: '78%', note: 'Of current module' },
-      { label: 'Avg. time', value: '12.5h', note: 'Per guide on module' },
-      { label: 'Fast learners', value: '6', note: 'Over 90% complete' }
-    ],
-    chartTitle: 'Training progress distribution by guide',
-    chartSubtitle: 'Completion percentage of currently enrolled module',
-    bars: [
-      { label: 'Aisyah', value: 92 },
-      { label: 'Daniel', value: 88 },
-      { label: 'Nur', value: 81 },
-      { label: 'Michael', value: 74 },
-      { label: 'Farah', value: 63 },
-      { label: 'Kelvin', value: 79 },
-      { label: 'Siti', value: 95 },
-      { label: 'Rina', value: 84 }
-    ],
-    columns: ['Guide Name', 'Current Module', 'Progress %', 'Time Spent (hours)', 'Earned Park Badges'],
-    rows: [
-      ['Aisyah Rahman', 'Bako National Park', '92%', '18.5h', 'Bako'],
-      ['Daniel Wong', 'Gunung Mulu National Park', '88%', '14.2h', 'Gunung Mulu'],
-      ['Nur Iman', 'Kubah National Park', '81%', '11.8h', 'Kubah'],
-      ['Michael Jaya', 'Similajau National Park', '74%', '9.5h', 'Similajau'],
-      ['Farah Nabila', 'Maludam National Park', '63%', '7.2h', '-'],
-      ['Kelvin Lau', 'Bako National Park', '79%', '13.1h', 'Bako'],
-      ['Siti Hajar', 'Gunung Mulu National Park', '95%', '19.7h', 'Gunung Mulu'],
-      ['Rina Lim', 'Kubah National Park', '84%', '16.3h', 'Kubah']
-    ]
-  },
-  modules: {
-    hero: 'Module enrollment sheets',
-    title: 'Module enrollment analysis',
-    subtitle: 'Track enrollment, completion rates, and identify overloaded modules.',
-    chartType: 'pie',
-    kpis: [
-      { label: 'Active modules', value: '5', note: 'Parks' },
-      { label: 'Total enrolled', value: '1363', note: 'Guide enrollments' },
-      { label: 'Avg. completion', value: '68%', note: 'Across all guides' },
-      { label: 'Most popular', value: 'Bako', note: '421 enrolled (31%)' }
-    ],
-    chartTitle: 'Module enrollment share',
-    chartSubtitle: 'Each slice shows how many guides are enrolled in each module.',
-    pieSlices: [
-      { label: 'Bako National Park', value: 421, color: '#5D745D', completed: 289 },
-      { label: 'Similajau National Park', value: 388, color: '#7A8B68', completed: 245 },
-      { label: 'Kubah National Park', value: 276, color: '#A07C57', completed: 176 },
-      { label: 'Gunung Mulu National Park', value: 192, color: '#C2A06E', completed: 134 },
-      { label: 'Maludam National Park', value: 86, color: '#4D7A72', completed: 52 }
-    ],
-    columns: ['Module (Park)', 'Enrolled Guides', 'Completed', 'Training', 'Completion %'],
-    rows: [
-      ['Bako National Park', '421', '289', '132', '68.6%'],
-      ['Similajau National Park', '388', '245', '143', '63.1%'],
-      ['Kubah National Park', '276', '176', '100', '63.8%'],
-      ['Gunung Mulu National Park', '192', '134', '58', '69.8%'],
-      ['Maludam National Park', '86', '52', '34', '60.5%']
-    ]
-  },
-  badges: {
-    hero: 'Badge eligibility sheets',
-    title: 'Park badge eligibility and award status',
-    subtitle: 'Track eligible guides and badge award rates.',
-    chartType: 'pie',
-    kpis: [
-      { label: 'Total badge types', value: '5', note: 'One per park' },
-      { label: 'Awarded badges', value: '312', note: 'Total issued' },
-      { label: 'Eligible guides', value: '248', note: 'Qualified to earn' },
-      { label: 'Pending', value: '78', note: 'Eligible → Awarded' }
-    ],
-    chartTitle: 'Badge unlock share',
-    chartSubtitle: 'Issued badges for each park.',
-    pieSlices: [
-      { label: 'Bako National Park', value: 84, color: '#4D7A72', awarded: 84, eligible: 120 },
-      { label: 'Similajau National Park', value: 72, color: '#5B8B7B', awarded: 72, eligible: 95 },
-      { label: 'Kubah National Park', value: 63, color: '#7CA08F', awarded: 63, eligible: 88 },
-      { label: 'Gunung Mulu National Park', value: 41, color: '#A9C2B3', awarded: 41, eligible: 68 },
-      { label: 'Maludam National Park', value: 26, color: '#3E6F62', awarded: 26, eligible: 52 }
-    ],
-    columns: ['Badge (Park)', 'Eligible Guides', 'Awarded', 'Pending'],
-    rows: [
-      ['Bako National Park', '120', '84', '36'],
-      ['Similajau National Park', '95', '72', '23'],
-      ['Kubah National Park', '88', '63', '25'],
-      ['Gunung Mulu National Park', '68', '41', '27'],
-      ['Maludam National Park', '52', '26', '26']
-    ]
-  },
-  station: {
-    hero: 'Station staffing sheets',
-    title: 'Park guide distribution by station',
-    subtitle: 'Identify understaffed parks and optimize resource allocation.',
-    chartType: 'bar',
-    kpis: [
-      { label: 'Parks covered', value: '5', note: 'Total stations' },
-      { label: 'Total guides', value: '28', note: 'Assigned' },
-      { label: 'Avg. per park', value: '5.6', note: 'Guides per station' },
-      { label: 'Understaffed', value: '2', note: 'Below optimal' }
-    ],
-    chartTitle: 'Guide distribution across parks',
-    chartSubtitle: 'Number of guides per park station.',
-    bars: [
-      { label: 'Bako', value: 7 },
-      { label: 'Mulu', value: 6 },
-      { label: 'Kubah', value: 5 },
-      { label: 'Similajau', value: 5 },
-      { label: 'Maludam', value: 3 }
-    ],
-    columns: ['Park / Station', 'Guides Assigned', 'Lead Guides', 'Status', 'Notes'],
-    rows: [
-      ['Bako National Park', '7', '2', 'Optimal', 'Good coverage'],
-      ['Gunung Mulu National Park', '6', '2', 'Optimal', 'Well-staffed'],
-      ['Kubah National Park', '5', '1', 'Adequate', 'Monitor closely'],
-      ['Similajau National Park', '5', '1', 'Adequate', 'Monitor closely'],
-      ['Maludam National Park', '3', '0', 'Understaffed', 'Urgent: Needs 2 more trained guides']
-    ]
-  }
-};
+import {
+  fetchAnalyticsDashboardData,
+  workbookSheets,
+  createEmptyAnalyticsData,
+  PIE_COLORS
+} from './analyticsApi.js';
 
 function MetricCard({ label, value, note, accent }) {
   return (
@@ -236,13 +62,81 @@ function PieChart({ slices }) {
   const strokeWidth = 30;
   const radius = (size - strokeWidth) / 2;
   const center = size / 2;
-  const total = slices.reduce((sum, slice) => sum + slice.value, 0) || 1;
 
+  // ✅ Normalize + clean data
+  const safeSlices = (slices || [])
+    .map((slice, index) => ({
+      label: slice.label || `Item ${index + 1}`,
+      value: Number(slice.value) || 0,
+      color: slice.color || PIE_COLORS[index % PIE_COLORS.length]
+    }))
+    .filter((slice) => slice.value > 0);
+
+  const total = safeSlices.reduce((sum, slice) => sum + slice.value, 0);
+
+  // ✅ Case 1: No data
+  if (total === 0) {
+    return (
+      <View style={styles.pieChartBox}>
+        <Text style={{ textAlign: 'center', color: '#6A7365' }}>
+          No data available
+        </Text>
+      </View>
+    );
+  }
+
+  // ✅ Case 2: Only one slice (draw full circle)
+  if (safeSlices.length === 1) {
+    return (
+      <View style={styles.pieWrap}>
+        <View style={styles.pieChartBox}>
+          <Svg width={size} height={size}>
+            <Circle
+              cx={center}
+              cy={center}
+              r={radius}
+              fill={safeSlices[0].color}
+            />
+            <Circle
+              cx={center}
+              cy={center}
+              r={radius * 0.55}
+              fill="#FFFFFF"
+            />
+          </Svg>
+
+          <View style={styles.pieCenterLabel}>
+            <Text style={styles.pieCenterValue}>{total}</Text>
+            <Text style={styles.pieCenterText}>Total</Text>
+          </View>
+        </View>
+
+        {/* Legend */}
+        <View style={styles.legendList}>
+          <View style={styles.legendRow}>
+            <View style={styles.legendNameWrap}>
+              <View
+                style={[
+                  styles.legendDot,
+                  { backgroundColor: safeSlices[0].color }
+                ]}
+              />
+              <Text style={styles.legendName}>{safeSlices[0].label}</Text>
+            </View>
+            <Text style={styles.legendValue}>
+              {safeSlices[0].value} ppl · 100%
+            </Text>
+          </View>
+        </View>
+      </View>
+    );
+  }
+
+  // ✅ Helper functions
   let rotation = -90;
 
   const polarToCartesian = (cx, cy, r, angleInDegrees) => {
     const angleInRadians = ((angleInDegrees - 90) * Math.PI) / 180.0;
-
     return {
       x: cx + r * Math.cos(angleInRadians),
       y: cy + r * Math.sin(angleInRadians)
@@ -260,15 +154,17 @@ function PieChart({ slices }) {
     ].join(' ');
   };
 
+  // ✅ Normal multi-slice render
   return (
     <View style={styles.pieWrap}>
       <View style={styles.pieChartBox}>
         <Svg width={size} height={size}>
-          {slices.map((slice) => {
+          {safeSlices.map((slice) => {
             const sliceAngle = (slice.value / total) * 360;
             const startAngle = rotation;
             const endAngle = rotation + sliceAngle;
             const arc = describeArc(center, center, radius, startAngle, endAngle);
+
             rotation = endAngle;
 
             return (
@@ -279,26 +175,37 @@ function PieChart({ slices }) {
               />
             );
           })}
+
+          {/* Donut hole */}
           <Circle cx={center} cy={center} r={radius * 0.55} fill="#FFFFFF" />
         </Svg>
 
+        {/* Center label */}
         <View style={styles.pieCenterLabel}>
           <Text style={styles.pieCenterValue}>{total}</Text>
           <Text style={styles.pieCenterText}>Total</Text>
         </View>
       </View>
 
+      {/* Legend */}
       <View style={styles.legendList}>
-        {slices.map((slice) => {
+        {safeSlices.map((slice) => {
           const share = Math.round((slice.value / total) * 100);
 
           return (
             <View key={slice.label} style={styles.legendRow}>
               <View style={styles.legendNameWrap}>
-                <View style={[styles.legendDot, { backgroundColor: slice.color }]} />
+                <View
+                  style={[
+                    styles.legendDot,
+                    { backgroundColor: slice.color }
+                  ]}
+                />
                 <Text style={styles.legendName}>{slice.label}</Text>
               </View>
-              <Text style={styles.legendValue}>{slice.value} ppl · {share}%</Text>
+              <Text style={styles.legendValue}>
+                {slice.value} ppl · {share}%
+              </Text>
             </View>
           );
         })}
@@ -336,8 +243,41 @@ function SheetTable({ columns, rows }) {
 
 export default function AnalyticsDashboard() {
   const [activeSheet, setActiveSheet] = useState(workbookSheets[0].key);
+  const [analyticsData, setAnalyticsData] = useState(createEmptyAnalyticsData());
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
-  const currentSheet = useMemo(() => analyticsData[activeSheet], [activeSheet]);
+  useEffect(() => {
+    let mounted = true;
+
+    const loadDashboard = async () => {
+      setLoading(true);
+      setError('');
+
+      try {
+        const data = await fetchAnalyticsDashboardData();
+        if (mounted) {
+          setAnalyticsData(data);
+        }
+      } catch (fetchError) {
+        if (mounted) {
+          setError(fetchError.message || 'Failed to fetch analytics dashboard data.');
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadDashboard();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const currentSheet = useMemo(() => analyticsData[activeSheet] || createEmptyAnalyticsData()[activeSheet], [activeSheet, analyticsData]);
 
   const activeMeta = workbookSheets.find((sheet) => sheet.key === activeSheet) || workbookSheets[0];
 
@@ -346,10 +286,31 @@ export default function AnalyticsDashboard() {
       <View style={styles.heroCard}>
         <View style={styles.heroTopRow}>
           <Text style={styles.heroBadgeText}>Analytics Dashboard</Text>
+          {loading ? <ActivityIndicator size="small" color={activeMeta.accent} /> : null}
         </View>
 
         <Text style={styles.heroTitle}>{currentSheet.title}</Text>
         <Text style={styles.heroSubtitle}>{currentSheet.subtitle}</Text>
+
+        {error ? (
+          <View style={styles.errorBox}>
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={async () => {
+              setLoading(true);
+              setError('');
+              try {
+                const data = await fetchAnalyticsDashboardData();
+                setAnalyticsData(data);
+              } catch (fetchError) {
+                setError(fetchError.message || 'Failed to fetch analytics dashboard data.');
+              } finally {
+                setLoading(false);
+              }
+            }}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
 
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tabRow}>
           {workbookSheets.map((sheet) => {
@@ -372,12 +333,14 @@ export default function AnalyticsDashboard() {
       </View>
 
       <View style={styles.kpiGrid}>
-        {(currentSheet.kpis || []).map((item) => (
-          <MetricCard key={item.label} {...item} accent={activeMeta.accent} />
-        ))}
+        {(currentSheet.kpis || [])
+          .filter((item) => !(activeSheet === 'progress' && item.label?.toLowerCase().includes('hour')))
+          .map((item) => (
+            <MetricCard key={item.label} {...item} accent={activeMeta.accent} />
+          ))}
       </View>
 
-      {currentSheet.chartType === 'pie' && currentSheet.pieSlices && (
+      {currentSheet.chartType === 'pie' && currentSheet.pieSlices && currentSheet.pieSlices.length > 0 && (
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <View>
@@ -391,7 +354,7 @@ export default function AnalyticsDashboard() {
         </View>
       )}
 
-      {currentSheet.chartType === 'bar' && currentSheet.bars && (
+      {currentSheet.chartType === 'bar' && currentSheet.bars && currentSheet.bars.length > 0 && (
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <View>
@@ -405,9 +368,8 @@ export default function AnalyticsDashboard() {
         </View>
       )}
 
-      {currentSheet.columns && currentSheet.rows && (
+      {currentSheet.columns && currentSheet.rows && currentSheet.columns.length > 0 && (
         <View style={styles.sectionCard}>
-
           <SheetTable columns={currentSheet.columns} rows={currentSheet.rows} />
         </View>
       )}
@@ -459,6 +421,31 @@ const styles = StyleSheet.create({
     color: '#5C6655',
     lineHeight: 22,
     fontSize: 15
+  },
+  errorBox: {
+    marginTop: 12,
+    padding: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#EBC8C3',
+    backgroundColor: '#FFF4F2'
+  },
+  errorText: {
+    color: '#8A3C31',
+    fontSize: 13,
+    marginBottom: 8
+  },
+  retryButton: {
+    alignSelf: 'flex-start',
+    backgroundColor: '#B55A4C',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 7
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '700',
+    fontSize: 12
   },
   tabRow: {
     paddingTop: 16,
@@ -550,18 +537,6 @@ const styles = StyleSheet.create({
     width: 16,
     height: 16,
     borderRadius: 8,
-    marginTop: 4
-  },
-  sectionTag: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 999,
-    backgroundColor: '#F1F4EA',
-    color: '#62705B',
-    fontSize: 12,
-    fontWeight: '700'
-  },
-  chartBody: {
     marginTop: 4
   },
   barChartScrollContent: {
@@ -659,36 +634,6 @@ const styles = StyleSheet.create({
     color: '#52624F',
     fontWeight: '800',
     fontSize: 13
-  },
-  barRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: 14
-  },
-  barLabel: {
-    width: 54,
-    color: '#566256',
-    fontWeight: '700',
-    fontSize: 13
-  },
-  barTrack: {
-    flex: 1,
-    height: 16,
-    borderRadius: 999,
-    backgroundColor: '#EEF2E7',
-    overflow: 'hidden'
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 999
-  },
-  barValue: {
-    width: 40,
-    textAlign: 'right',
-    color: '#2F3A2E',
-    fontWeight: '800',
-    fontSize: 13,
-    marginLeft: 10
   },
   tableWrap: {
     borderWidth: 1,

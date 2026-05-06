@@ -266,22 +266,29 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return baseRows;
 		}
 
-		const onSiteRows = results.map((item) => {
+		return baseRows.flatMap((item) => {
+			const passed = item.passed || Number(item.finalScore) >= Number(item.passingScore || resolvedPassingScore);
+
+			if (!passed) {
+				return [item];
+			}
+
 			const onSiteKey = String(item.userId || item.parkGuideName || item.id || '').trim();
 			const completionStatus = onSiteCompletionMap[onSiteKey] || 'incomplete';
 
-			return {
-				...item,
-				id: `onsite-${item.id}`,
-				rowType: 'on-site',
-				moduleName: selectedOnSiteModule.title || `Module ${selectedOnSiteModule.moduleId}`,
-				moduleId: selectedOnSiteModule.moduleId,
-				completionStatus,
-				onSiteKey,
-			};
+			return [
+				item,
+				{
+					...item,
+					id: `onsite-${item.id}`,
+					rowType: 'on-site',
+					moduleName: selectedOnSiteModule.title || `Module ${selectedOnSiteModule.moduleId}`,
+					moduleId: selectedOnSiteModule.moduleId,
+					completionStatus,
+					onSiteKey,
+				},
+			];
 		});
-
-		return baseRows.flatMap((item, index) => [item, onSiteRows[index]]);
 	}, [onSiteCompletionMap, results, resolvedModuleName, resolvedPassingScore, selectedOnSiteModule]);
 	const selectedResult = verificationRows.find((item) => item.id === selectedResultId) || verificationRows[0] || selectedResultBase;
 	const selectedGuideOnSiteKey = selectedResult
@@ -577,7 +584,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 					<Text style={styles.heroKicker}>Park Guide Result Table</Text>
 					<Text style={styles.heroTitleSmall}>{summaryCount} {summaryCount === 1 ? 'entry' : 'entries'} ready for review</Text>
 					<Text style={styles.heroSubtitle}>
-						Select any row to inspect the result and issue a badge for that park guide.
+						Select an assessment row to review the result. When it passes, an on-site row appears below it for manual completion before issuing the badge.
 					</Text>
 				</View>
 
@@ -735,7 +742,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				<View style={styles.card}>
 					<Text style={styles.cardTitle}>Issue Badge</Text>
 					<Text style={styles.cardSubtitle}>
-						Select one of the badges linked to this module. Admin only needs to issue or reject the result.
+						Below are the badges linked to this module. Admin only needs to issue or reject the result.
 					</Text>
 
 					{loadingBadges ? (

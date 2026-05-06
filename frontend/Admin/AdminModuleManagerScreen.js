@@ -197,6 +197,7 @@ function createEmptyDraft() {
     title: '',
     moduleType: 'general',
     moduleTypeId: 1,
+    linkedTpaModuleId: null,
     moduleImageUrl: '',
     moduleLocalImageUri: '',
     moduleLocalImageAsset: null,
@@ -224,6 +225,15 @@ function toDraft(moduleEntry) {
     title: moduleEntry.title || '',
     moduleType: normalizedModuleType,
     moduleTypeId: Number(moduleEntry.moduleTypeId || moduleEntry.module_type_id || moduleEntry.typeId || 0) || 1,
+    linkedTpaModuleId: Number(
+      moduleEntry.linkedTpaModuleId ||
+      moduleEntry.linked_tpa_module_id ||
+      moduleEntry.parentModuleId ||
+      moduleEntry.parent_module_id ||
+      moduleEntry.prerequisiteModuleId ||
+      moduleEntry.prerequisite_module_id ||
+      0
+    ) || null,
     moduleImageUrl: moduleEntry.moduleImageUrl || moduleEntry.image || '',
     moduleLocalImageUri: '',
     moduleLocalImageAsset: null,
@@ -245,6 +255,16 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
     draft.moduleLocalImageUri ||
     resolveApiAssetUri(draft.moduleImageUrl.trim()) ||
     draft.moduleImageUrl.trim();
+  const parkSpecificModules = modules.filter((module) =>
+    normalizeModuleType(
+      module.moduleType ||
+      module.module_type ||
+      module.moduleTypeId ||
+      module.module_type_id ||
+      module.type ||
+      module.typeId
+    ) === 'park-specific'
+  );
 
   const navigateToHome = () => {
     navigation.navigate('Home');
@@ -610,6 +630,11 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
       return;
     }
 
+    if (normalizeModuleType(draft.moduleType) === 'on-site' && !draft.linkedTpaModuleId) {
+      showNotice('Missing details', 'Please choose a linked TPA module for this On Site Training Module.');
+      return;
+    }
+
     const normalizedSections = draft.sections
       .map((section, index) => {
         const normalizedTitle = String(section.title || '').trim();
@@ -692,6 +717,10 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
         typeId: moduleTypeId,
         module_type: normalizedType,
         module_type_id: moduleTypeId,
+        linkedTpaModuleId: normalizedType === 'on-site' ? Number(draft.linkedTpaModuleId) : null,
+        linked_tpa_module_id: normalizedType === 'on-site' ? Number(draft.linkedTpaModuleId) : null,
+        prerequisiteModuleId: normalizedType === 'on-site' ? Number(draft.linkedTpaModuleId) : null,
+        parentModuleId: normalizedType === 'on-site' ? Number(draft.linkedTpaModuleId) : null,
         moduleImageUrl: normalizedModuleImageUrl,
         sections: normalizedSections,
       };
@@ -852,6 +881,8 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
                         ...previous,
                         moduleType: option.value,
                         moduleTypeId: option.id,
+                        linkedTpaModuleId:
+                          option.value === 'on-site' ? previous.linkedTpaModuleId : null,
                       }));
                     }}
                   >
@@ -863,6 +894,43 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
               })}
             </View>
           </View>
+
+          {draft.moduleType === 'on-site' ? (
+            <View style={styles.typeSection}>
+              <Text style={styles.typeLabel}>Linked TPA Module</Text>
+              {parkSpecificModules.length === 0 ? (
+                <View style={styles.typeHelperBox}>
+                  <Text style={styles.typeHelperText}>
+                    No TPA modules available. Create a TPA module first before saving an On Site Training Module.
+                  </Text>
+                </View>
+              ) : (
+                <View style={styles.typeOptionsRow}>
+                  {parkSpecificModules.map((module) => {
+                    const moduleId = Number(module.moduleId || module.id || 0);
+                    const isActive = Number(draft.linkedTpaModuleId) === moduleId;
+
+                    return (
+                      <TouchableOpacity
+                        key={`manage-tpa-${moduleId}`}
+                        style={[styles.typeOptionButton, isActive && styles.typeOptionButtonActive]}
+                        onPress={() => {
+                          setDraft((previous) => ({
+                            ...previous,
+                            linkedTpaModuleId: moduleId,
+                          }));
+                        }}
+                      >
+                        <Text style={[styles.typeOptionText, isActive && styles.typeOptionTextActive]}>
+                          {module.title || module.moduleTitle || `TPA Module ${moduleId}`}
+                        </Text>
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+              )}
+            </View>
+          ) : null}
 
           <View style={styles.imageSection}>
             <Text style={styles.imageLabel}>Module Cover Image</Text>
@@ -1197,6 +1265,20 @@ const styles = StyleSheet.create({
   typeOptionTextActive: {
     color: '#1F3A2A',
     fontWeight: '700',
+  },
+  typeHelperBox: {
+    backgroundColor: '#F8F0EA',
+    borderWidth: 1,
+    borderColor: '#F0D6C3',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  typeHelperText: {
+    color: '#7A5A45',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   imageSection: {
     marginBottom: 14,

@@ -80,10 +80,12 @@ function AddModuleScreen({ navigation }) {
   const [moduleTitle, setModuleTitle] = useState('');
   const [moduleType, setModuleType] = useState('general');
   const [moduleTypeId, setModuleTypeId] = useState(1);
+  const [linkedTpaModuleId, setLinkedTpaModuleId] = useState(null);
   const [moduleImageUrl, setModuleImageUrl] = useState('');
   const [moduleLocalImageUri, setModuleLocalImageUri] = useState('');
   const [moduleLocalImageAsset, setModuleLocalImageAsset] = useState(null);
   const [savedCount, setSavedCount] = useState(0);
+  const [moduleLibrary, setModuleLibrary] = useState([]);
   const [isSaving, setIsSaving] = useState(false);
   const [sections, setSections] = useState([
     {
@@ -100,6 +102,9 @@ function AddModuleScreen({ navigation }) {
     moduleLocalImageUri ||
     resolveApiAssetUri(moduleImageUrl.trim()) ||
     moduleImageUrl.trim();
+  const parkSpecificModules = moduleLibrary.filter(
+    (module) => normalizeModuleType(module.moduleType || module.module_type || module.moduleTypeId || module.module_type_id || module.type || module.typeId) === 'park-specific'
+  );
 
   const navigateToHome = () => {
     navigation.navigate('Home');
@@ -167,10 +172,13 @@ function AddModuleScreen({ navigation }) {
           return;
         }
 
-        setSavedCount(Array.isArray(response.data) ? response.data.length : 0);
+        const loadedModules = Array.isArray(response.data) ? response.data : [];
+        setModuleLibrary(loadedModules);
+        setSavedCount(loadedModules.length);
       } catch (_error) {
         if (active) {
           setSavedCount(0);
+          setModuleLibrary([]);
         }
       }
     };
@@ -304,6 +312,11 @@ function AddModuleScreen({ navigation }) {
       return;
     }
 
+    if (normalizeModuleType(moduleType) === 'on-site' && !linkedTpaModuleId) {
+      showNotice('Missing details', 'Please choose a linked TPA module for this On Site Training Module.');
+      return;
+    }
+
     const token = await AsyncStorage.getItem('innopapp_auth_token');
 
     if (!token) {
@@ -374,6 +387,10 @@ function AddModuleScreen({ navigation }) {
           typeId: normalizedTypeId,
           module_type: normalizedType,
           module_type_id: normalizedTypeId,
+          linkedTpaModuleId: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
+          linked_tpa_module_id: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
+          prerequisiteModuleId: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
+          parentModuleId: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
           moduleImageUrl: normalizedModuleImageUrl,
           sections: normalizedSections,
         },
@@ -384,6 +401,7 @@ function AddModuleScreen({ navigation }) {
       });
 
       setSavedCount(Array.isArray(moduleListResponse.data) ? moduleListResponse.data.length : 0);
+      setModuleLibrary(Array.isArray(moduleListResponse.data) ? moduleListResponse.data : []);
       setModuleImageUrl(normalizedModuleImageUrl);
       setModuleLocalImageUri('');
       setModuleLocalImageAsset(null);
@@ -439,6 +457,9 @@ function AddModuleScreen({ navigation }) {
                   onPress={() => {
                     setModuleType(option.value);
                     setModuleTypeId(option.id);
+                    if (option.value !== 'on-site') {
+                      setLinkedTpaModuleId(null);
+                    }
                   }}
                 >
                   <Text style={[styles.typeOptionText, isActive && styles.typeOptionTextActive]}>
@@ -449,6 +470,38 @@ function AddModuleScreen({ navigation }) {
             })}
           </View>
         </View>
+
+        {moduleType === 'on-site' ? (
+          <View style={styles.typeSection}>
+            <Text style={styles.typeLabel}>Linked TPA Module</Text>
+            {parkSpecificModules.length === 0 ? (
+              <View style={styles.typeHelperBox}>
+                <Text style={styles.typeHelperText}>
+                  No TPA modules available. Create a TPA module first before saving an On Site Training Module.
+                </Text>
+              </View>
+            ) : (
+              <View style={styles.typeOptionsRow}>
+                {parkSpecificModules.map((module) => {
+                  const moduleId = Number(module.moduleId || module.id || 0);
+                  const isActive = Number(linkedTpaModuleId) === moduleId;
+
+                  return (
+                    <TouchableOpacity
+                      key={`tpa-${moduleId}`}
+                      style={[styles.typeOptionButton, isActive && styles.typeOptionButtonActive]}
+                      onPress={() => setLinkedTpaModuleId(moduleId)}
+                    >
+                      <Text style={[styles.typeOptionText, isActive && styles.typeOptionTextActive]}>
+                        {module.title || module.moduleTitle || `TPA Module ${moduleId}`}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            )}
+          </View>
+        ) : null}
 
         <View style={styles.imageSection}>
           <Text style={styles.imageLabel}>Module Cover Image</Text>
@@ -628,6 +681,20 @@ const styles = StyleSheet.create({
   typeOptionTextActive: {
     color: '#1F3A2A',
     fontWeight: '700',
+  },
+  typeHelperBox: {
+    backgroundColor: '#F8F0EA',
+    borderWidth: 1,
+    borderColor: '#F0D6C3',
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+  },
+  typeHelperText: {
+    color: '#7A5A45',
+    fontSize: 12,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   imageSection: {
     marginBottom: 14,

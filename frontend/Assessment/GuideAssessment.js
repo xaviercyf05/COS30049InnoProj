@@ -148,8 +148,14 @@ function GuideAssessment({ navigation, route }) {
 		setWarningMessage('');
 
 		try {
+			const effectiveAssessmentId = assessmentId || route?.params?.assessmentId;
+			if (!effectiveAssessmentId) {
+				Alert.alert('Submission Error', 'Assessment ID is missing. Please reload and try again.');
+				return;
+			}
+
 			const timeUsedSeconds = durationSeconds - timeLeft;
-			const result = await submitAssessmentAttempt(assessmentId || moduleId, answers, timeUsedSeconds, questions);
+			const result = await submitAssessmentAttempt(effectiveAssessmentId, answers, timeUsedSeconds, questions);
 
 			if (result.error) {
 				Alert.alert('Submission Error', result.error.toString());

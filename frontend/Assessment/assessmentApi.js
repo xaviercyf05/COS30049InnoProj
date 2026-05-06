@@ -38,6 +38,45 @@ async function requestAssessmentApi(endpoint, token, options = {}) {
 	}
 }
 
+function normalizeFieldKey(key) {
+	return String(key || '')
+		.toLowerCase()
+		.replace(/[^a-z0-9]/g, '');
+}
+
+function getFieldValue(source, candidateKeys, fallback = undefined) {
+	if (!source || typeof source !== 'object') {
+		return fallback;
+	}
+
+	for (const key of candidateKeys) {
+		if (Object.prototype.hasOwnProperty.call(source, key) && source[key] !== undefined && source[key] !== null) {
+			return source[key];
+		}
+	}
+
+	const normalizedMap = new Map();
+	Object.keys(source).forEach((key) => {
+		normalizedMap.set(normalizeFieldKey(key), source[key]);
+	});
+
+	for (const key of candidateKeys) {
+		const normalized = normalizeFieldKey(key);
+		if (normalizedMap.has(normalized)) {
+			const value = normalizedMap.get(normalized);
+			if (value !== undefined && value !== null) {
+				return value;
+			}
+		}
+	}
+
+	return fallback;
+}
+
+function getPayloadData(responseData) {
+	return getFieldValue(responseData || {}, ['data'], responseData || {});
+}
+
 export async function fetchAssessmentQuestions(moduleId) {
 	const token = await AsyncStorage.getItem('innopapp_auth_token');
 	if (!token) {
@@ -50,24 +89,32 @@ export async function fetchAssessmentQuestions(moduleId) {
 		return { error: response.error, questions: [], assessmentId: null };
 	}
 
-	const questions = (response.data?.data?.questions || response.data?.questions || []).map((question) => ({
-		id: String(question.questionId || question.QuestionID || question.id),
-		type: question.questionType === 'fill' || question.QuestionType === 'fill' ? 'fill' : 'mcq',
-		topic: question.topic || 'General',
-		question: question.questionText || question.QuestionText || question.question || '',
-		options: (question.options || []).map((option) => {
+	const payload = getPayloadData(response.data);
+	const questionSource = getFieldValue(payload, ['questions'], []);
+
+	const questions = (Array.isArray(questionSource) ? questionSource : []).map((question) => {
+		const questionType = String(getFieldValue(question, ['questionType', 'type'], '') || '').toLowerCase();
+		const optionSource = getFieldValue(question, ['options'], []);
+
+		return {
+			id: String(getFieldValue(question, ['questionId', 'id'], '')),
+			type: questionType === 'fill' ? 'fill' : 'mcq',
+			topic: getFieldValue(question, ['topic'], 'General'),
+			question: getFieldValue(question, ['questionText', 'question'], ''),
+			options: (Array.isArray(optionSource) ? optionSource : []).map((option) => {
 			if (option == null) return { id: String(option), text: '' };
 			if (typeof option === 'string' || typeof option === 'number') {
 				return { id: String(option), text: String(option) };
 			}
 			return {
-				id: String(option.id ?? option.optionId ?? option.OptionID ?? option.value ?? option.OptionValue ?? option.OptionId ?? option.OptionId ?? option.text ?? option),
-				text: String(option.text ?? option.OptionText ?? option.label ?? option.OptionLabel ?? option.value ?? option),
+				id: String(getFieldValue(option, ['id', 'optionId', 'value', 'text', 'label'], option)),
+				text: String(getFieldValue(option, ['text', 'optionText', 'label', 'value'], option)),
 			};
-		}),
-	}));
+			}),
+		};
+	});
 
-	const assessmentId = response.data?.data?.assessmentId || response.data?.assessmentId || null;
+	const assessmentId = getFieldValue(payload, ['assessmentId', 'assessment_id', 'id'], null);
 
 	return { error: null, questions, assessmentId };
 }
@@ -97,14 +144,14 @@ export async function checkAttemptEligibility(assessmentId) {
 		return { error: response.error, eligible: false, cooldownRemaining: null };
 	}
 
-	const payload = response.data?.data || response.data || {};
+	const payload = getPayloadData(response.data);
 
 	return {
 		error: null,
-		eligible: payload.canAttempt === true || payload.eligible === true,
-		cooldownRemaining: payload.cooldownRemaining,
-		attemptCount: payload.remainingAttempts !== undefined ? payload.attemptCount || 0 : payload.attemptCount || 0,
-		maxAttempts: payload.maxAttempts || 3,
+		eligible: getFieldValue(payload, ['canAttempt', 'eligible'], false) === true,
+		cooldownRemaining: getFieldValue(payload, ['cooldownRemaining', 'cooldown_remaining'], null),
+		attemptCount: Number(getFieldValue(payload, ['attemptCount', 'attempt_count'], 0)) || 0,
+		maxAttempts: Number(getFieldValue(payload, ['maxAttempts', 'max_attempts'], 3)) || 3,
 	};
 }
 
@@ -176,16 +223,22 @@ export async function submitAssessmentAttempt(assessmentId, answers, timeUsedSec
 		return { error: response.error, score: 0, passed: false, totalQuestions: 0, correctCount: 0 };
 	}
 
-	const payload = response.data?.data || response.data || {};
+	const payload = getPayloadData(response.data);
+	const status = String(getFieldValue(payload, ['status'], '') || '').toLowerCase();
+	const passedField = getFieldValue(payload, ['passed'], undefined);
 
 	return {
 		error: null,
-		score: payload.score || 0,
-		passed: payload.passed === true,
-		status: payload.status,
-		totalQuestions: payload.totalQuestions || 0,
-		correctCount: payload.correctCount || 0,
-		feedbackMessage: payload.feedbackMessage,
+		score: Number(getFieldValue(payload, ['score'], 0)) || 0,
+		passed:
+			passedField === true ||
+			passedField === 1 ||
+			String(passedField).toLowerCase() === 'true' ||
+			status === 'passed',
+		status: getFieldValue(payload, ['status'], ''),
+		totalQuestions: Number(getFieldValue(payload, ['totalQuestions', 'questionCount'], 0)) || 0,
+		correctCount: Number(getFieldValue(payload, ['correctCount'], 0)) || 0,
+		feedbackMessage: getFieldValue(payload, ['feedbackMessage', 'feedback'], ''),
 	};
 }
 
@@ -201,17 +254,19 @@ export async function fetchAssessmentHistory(moduleId) {
 		return { error: response.error, history: [] };
 	}
 
-	const payload = response.data?.data || response.data || {};
-	const historySource = Array.isArray(payload) ? payload : payload.history || [];
+	const payload = getPayloadData(response.data);
+	const historySource = Array.isArray(payload)
+		? payload
+		: getFieldValue(payload, ['history', 'attempts', 'rows'], []);
 
 	return {
 		error: null,
-		history: historySource.map((attempt) => ({
-			id: attempt.AttemptID || attempt.attemptId || attempt.id,
-			score: attempt.Score || attempt.score || 0,
-			status: attempt.Status || attempt.status || 'submitted',
-			submittedAt: attempt.SubmittedAt || attempt.submittedAt || new Date().toISOString(),
-			timeUsed: attempt.TimeUsedSeconds || attempt.timeUsed || 0,
+		history: (Array.isArray(historySource) ? historySource : []).map((attempt) => ({
+			id: getFieldValue(attempt, ['attemptId', 'id'], null),
+			score: Number(getFieldValue(attempt, ['score'], 0)) || 0,
+			status: getFieldValue(attempt, ['status'], 'submitted'),
+			submittedAt: getFieldValue(attempt, ['submittedAt', 'createdAt'], new Date().toISOString()),
+			timeUsed: Number(getFieldValue(attempt, ['timeUsedSeconds', 'timeUsed'], 0)) || 0,
 		})),
 	};
 }
@@ -231,15 +286,16 @@ export async function fetchAllAssessments(moduleId) {
 		return { error: response.error, assessments: [] };
 	}
 
-	const payload = response.data?.data || response.data || {};
-	const assessments = (payload.assessments || []).map((assessment) => ({
-		id: assessment.AssessmentID || assessment.id,
-		moduleId: assessment.ModuleID || assessment.moduleId,
-		title: assessment.Title || assessment.title || 'Untitled Assessment',
-		passingScore: assessment.PassingScore || assessment.passingScore || 60,
-		attemptLimit: assessment.AttemptLimit || assessment.attemptLimit || 3,
-		durationMinutes: assessment.DurationMinutes || assessment.durationMinutes || 120,
-		questionCount: assessment.QuestionCount || assessment.questionCount || 0,
+	const payload = getPayloadData(response.data);
+	const assessmentSource = getFieldValue(payload, ['assessments', 'items', 'rows'], []);
+	const assessments = (Array.isArray(assessmentSource) ? assessmentSource : []).map((assessment) => ({
+		id: getFieldValue(assessment, ['assessmentId', 'id'], null),
+		moduleId: getFieldValue(assessment, ['moduleId', 'module_id'], null),
+		title: getFieldValue(assessment, ['title', 'name'], 'Untitled Assessment'),
+		passingScore: Number(getFieldValue(assessment, ['passingScore', 'passScore'], 60)) || 60,
+		attemptLimit: Number(getFieldValue(assessment, ['attemptLimit', 'maxAttempts'], 3)) || 3,
+		durationMinutes: Number(getFieldValue(assessment, ['durationMinutes', 'duration'], 120)) || 120,
+		questionCount: Number(getFieldValue(assessment, ['questionCount', 'totalQuestions'], 0)) || 0,
 	}));
 
 	return { error: null, assessments };
@@ -260,8 +316,8 @@ export async function addAssessmentQuestion(assessmentId, questionText, question
 		return { error: response.error, questionId: null };
 	}
 
-	const payload = response.data?.data || response.data || {};
-	return { error: null, questionId: payload.questionId || payload.QuestionID || payload.id };
+	const payload = getPayloadData(response.data);
+	return { error: null, questionId: getFieldValue(payload, ['questionId', 'id'], null) };
 }
 
 export async function updateAssessmentQuestion(questionId, questionText, questionType, options, correctAnswer) {
@@ -303,15 +359,25 @@ export async function fetchAssessmentQuestionsAdmin(assessmentId) {
 		return { error: response.error, questions: [] };
 	}
 
-	const payload = response.data?.data || response.data || {};
-	const questions = (payload.questions || []).map((question) => ({
-		id: String(question.questionId || question.QuestionID || question.id),
-		type: question.questionType === 'fill' ? 'fill' : 'mcq',
-		topic: question.topic || 'General',
-		question: question.questionText || question.QuestionText || question.question || '',
-		options: (question.options || []).map((option) => option.text || option.OptionText || option),
-		correctAnswer: question.correctAnswer,
-	}));
+	const payload = getPayloadData(response.data);
+	const questionSource = getFieldValue(payload, ['questions'], []);
+	const questions = (Array.isArray(questionSource) ? questionSource : []).map((question) => {
+		const questionType = String(getFieldValue(question, ['questionType', 'type'], '') || '').toLowerCase();
+		const optionSource = getFieldValue(question, ['options'], []);
+
+		return {
+			id: String(getFieldValue(question, ['questionId', 'id'], '')),
+			type: questionType === 'fill' ? 'fill' : 'mcq',
+			topic: getFieldValue(question, ['topic'], 'General'),
+			question: getFieldValue(question, ['questionText', 'question'], ''),
+			options: (Array.isArray(optionSource) ? optionSource : []).map((option) => {
+				if (option == null) return '';
+				if (typeof option === 'string' || typeof option === 'number') return option;
+				return getFieldValue(option, ['text', 'optionText', 'label', 'value'], option);
+			}),
+			correctAnswer: getFieldValue(question, ['correctAnswer', 'answer'], null),
+		};
+	});
 
 	return { error: null, questions };
 }
@@ -331,8 +397,8 @@ export async function createAssessment(moduleId, title, passingScore, durationMi
 		return { error: response.error, assessmentId: null };
 	}
 
-	const payload = response.data?.data || response.data || {};
-	return { error: null, assessmentId: payload.assessmentId || payload.AssessmentID || payload.id };
+	const payload = getPayloadData(response.data);
+	return { error: null, assessmentId: getFieldValue(payload, ['assessmentId', 'id'], null) };
 }
 
 export async function updateAssessmentSettings(assessmentId, passingScore, durationMinutes, attemptLimit) {
@@ -374,18 +440,22 @@ export async function fetchAssessmentAttempts(assessmentId) {
 		return { error: response.error, attempts: [] };
 	}
 
-	const payload = response.data?.data || response.data || {};
-	const attempts = (payload.attempts || []).map((attempt) => ({
-		id: attempt.AttemptID || attempt.id,
-		userId: attempt.UserID || attempt.userId,
-		userName: attempt.UserName || attempt.userName || 'Unknown User',
-		userEmail: attempt.UserEmail || attempt.userEmail || '',
-		score: attempt.Score || attempt.score || 0,
-		status: attempt.Status || attempt.status || 'submitted',
-		submittedAt: attempt.SubmittedAt || attempt.submittedAt || new Date().toISOString(),
-		timeUsedSeconds: attempt.timeUsedSeconds || 0,
-		passed: String(attempt.Status || attempt.status || '').toLowerCase() === 'passed',
-	}));
+	const payload = getPayloadData(response.data);
+	const attemptSource = getFieldValue(payload, ['attempts', 'history', 'rows'], []);
+	const attempts = (Array.isArray(attemptSource) ? attemptSource : []).map((attempt) => {
+		const status = String(getFieldValue(attempt, ['status'], 'submitted') || '').toLowerCase();
+		return {
+			id: getFieldValue(attempt, ['attemptId', 'id'], null),
+			userId: getFieldValue(attempt, ['userId', 'user_id'], null),
+			userName: getFieldValue(attempt, ['userName', 'name'], 'Unknown User'),
+			userEmail: getFieldValue(attempt, ['userEmail', 'email'], ''),
+			score: Number(getFieldValue(attempt, ['score'], 0)) || 0,
+			status: getFieldValue(attempt, ['status'], 'submitted'),
+			submittedAt: getFieldValue(attempt, ['submittedAt', 'createdAt'], new Date().toISOString()),
+			timeUsedSeconds: Number(getFieldValue(attempt, ['timeUsedSeconds', 'timeUsed'], 0)) || 0,
+			passed: status === 'passed',
+		};
+	});
 
 	return { error: null, attempts };
 }
@@ -445,12 +515,13 @@ export async function getAssessmentBadge(assessmentId) {
 		return { error: response.error, badge: null };
 	}
 
-	const payload = response.data?.data || response.data || {};
-	const badge = payload.badge
+	const payload = getPayloadData(response.data);
+	const badgeData = getFieldValue(payload, ['badge'], null);
+	const badge = badgeData
 		? {
-			id: payload.badge.id || payload.badge.BadgeID,
-			name: payload.badge.name || payload.badge.Name,
-			image: payload.badge.image || payload.badge.Image,
+			id: getFieldValue(badgeData, ['id', 'badgeId'], null),
+			name: getFieldValue(badgeData, ['name', 'title'], ''),
+			image: getFieldValue(badgeData, ['image', 'icon', 'imageUrl'], null),
 		}
 		: null;
 

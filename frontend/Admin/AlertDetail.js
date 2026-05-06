@@ -3,10 +3,13 @@ import { ActivityIndicator, Alert, Platform, View, Text, StyleSheet, TouchableOp
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { withSidebarChrome } from '../components/AppSidebarChrome.js';
 import { VideoView, useVideoPlayer } from 'expo-video';
+import { updateEvidenceStatus } from './evidenceApi.js';
 
-function AlertDetail({ route }) {
+function AlertDetail({ route, navigation }) {
   const [token, setToken] = useState(null);
-  const alert = route?.params?.alert || {};
+  const [alerts, setAlerts] = useState([]);
+  const alertFromRoute = route?.params?.alert || {};
+  const [alert, setAlert] = useState(alertFromRoute);
   const videoUrl = alert.videoUrl || '';
   const labelsText = alert.labels ? JSON.stringify(alert.labels, null, 2) : '';
   const [videoLoading, setVideoLoading] = useState(false);
@@ -14,20 +17,41 @@ function AlertDetail({ route }) {
   const videoRef = useRef(null);
   const [showControls, setShowControls] = useState(true);
 
+  const [solving, setSolving] = useState(false);
+
+  const toggleSolved = async () => {
+    const newResolved = !alert.resolved;
+    const id = alert.id || alert.evidenceId || alert.evidenceId;
+    if (!id) return;
+
+    // optimistic UI change
+    setAlert((prev) => ({ ...prev, resolved: newResolved }));
+    setSolving(true);
+
+    try {
+      await updateEvidenceStatus(id, newResolved);
+      // rely on overview/sensor screens to refresh on focus when user navigates back
+    } catch (error) {
+      // revert on error
+      setAlert((prev) => ({ ...prev, resolved: !newResolved }));
+      Alert.alert('Update failed', error?.message || 'Unable to update status.');
+    } finally {
+      setSolving(false);
+    }
+  };
+
   useEffect(() => {
     AsyncStorage.getItem('innopapp_auth_token').then(setToken);
   }, []);
 
   useEffect(() => {
-    return () => {
-      try {
-        player?.release?.();
-      } catch (e) {}
-    };
-  }, [player]);
+    return () => {};
+  }, []);
+
+  const isWeb = Platform.OS === 'web';
 
   const source = React.useMemo(() => {
-    if (!videoUrl || !token) return null;
+    if (!videoUrl || !token) return undefined;
 
     return {
       uri: videoUrl,
@@ -37,7 +61,7 @@ function AlertDetail({ route }) {
     };
   }, [videoUrl, token]);
 
-  const player = useVideoPlayer(source ?? undefined);
+  const player = useVideoPlayer(!isWeb ? source : undefined);
 
   const downloadVideo = async () => {
     if (!videoUrl) {
@@ -108,9 +132,6 @@ function AlertDetail({ route }) {
           <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Date & Time</Text>
           <Text style={styles.sectionText}>{alert.timestamp || 'Timestamp unavailable'}</Text>
 
-          <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Event type</Text>
-          <Text style={styles.sectionText}>{alert.eventType || 'abnormal_interaction_detected'}</Text>
-
           <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Coordinates</Text>
           <Text style={styles.sectionText}>
             {alert.latitude !== null && alert.latitude !== undefined && alert.longitude !== null && alert.longitude !== undefined
@@ -125,22 +146,35 @@ function AlertDetail({ route }) {
             </>
           ) : null}
 
-          {Platform.OS === 'web' ? (
-            <TouchableOpacity
-              style={[styles.download, (!videoUrl || videoLoading) && styles.downloadDisabled]}
-              onPress={downloadVideo}
-              disabled={!videoUrl || videoLoading}
-            >
-              {videoLoading ? (
-                <ActivityIndicator size="small" color="#FFFFFF" />
-              ) : (
-                <Text style={styles.downloadText}>
-                  {videoUrl ? 'Download Evidence Video' : 'Video not available'}
+          {isWeb ? (
+            <View style={styles.buttonRow}>
+              <TouchableOpacity
+                style={[styles.download, (!videoUrl || videoLoading) && styles.downloadDisabled]}
+                onPress={downloadVideo}
+                disabled={!videoUrl || videoLoading}
+              >
+                <View style={styles.buttonContent}>
+                  {videoLoading ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.downloadText} numberOfLines={1}>
+                      {videoUrl ? 'Download Evidence Video' : 'Video not available'}
+                    </Text>
+                  )}
+                </View>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.solveButton, alert.resolved && styles.solvedButtonStyle]}
+                onPress={toggleSolved}
+                disabled={solving}
+              >
+                <Text style={[styles.solveButtonText, alert.resolved && styles.solvedButtonText]}>
+                  {alert.resolved ? '✓ Solved' : 'Mark Solved'}
                 </Text>
-              )}
-            </TouchableOpacity>
-          ) : (
-            videoUrl && token && player ? (
+              </TouchableOpacity>
+            </View>
+          ) : videoUrl && token && player ? (
+            <>
               <TouchableOpacity
                 activeOpacity={1}
                 onPress={() => setShowControls((prev) => !prev)}
@@ -157,9 +191,19 @@ function AlertDetail({ route }) {
                   allowsPictureInPicture
                 />
               </TouchableOpacity>
-            ) : (
-              <Text style={styles.sectionText}>Loading video...</Text>
-            )
+              <TouchableOpacity
+                style={[styles.solveButton, alert.resolved && styles.solvedButtonStyle]}
+                onPress={toggleSolved}
+              >
+                <View style={styles.buttonContent}>
+                  <Text style={[styles.solveButtonText, alert.resolved && styles.solvedButtonText]} numberOfLines={1}>
+                    {alert.resolved ? '✓ Solved' : 'Mark Solved'}
+                  </Text>
+                </View>
+              </TouchableOpacity>
+            </>
+          ) : (
+            <Text style={styles.sectionText}>Loading video...</Text>
           )}
 
           {downloadError ? <Text style={styles.errorText}>{downloadError}</Text> : null}
@@ -188,19 +232,62 @@ const styles = StyleSheet.create({
     fontSize: 12,
     lineHeight: 18,
   },
-  download: { marginTop: 16, backgroundColor: '#8B6F47', padding: 10, borderRadius: 8, alignItems: 'center' },
+  download: { 
+    flex: 1,
+    backgroundColor: '#8B6F47', 
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8, 
+    alignItems: 'center',
+    justifyContent: 'center',
+    height: 44,
+  },
   downloadDisabled: { backgroundColor: '#C9C9C9' },
-  downloadText: { color: '#fff', fontWeight: '800' },
+  downloadText: { color: '#fff', fontWeight: '800', numberOfLines: 1 },
   errorText: { marginTop: 10, color: '#9E3A3A', fontSize: 13, fontWeight: '600' },
   videoPlayer: { width: '100%', height: 220, marginTop: 12, borderRadius: 8, backgroundColor: '#000' },
   videoWrapper: {
-  width: '100%',
-  height: 220,
-  marginTop: 12,
-  borderRadius: 8,
-  overflow: 'hidden',
-  backgroundColor: '#000',
-},
+    width: '100%',
+    height: 220,
+    marginTop: 12,
+    borderRadius: 8,
+    overflow: 'hidden',
+    backgroundColor: '#000',
+  },
+  buttonRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 16,
+  },
+  buttonContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  solveButton: {
+    flex: 1,
+    backgroundColor: '#EDF2E6',
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#DCE7D0',
+    height: 44,
+  },
+  solvedButtonStyle: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#C8E6C9',
+  },
+  solveButtonText: {
+    color: '#344734',
+    fontWeight: '800',
+    numberOfLines: 1,
+  },
+  solvedButtonText: {
+    color: '#2F7D4A',
+  },
 });
 
 export default withSidebarChrome(AlertDetail, { title: 'Evidence Detail' });

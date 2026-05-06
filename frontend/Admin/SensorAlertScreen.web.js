@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { fetchAdminEvidenceAlerts } from './evidenceApi.js';
 
@@ -6,22 +6,30 @@ export default function SensorAlertScreen({ navigation }) {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const unsolvedAlerts = useMemo(() => alerts.filter((alert) => !alert?.resolved), [alerts]);
 
   useEffect(() => {
     let active = true;
 
-    (async () => {
+    const load = async () => {
       const response = await fetchAdminEvidenceAlerts();
-
       if (!active) return;
-
       setAlerts(response.alerts);
       setError(response.error || '');
       setLoading(false);
-    })();
+    };
+
+    load();
+
+    const handler = () => load();
+    window.addEventListener('focus', handler);
+
+    const unsubNav = navigation.addListener?.('focus', () => load());
 
     return () => {
       active = false;
+      window.removeEventListener('focus', handler);
+      if (unsubNav) unsubNav();
     };
   }, []);
 
@@ -63,13 +71,30 @@ export default function SensorAlertScreen({ navigation }) {
       L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
       const icon = L.divIcon({ className: '', html: '<div class="alert-pin">!</div>', iconSize: [30, 30], iconAnchor: [15, 15] });
       const points = [];
+      const parkMarkers = new Map();
       alerts.forEach((alert) => {
+        const isResolved = alert && (alert.resolved === true || alert.resolved === 1 || alert.resolved === '1');
+        if (isResolved) return;
         if (typeof alert.latitude !== 'number' || typeof alert.longitude !== 'number') return;
-        const marker = L.marker([alert.latitude, alert.longitude], { icon }).addTo(map);
-        marker.bindPopup('<strong>' + alert.name + '</strong><br/>' + (alert.location || 'Location unavailable') + '<br/>' + (alert.status || 'No event summary available'));
-        marker.on('click', () => parent.postMessage(JSON.stringify({ type: 'alert', alert }), '*'));
-        points.push([alert.latitude, alert.longitude]);
+
+        const key = String(alert.parkName || alert.location || (String(alert.latitude) + ',' + String(alert.longitude))).trim().toLowerCase();
+        if (!parkMarkers.has(key)) {
+          parkMarkers.set(key, { alert, count: 0, latitude: alert.latitude, longitude: alert.longitude });
+        }
+
+        const current = parkMarkers.get(key);
+        current.count += 1;
       });
+
+      parkMarkers.forEach((markerData) => {
+        const marker = L.marker([markerData.latitude, markerData.longitude], { icon }).addTo(map);
+        marker.bindPopup(
+          '<strong>' + (markerData.alert.parkName || markerData.alert.location || markerData.alert.name || 'Unknown location') + '</strong><br/>' +
+          markerData.count + ' unsolved alert' + (markerData.count === 1 ? '' : 's')
+        );
+        points.push([markerData.latitude, markerData.longitude]);
+      });
+
       if (points.length) map.fitBounds(points, { padding: [36, 36] });
     </script>
   </body>
@@ -119,7 +144,7 @@ export default function SensorAlertScreen({ navigation }) {
         <View style={styles.mapHeader}>
           <View>
             <Text style={styles.mapTitle}>Evidence locations</Text>
-            <Text style={styles.mapLabel}>Markers appear when the evidence row includes coordinates.</Text>
+            <Text style={styles.mapLabel}>Markers show only parks with at least one unsolved alert.</Text>
           </View>
         </View>
 
@@ -140,7 +165,7 @@ export default function SensorAlertScreen({ navigation }) {
           </TouchableOpacity>
         </View>
 
-        {alerts.map((alert) => (
+        {unsolvedAlerts.map((alert) => (
           <View key={alert.id} style={styles.alertRow}>
             <View style={styles.alertIconWrap}><Text style={styles.alertIcon}>!</Text></View>
             <View style={styles.alertTextWrap}>
@@ -149,12 +174,13 @@ export default function SensorAlertScreen({ navigation }) {
               </TouchableOpacity>
               <Text style={styles.alertMeta}>{alert.location || 'Location unavailable'}</Text>
               <Text style={styles.alertTimestamp}>{alert.timestamp}</Text>
+
             </View>
           </View>
         ))}
 
-        {!loading && alerts.length === 0 ? (
-          <Text style={styles.emptyText}>No evidence records were returned from the server.</Text>
+        {!loading && unsolvedAlerts.length === 0 ? (
+          <Text style={styles.emptyText}>No unsolved evidence alerts were returned from the server.</Text>
         ) : null}
       </View>
     </ScrollView>

@@ -162,6 +162,8 @@ function normaliseEvidenceRecord(record) {
   const evidenceId = getFieldValue(record, ['evidenceId', 'EvidenceID', 'id'], null);
   const eventType = String(getFieldValue(record, ['eventType', 'EventType'], 'abnormal_interaction_detected') || 'abnormal_interaction_detected');
   const location = String(getFieldValue(record, ['location', 'Location'], '') || '').trim();
+  const parkName = String(getFieldValue(record, ['parkName', 'ParkName'], '') || '').trim();
+  const resolved = Boolean(getFieldValue(record, ['resolved', 'Resolved'], false));
   const name = String(
     getFieldValue(labels, ['parkName', 'park', 'siteName', 'name', 'locationName'], '') ||
     getFieldValue(record, ['name', 'parkName'], '') ||
@@ -183,10 +185,14 @@ function normaliseEvidenceRecord(record) {
     name,
     location: location || String(getFieldValue(labels, ['location', 'address', 'area'], '') || '').trim(),
     status,
+    resolved,
     eventType,
     labels,
-    latitude: toNumberOrNull(getFieldValue(labels, ['latitude', 'lat', 'y'], null)),
-    longitude: toNumberOrNull(getFieldValue(labels, ['longitude', 'lng', 'lon', 'x'], null)),
+    parkName: parkName || location || null,
+    latitude: toNumberOrNull(getFieldValue(record, ['latitude', 'Latitude', 'parkLatitude', 'ParkLatitude'], null)),
+    longitude: toNumberOrNull(getFieldValue(record, ['longitude', 'Longitude', 'parkLongitude', 'ParkLongitude'], null)),
+    showOnMap: Boolean(getFieldValue(record, ['showOnMap'], false)),
+    unsolvedCountAtLocation: toNumberOrNull(getFieldValue(record, ['unsolvedCountAtLocation', 'UnsolvedCount'], 0)) || 0,
     timestamp,
     videoFileName: getFieldValue(record, ['videoFileName', 'VideoFileName'], ''),
     videoMimeType: getFieldValue(record, ['videoMimeType', 'VideoMimeType'], 'video/mp4'),
@@ -215,6 +221,21 @@ export async function fetchAdminEvidenceAlerts() {
   } catch (error) {
     return { alerts: [], error: error.message || 'Failed to load evidence alerts.' };
   }
+}
+
+export async function updateEvidenceStatus(evidenceId, resolved) {
+  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+
+  if (!token) {
+    throw new Error('Authentication required');
+  }
+
+  const response = await requestAdminEvidenceApi(`/api/v1/admin/evidence/${evidenceId}/status`, token, {
+    method: 'PUT',
+    body: { resolved: !!resolved },
+  });
+
+  return response.data;
 }
 
 export function toEvidenceAlert(record) {

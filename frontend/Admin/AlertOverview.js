@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
 import { fetchAdminEvidenceAlerts } from './evidenceApi.js';
 
@@ -6,24 +6,42 @@ export default function AlertHistory({ navigation }) {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [filter, setFilter] = useState('all'); // 'all', 'solved', 'unsolved'
+
+  const toggleSolved = (id) => {
+    setAlerts((prevAlerts) =>
+      prevAlerts.map((alert) =>
+        alert.id === id ? { ...alert, resolved: !alert.resolved } : alert
+      )
+    );
+  };
+
+  const filteredAlerts = alerts.filter((alert) => {
+    if (filter === 'solved') return alert.resolved;
+    if (filter === 'unsolved') return !alert.resolved;
+    return true;
+  });
 
   useEffect(() => {
     let active = true;
 
-    (async () => {
+    const load = async () => {
       const response = await fetchAdminEvidenceAlerts();
-
-      if (!active) {
-        return;
-      }
-
+      if (!active) return;
       setAlerts(response.alerts);
       setError(response.error || '');
       setLoading(false);
-    })();
+    };
+
+    load();
+
+    const unsubscribe = navigation.addListener('focus', () => {
+      load();
+    });
 
     return () => {
       active = false;
+      unsubscribe();
     };
   }, []);
 
@@ -49,23 +67,32 @@ export default function AlertHistory({ navigation }) {
       ) : null}
 
       <View style={styles.summaryGrid}>
-        <View style={styles.summaryCard}>
+        <TouchableOpacity 
+          style={[styles.summaryCard, filter === 'all' && styles.summaryCardActive]}
+          onPress={() => setFilter('all')}
+        >
           <Text style={styles.summaryLabel}>Total Evidence</Text>
-          <Text style={styles.summaryValue}>{alerts.length}</Text>
-        </View>
+          <Text style={[styles.summaryValue, filter === 'all' && styles.summaryValueActive]}>{alerts.length}</Text>
+        </TouchableOpacity>
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>With Coordinates</Text>
-          <Text style={[styles.summaryValue, styles.summarySolved]}>{alerts.filter((item) => item.latitude !== null && item.longitude !== null).length}</Text>
-        </View>
+        <TouchableOpacity 
+          style={[styles.summaryCard, filter === 'solved' && styles.summaryCardActive]}
+          onPress={() => setFilter('solved')}
+        >
+          <Text style={styles.summaryLabel}>Solved</Text>
+          <Text style={[styles.summaryValue, styles.summarySolved, filter === 'solved' && styles.summaryValueActive]}>{alerts.filter((item) => item.resolved).length}</Text>
+        </TouchableOpacity>
 
-        <View style={styles.summaryCard}>
-          <Text style={styles.summaryLabel}>With Video</Text>
-          <Text style={[styles.summaryValue, styles.summaryUnsolved]}>{alerts.filter((item) => item.hasVideo).length}</Text>
-        </View>
+        <TouchableOpacity 
+          style={[styles.summaryCard, filter === 'unsolved' && styles.summaryCardActive]}
+          onPress={() => setFilter('unsolved')}
+        >
+          <Text style={styles.summaryLabel}>Unsolved</Text>
+          <Text style={[styles.summaryValue, styles.summaryUnsolved, filter === 'unsolved' && styles.summaryValueActive]}>{alerts.filter((item) => !item.resolved).length}</Text>
+        </TouchableOpacity>
       </View>
 
-      {alerts.map((item) => (
+      {filteredAlerts.map((item) => (
         <View key={item.id} style={styles.row}>
           <View style={styles.body}>
             <Text style={styles.name}>{item.name}</Text>
@@ -82,13 +109,15 @@ export default function AlertHistory({ navigation }) {
             </View>
           </View>
 
-          <View style={styles.badge}>
-            <Text style={styles.badgeText}>{item.eventType || 'Evidence'}</Text>
+          <View style={[styles.badge, item.resolved ? styles.badgeSolved : styles.badgeUnsolved]}>
+            <Text style={[styles.badgeText, item.resolved && styles.badgeSolvedText]}>
+              {item.resolved ? '✓ Solved' : 'Unsolved'}
+            </Text>
           </View>
         </View>
       ))}
 
-      {!loading && alerts.length === 0 ? (
+      {!loading && filteredAlerts.length === 0 ? (
         <View style={styles.emptyCard}>
           <Text style={styles.emptyTitle}>No evidence records found</Text>
           <Text style={styles.emptyText}>The backend returned an empty evidence list.</Text>
@@ -125,6 +154,14 @@ const styles = StyleSheet.create({
     shadowRadius: 10,
     shadowOffset: { width: 0, height: 5 },
     elevation: 2
+  },
+  summaryCardActive: {
+    backgroundColor: '#F0F7F0',
+    borderWidth: 2,
+    borderColor: '#2F7D4A',
+  },
+  summaryValueActive: {
+    color: '#2F7D4A',
   },
   summaryLabel: {
     color: '#687263',
@@ -167,6 +204,24 @@ const styles = StyleSheet.create({
     color: '#344734',
     fontWeight: '700',
     fontSize: 12
+  },
+  solvedButton: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#C8E6C9'
+  },
+  solvedButtonText: {
+    color: '#2F7D4A'
+  },
+  badgeSolved: {
+    backgroundColor: '#E8F5E9',
+    borderColor: '#C8E6C9'
+  },
+  badgeUnsolved: {
+    backgroundColor: '#FCE5E5',
+    borderColor: '#F4D8D8'
+  },
+  badgeSolvedText: {
+    color: '#2F7D4A'
   },
   badge: {
     marginLeft: 10,

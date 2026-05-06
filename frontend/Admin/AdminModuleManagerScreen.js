@@ -687,11 +687,11 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
       const modulePayload = {
         title: draft.title.trim(),
         moduleType: normalizedType,
-        moduleTypeId: normalizedTypeId,
+        moduleTypeId: moduleTypeId,
         type: normalizedType,
-        typeId: normalizedTypeId,
+        typeId: moduleTypeId,
         module_type: normalizedType,
-        module_type_id: normalizedTypeId,
+        module_type_id: moduleTypeId,
         moduleImageUrl: normalizedModuleImageUrl,
         sections: normalizedSections,
       };

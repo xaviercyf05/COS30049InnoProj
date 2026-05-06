@@ -201,11 +201,12 @@ function GuideAssessment({ navigation, route }) {
 				totalQuestions: questions.length,
 				score: result.score || 0,
 				correctCount: result.correctCount ?? null,
-				passed: result.passed === true,
+				passed: result.passed === true || (Number.isFinite(Number(result.passingScore)) && Number(result.score) >= Number(result.passingScore)),
 				feedbackMessage: result.feedbackMessage || '',
 				moduleId,
 				attemptId: result.attemptId,
 				assessmentId: effectiveAssessmentId,
+				passingScore: result.passingScore ?? null,
 			});
 		} catch (err) {
 			const errMsg = err.message || err.toString() || 'Unknown error';

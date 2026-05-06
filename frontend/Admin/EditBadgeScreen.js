@@ -21,8 +21,19 @@ function EditBadgeScreen({ route, navigation }) {
   );
   const [modules, setModules] = useState([]);
   const [loadingModules, setLoadingModules] = useState(true);
-  const [selectedModuleId, setSelectedModuleId] = useState(
-    String(badge?.linkedModuleId || badge?.moduleId || badge?.linked_module_id || '')
+  const [selectedModuleIds, setSelectedModuleIds] = useState(() => {
+    const rawIds = badge?.linkedModuleIds || badge?.linked_module_ids || badge?.moduleIds || [];
+    if (Array.isArray(rawIds) && rawIds.length > 0) {
+      return rawIds.map((value) => String(value));
+    }
+
+    const legacyId = badge?.linkedModuleId || badge?.moduleId || badge?.linked_module_id || '';
+    return legacyId ? [String(legacyId)] : [];
+  });
+
+  const selectedModules = useMemo(
+    () => modules.filter((module) => selectedModuleIds.includes(String(module.moduleId))),
+    [modules, selectedModuleIds]
   );
 
   useEffect(() => {
@@ -76,6 +87,16 @@ function EditBadgeScreen({ route, navigation }) {
 
   const canSave = useMemo(() => name.trim().length > 0, [name]);
 
+  const toggleModuleSelection = (moduleId) => {
+    const normalizedModuleId = String(moduleId);
+
+    setSelectedModuleIds((previous) => (
+      previous.includes(normalizedModuleId)
+        ? previous.filter((item) => item !== normalizedModuleId)
+        : [...previous, normalizedModuleId]
+    ));
+  };
+
   const handleSave = async () => {
     if (!badge) {
       Alert.alert('Missing badge', 'Badge details were not provided.');
@@ -88,8 +109,8 @@ function EditBadgeScreen({ route, navigation }) {
       return;
     }
 
-    if (!selectedModuleId) {
-      Alert.alert('Missing details', 'Please choose a module linked to this badge.');
+    if (selectedModuleIds.length === 0) {
+      Alert.alert('Missing details', 'Please choose at least one module linked to this badge.');
       return;
     }
 
@@ -98,6 +119,12 @@ function EditBadgeScreen({ route, navigation }) {
       Alert.alert('Invalid validity', 'Badge validity must be a positive number of months.');
       return;
     }
+
+    const selectedModuleNumbers = selectedModuleIds
+      .map((moduleId) => Number.parseInt(moduleId, 10))
+      .filter((moduleId) => Number.isFinite(moduleId));
+    const selectedModuleNames = selectedModules.map((module) => module.title);
+    const primaryModuleId = selectedModuleNumbers[0] || null;
 
     try {
       const token = await AsyncStorage.getItem('innopapp_auth_token');
@@ -113,8 +140,12 @@ function EditBadgeScreen({ route, navigation }) {
           name: name.trim(),
           iconUrl: badge.image,
           validityMonths: parsedValidityMonths,
-          moduleId: Number.parseInt(selectedModuleId, 10),
-          linkedModuleId: Number.parseInt(selectedModuleId, 10),
+          moduleId: primaryModuleId,
+          linkedModuleId: primaryModuleId,
+          linkedModuleIds: selectedModuleNumbers,
+          linkedModuleName: selectedModuleNames[0] || '',
+          linkedModuleNames: selectedModuleNames,
+          moduleName: selectedModuleNames[0] || '',
           eligibilityRules: {
             requireGeneralModuleCompleted: true,
             requireAllTPAModulesCompleted: true,
@@ -173,13 +204,13 @@ function EditBadgeScreen({ route, navigation }) {
             <Text style={styles.moduleHintText}>No modules available.</Text>
           ) : (
             modules.map((moduleItem) => {
-              const active = String(selectedModuleId) === String(moduleItem.moduleId);
+              const active = selectedModuleIds.includes(String(moduleItem.moduleId));
 
               return (
                 <TouchableOpacity
                   key={moduleItem.moduleId}
                   style={[styles.moduleOption, active && styles.moduleOptionActive]}
-                  onPress={() => setSelectedModuleId(String(moduleItem.moduleId))}
+                  onPress={() => toggleModuleSelection(moduleItem.moduleId)}
                 >
                   <Text style={[styles.moduleOptionText, active && styles.moduleOptionTextActive]}>
                     {moduleItem.title}
@@ -196,6 +227,11 @@ function EditBadgeScreen({ route, navigation }) {
           <Text style={styles.ruleItem}>• Must complete TPA module track</Text>
           <Text style={styles.ruleItem}>• Must pass all linked assessments</Text>
           <Text style={styles.ruleItem}>• On-site training must be marked complete by admin</Text>
+          {selectedModules.length > 0 ? (
+            <Text style={styles.ruleModuleText} numberOfLines={3}>
+              Linked Module{selectedModules.length > 1 ? 's' : ''}: {selectedModules.map((module) => module.title).join(', ')}
+            </Text>
+          ) : null}
         </View>
 
         <TouchableOpacity style={styles.button} onPress={handleSave}>
@@ -262,6 +298,12 @@ const styles = StyleSheet.create({
   moduleHintText: {
     color: '#607260',
     fontSize: 13,
+  },
+  ruleModuleText: {
+    color: '#2B3A2A',
+    fontSize: 13,
+    fontWeight: '600',
+    lineHeight: 18,
   },
   moduleOption: {
     borderWidth: 1,

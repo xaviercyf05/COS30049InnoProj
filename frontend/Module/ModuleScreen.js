@@ -154,9 +154,10 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
   const role = currentProfile?.viewerRole || currentProfile?.role || 'User';
   const isAdmin = role === 'Admin';
   const routeModuleId = route?.params?.moduleId || null;
-  const moduleName = route?.params?.moduleName || route?.params?.grade || 'General';
+  const routeModuleName = route?.params?.moduleName || route?.params?.grade || 'General';
   const userLabel = currentProfile?.fullName || currentProfile?.username || 'Guide';
-  const moduleSummary = TRACK_SUMMARY[moduleName] || TRACK_SUMMARY.General;
+  const [moduleDisplayName, setModuleDisplayName] = useState(routeModuleName);
+  const moduleSummary = TRACK_SUMMARY[moduleDisplayName] || TRACK_SUMMARY.General;
   const progressionUnlocked = isAdmin || route?.params?.progressionUnlocked !== false;
   const progressionLockReason =
     route?.params?.progressionLockReason ||
@@ -194,6 +195,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
       setSelectedSectionId(MODULE_SECTIONS[0]?.id || null);
       setVisitedSectionIds(MODULE_SECTIONS[0]?.id ? new Set([MODULE_SECTIONS[0].id]) : new Set());
       setExpandedSectionIds(new Set());
+      setModuleDisplayName(routeModuleName);
       setLoading(false);
       return;
     }
@@ -215,9 +217,21 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
           method: 'GET',
         });
 
+        const resolvedTitle = String(
+          response?.data?.title ||
+          response?.data?.moduleTitle ||
+          response?.data?.moduleName ||
+          response?.data?.name ||
+          routeModuleName
+        ).trim();
+
         const materials = Array.isArray(response?.data?.materials)
           ? response.data.materials
           : [];
+
+        if (active && resolvedTitle) {
+          setModuleDisplayName(resolvedTitle);
+        }
 
         if (!materials.length) {
           if (active) {
@@ -458,7 +472,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
     }
 
     navigation.navigate('Assessment', {
-      moduleName,
+      moduleName: moduleDisplayName,
       moduleId: routeModuleId,
       moduleOrder: route?.params?.moduleOrder || null,
       totalModules: route?.params?.totalModules || null,
@@ -470,7 +484,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
   const goToModuleEditor = () => {
     navigation.navigate('AdminModules', {
       moduleId: routeModuleId,
-      moduleName,
+      moduleName: moduleDisplayName,
     });
   };
 
@@ -490,7 +504,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
           </TouchableOpacity>
 
           <Text style={styles.topTitle} numberOfLines={1}>
-            {moduleName}
+            {moduleDisplayName}
           </Text>
 
           <TouchableOpacity
@@ -511,7 +525,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
           imageStyle={styles.bannerImage}
         >
           <View style={styles.bannerOverlay}>
-            <Text style={styles.bannerTitle}>{moduleName}</Text>
+            <Text style={styles.bannerTitle}>{moduleDisplayName}</Text>
             <Text style={styles.bannerSubtitle}>{moduleSummary}</Text>
             <Text style={styles.bannerMeta}>Signed in as: {userLabel}</Text>
           </View>

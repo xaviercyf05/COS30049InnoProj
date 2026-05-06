@@ -5,21 +5,25 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 function SubmittedPage({ navigation, route }) {
 	const moduleName = route?.params?.moduleName || 'Module';
 	const moduleOrder = route?.params?.moduleOrder;
+	const moduleId = route?.params?.moduleId;
 	const timeUsed = route?.params?.timeUsed || '00:00:00';
 	const answeredCount = route?.params?.answeredCount || 0;
 	const totalQuestions = route?.params?.totalQuestions || 0;
 	const score = route?.params?.score !== undefined ? route?.params?.score : null;
 	const correctCount = route?.params?.correctCount !== undefined ? route?.params?.correctCount : null;
-	const passed = route?.params?.passed === true;
+	const passingScore = route?.params?.passingScore;
+	const passed = Number.isFinite(Number(passingScore))
+		? Number(score) >= Number(passingScore)
+		: route?.params?.passed === true;
 	const feedbackMessage = route?.params?.feedbackMessage || '';
 	const attemptId = route?.params?.attemptId;
 	const assessmentId = route?.params?.assessmentId;
 
 	const scorePercentage =
-		correctCount !== null && totalQuestions > 0
-			? Math.round((Number(correctCount) / totalQuestions) * 100)
-			: score !== null
+		score !== null
 				? Math.max(0, Math.min(100, Math.round(Number(score))))
+			: correctCount !== null && totalQuestions > 0
+				? Math.round((Number(correctCount) / totalQuestions) * 100)
 				: null;
 
 	const handleViewResults = () => {
@@ -28,9 +32,11 @@ function SubmittedPage({ navigation, route }) {
 				result: {
 					attemptId: attemptId,
 					assessmentId: assessmentId,
+					moduleId: moduleId,
 					moduleName: moduleName,
 					score: score,
 					passed: passed,
+					passingScore: passingScore,
 				},
 			});
 		}

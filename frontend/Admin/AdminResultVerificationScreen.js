@@ -82,10 +82,12 @@ const normalizeResult = (item, fallbackIndex = 0) => {
 		userId: item?.userId || item?.UserID || null,
 		parkGuideName: item?.parkGuideName || item?.userName || item?.UserName || `Park Guide ${fallbackIndex + 1}`,
 		moduleName: item?.moduleName || item?.assessmentTitle || item?.Title || item?.module || 'Module',
+		moduleId: item?.moduleId || item?.ModuleID || null,
 		dateAttempt: item?.dateAttempt || item?.submittedAt || item?.SubmittedAt || null,
 		timeUsedSeconds: item?.timeUsedSeconds ?? item?.timeUsed ?? item?.TimeUsedSeconds ?? null,
 		finalScore: score,
 		passed: item?.passed === true || String(item?.status || item?.Status || '').toLowerCase() === 'passed',
+		passingScore: item?.passingScore || item?.PassingScore || item?.passScore || null,
 		assessmentId: item?.assessmentId || item?.AssessmentID || null,
 		attemptId: item?.attemptId || item?.AttemptID || item?.id || null,
 	};
@@ -110,12 +112,62 @@ const normalizeModuleStage = (module) => {
 	return 'other';
 };
 
+const toIdList = (value) => {
+	if (Array.isArray(value)) {
+		return value.map((item) => String(item).trim()).filter(Boolean);
+	}
+
+	if (value === null || value === undefined || value === '') {
+		return [];
+	}
+
+	if (typeof value === 'string' && value.includes(',')) {
+		return value.split(',').map((item) => String(item).trim()).filter(Boolean);
+	}
+
+	return [String(value).trim()].filter(Boolean);
+};
+
+const formatLinkedBadgeModules = (badge) => {
+	const moduleNames = toIdList(badge.linkedModuleNames || badge.linked_module_names);
+	if (moduleNames.length > 0) {
+		return moduleNames.join(', ');
+	}
+
+	const moduleIds = toIdList(badge.linkedModuleIds || badge.linked_module_ids);
+	if (moduleIds.length > 0) {
+		return moduleIds.map((moduleId) => `Module ${moduleId}`).join(', ');
+	}
+
+	return String(badge.linkedModuleName || badge.moduleName || badge.moduleTitle || badge.module || '').trim();
+};
+
+const badgeMatchesModule = (badge, moduleId, moduleName) => {
+	const normalizedModuleId = String(moduleId || '').trim();
+	const normalizedModuleName = String(moduleName || '').trim().toLowerCase();
+	const linkedModuleIds = toIdList(badge.linkedModuleIds || badge.linked_module_ids || badge.linkedModuleId || badge.moduleId || badge.linked_module_id);
+	const linkedModuleNames = toIdList(badge.linkedModuleNames || badge.linked_module_names || badge.linkedModuleName || badge.moduleName || badge.moduleTitle || badge.assessmentTitle)
+		.map((item) => item.toLowerCase());
+
+	if (normalizedModuleId && linkedModuleIds.some((item) => String(item) === normalizedModuleId)) {
+		return true;
+	}
+
+	if (normalizedModuleName && linkedModuleNames.some((item) => item === normalizedModuleName)) {
+		return true;
+	}
+
+	return false;
+};
+
 function AdminResultVerificationScreen({ navigation, route, useSharedChrome = false }) {
 	const insets = useSafeAreaInsets();
 	const routePayload = route?.params || {};
 	const routeResults = route?.params?.results;
 	const singleResult = route?.params?.result || routePayload;
+	const routeSelectedResultId = route?.params?.selectedResultId || route?.params?.result?.id || null;
 	const routeAssessmentId = route?.params?.assessmentId || route?.params?.result?.assessmentId || null;
+	const routeModuleId = route?.params?.moduleId || route?.params?.result?.moduleId || null;
 	const hasRouteData = Boolean(
 		routeResults ||
 		routePayload.result ||
@@ -140,7 +192,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	}, [routeResults, singleResult]);
 
 	const [results, setResults] = useState(initialResults);
-	const [selectedResultId, setSelectedResultId] = useState(initialResults[0]?.id || null);
+	const [selectedResultId, setSelectedResultId] = useState(routeSelectedResultId || initialResults[0]?.id || null);
 	const [assessments, setAssessments] = useState([]);
 	const [selectedAssessmentId, setSelectedAssessmentId] = useState(routeAssessmentId);
 	const [loadingAssessments, setLoadingAssessments] = useState(!hasRouteData);
@@ -154,6 +206,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const [statusMessage, setStatusMessage] = useState('');
 	const [statusType, setStatusType] = useState('info');
 	const [note, setNote] = useState('');
+	const [selectedBadgeId, setSelectedBadgeId] = useState(null);
 
 	const selectedResultBase = results.find((item) => item.id === selectedResultId) || results[0] || null;
 	const selectedAssessment = assessments.find((assessment) => String(assessment.id) === String(selectedAssessmentId))
@@ -161,11 +214,27 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		|| null;
 	const selectedAssessmentModule = selectedAssessment
 		? modules.find((module) => String(module.moduleId) === String(selectedAssessment.moduleId)) || null
-		: null;
+		: routeModuleId
+			? modules.find((module) => String(module.moduleId) === String(routeModuleId)) || null
+			: null;
 	const resolvedModuleName = selectedAssessmentModule?.title
 		|| selectedAssessment?.title
 		|| selectedResultBase?.moduleName
 		|| 'Module';
+	const resolvedPassingScore = Number(
+		selectedResultBase?.passingScore
+			|| selectedAssessment?.passingScore
+			|| route?.params?.passingScore
+			|| 60
+	) || 60;
+	const selectedModuleIdForBadge = String(
+		selectedResultBase?.moduleId
+			|| selectedAssessmentModule?.moduleId
+			|| selectedAssessment?.moduleId
+			|| routeModuleId
+			|| ''
+	).trim();
+	const selectedModuleNameForBadge = resolvedModuleName;
 	const parkSpecificModules = useMemo(
 		() => modules.filter((module) => normalizeModuleStage(module) === 'park-specific'),
 		[modules]
@@ -190,7 +259,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			...item,
 			rowType: 'assessment',
 			moduleName: item.moduleName || resolvedModuleName,
-			completionStatus: item.passed || Number(item.finalScore) >= 60 ? 'completed' : 'incomplete',
+			completionStatus: item.passed || Number(item.finalScore) >= Number(item.passingScore || resolvedPassingScore) ? 'completed' : 'incomplete',
 		}));
 
 		if (!selectedOnSiteModule) {
@@ -213,7 +282,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		});
 
 		return baseRows.flatMap((item, index) => [item, onSiteRows[index]]);
-	}, [onSiteCompletionMap, results, resolvedModuleName, selectedOnSiteModule]);
+	}, [onSiteCompletionMap, results, resolvedModuleName, resolvedPassingScore, selectedOnSiteModule]);
 	const selectedResult = verificationRows.find((item) => item.id === selectedResultId) || verificationRows[0] || selectedResultBase;
 	const selectedGuideOnSiteKey = selectedResult
 		? String(selectedResult.onSiteKey || selectedResult.userId || selectedResult.parkGuideName || selectedResult.id || '').trim()
@@ -221,14 +290,29 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const selectedGuideOnSiteCompletion = selectedGuideOnSiteKey
 		? onSiteCompletionMap[selectedGuideOnSiteKey] || 'incomplete'
 		: 'incomplete';
-	const selectedBadge = selectedResult
-		? badges.find((badge) => {
-			const badgeModuleName = String(badge.moduleName || badge.module || badge.assessmentTitle || '').trim().toLowerCase();
-			const resultModuleName = String(selectedResult.moduleName || '').trim().toLowerCase();
+	const eligibleBadges = useMemo(() => {
+		if (!selectedResult) {
+			return [];
+		}
 
-			return badgeModuleName && badgeModuleName === resultModuleName;
-		}) || null
-		: null;
+		return badges.filter((badge) => badgeMatchesModule(badge, selectedModuleIdForBadge, selectedModuleNameForBadge));
+	}, [badges, selectedModuleIdForBadge, selectedModuleNameForBadge, selectedResult]);
+	const selectedBadge = useMemo(
+		() => eligibleBadges.find((badge) => String(badge.id) === String(selectedBadgeId)) || eligibleBadges[0] || null,
+		[eligibleBadges, selectedBadgeId]
+	);
+
+	useEffect(() => {
+		if (eligibleBadges.length === 0) {
+			setSelectedBadgeId(null);
+			return;
+		}
+
+		const stillValid = eligibleBadges.some((badge) => String(badge.id) === String(selectedBadgeId));
+		if (!stillValid) {
+			setSelectedBadgeId(String(eligibleBadges[0].id));
+		}
+	}, [eligibleBadges, selectedBadgeId]);
 	const canIssueBadge = Boolean(
 		selectedResult?.userId &&
 		selectedBadge &&
@@ -237,7 +321,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	);
 	const summaryCount = verificationRows.length;
 	const passedCount = verificationRows.filter((item) =>
-		item.rowType === 'on-site' ? item.completionStatus === 'completed' : item.passed || Number(item.finalScore) >= 60
+		item.rowType === 'on-site' ? item.completionStatus === 'completed' : item.passed || Number(item.finalScore) >= Number(item.passingScore || resolvedPassingScore)
 	).length;
 	const isSidebarMode = !hasRouteData;
 
@@ -261,7 +345,12 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 					id: badge.id || badge.badgeId,
 					name: badge.name || 'Unnamed Badge',
 					moduleName: badge.moduleName || badge.module || badge.assessmentTitle || '',
+					linkedModuleName: badge.linkedModuleName || badge.moduleTitle || badge.moduleName || '',
+					linkedModuleNames: badge.linkedModuleNames || badge.linked_module_names || [],
+					linkedModuleId: badge.linkedModuleId || badge.moduleId || badge.linked_module_id || null,
+					linkedModuleIds: badge.linkedModuleIds || badge.linked_module_ids || [],
 					image: badge.image || badge.iconUrl || DEFAULT_BADGE_ICON,
+					validityMonths: badge.validityMonths || badge.validity_months || null,
 				}))
 			);
 		} catch (error) {
@@ -287,7 +376,13 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				method: 'GET',
 			});
 
-			setModules(Array.isArray(response.data) ? response.data : []);
+			const loadedModules = Array.isArray(response.data) ? response.data : [];
+			setModules(
+				loadedModules.map((module) => ({
+					...module,
+					title: module.title || module.name || module.moduleName || module.moduleTitle || `Module ${module.moduleId}`,
+				}))
+			);
 		} catch (error) {
 			setModules([]);
 			setStatusType('error');
@@ -544,7 +639,8 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 					) : (
 						verificationRows.map((item) => {
 							const isSelected = item.id === selectedResult?.id;
-							const passed = item.passed || Number(item.finalScore) >= 60;
+							const itemPassingScore = Number(item.passingScore || resolvedPassingScore);
+							const passed = item.passed || Number(item.finalScore) >= itemPassingScore;
 							const statusLabel = item.rowType === 'on-site'
 								? item.completionStatus === 'completed' ? 'Completed' : 'Incomplete'
 								: passed ? 'Passed' : 'Attempt';
@@ -639,7 +735,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				<View style={styles.card}>
 					<Text style={styles.cardTitle}>Issue Badge</Text>
 					<Text style={styles.cardSubtitle}>
-						The badge is automatically matched to the selected module. Admin only needs to issue or reject the result.
+						Select one of the badges linked to this module. Admin only needs to issue or reject the result.
 					</Text>
 
 					{loadingBadges ? (
@@ -647,22 +743,48 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 							<ActivityIndicator size="small" color={COLORS.olive} />
 							<Text style={styles.loadingText}>Loading badges...</Text>
 						</View>
-					) : !selectedBadge ? (
+					) : eligibleBadges.length === 0 ? (
 						<View style={styles.emptyBox}>
 							<Text style={styles.emptyText}>No badge is mapped to this module yet.</Text>
 						</View>
-					) : badges.length === 0 ? (
-						<View style={styles.emptyBox}>
-							<Text style={styles.emptyText}>No badges are available yet.</Text>
-						</View>
 					) : (
-						<View style={styles.selectedBadgeBox}>
-							<Image source={{ uri: selectedBadge.image || DEFAULT_BADGE_ICON }} style={styles.badgeIcon} />
-							<View style={{ flex: 1 }}>
-								<Text style={styles.badgeName}>{selectedBadge.name}</Text>
-								<Text style={styles.badgeHint}>{selectedBadge.moduleName ? `Mapped to ${selectedBadge.moduleName}` : 'Auto-mapped badge'}</Text>
-							</View>
-						</View>
+						<>
+							{eligibleBadges.length > 1 ? (
+								<View style={styles.badgeChoiceList}>
+									{eligibleBadges.map((badge) => {
+										const isActive = String(badge.id) === String(selectedBadge?.id);
+
+										return (
+											<TouchableOpacity
+												key={badge.id}
+												style={[styles.badgeChoiceItem, isActive && styles.badgeChoiceItemActive]}
+												onPress={() => setSelectedBadgeId(String(badge.id))}
+											>
+												<Image source={{ uri: badge.image || DEFAULT_BADGE_ICON }} style={styles.badgeChoiceIcon} />
+												<View style={{ flex: 1 }}>
+													<Text style={styles.badgeName}>{badge.name}</Text>
+													<Text style={styles.badgeHint} numberOfLines={2}>{formatLinkedBadgeModules(badge) || 'Auto-mapped badge'}</Text>
+													{badge.validityMonths ? (
+														<Text style={styles.badgeHint}>Validity: {badge.validityMonths} month(s)</Text>
+													) : null}
+												</View>
+											</TouchableOpacity>
+										);
+									})}
+								</View>
+							) : (
+								<View style={styles.selectedBadgeBox}>
+									<Image source={{ uri: selectedBadge.image || DEFAULT_BADGE_ICON }} style={styles.badgeIcon} />
+									<View style={{ flex: 1 }}>
+										<Text style={styles.badgeName}>{selectedBadge.name}</Text>
+										<Text style={styles.badgeHint}>{formatLinkedBadgeModules(selectedBadge) || 'Auto-mapped badge'}</Text>
+										{selectedBadge.validityMonths ? (
+											<Text style={styles.badgeHint}>Validity: {selectedBadge.validityMonths} month(s)</Text>
+										) : null}
+									</View>
+								</View>
+							)}
+						</>
 					)}
 
 					<Text style={styles.label}>Issue Note</Text>
@@ -1032,6 +1154,29 @@ const styles = StyleSheet.create({
 		borderColor: COLORS.sageBorder,
 		padding: 12,
 		marginBottom: 12,
+	},
+	badgeChoiceList: {
+		gap: 10,
+		marginBottom: 12,
+	},
+	badgeChoiceItem: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 12,
+		backgroundColor: '#F9FBF7',
+		borderRadius: 14,
+		borderWidth: 1,
+		borderColor: COLORS.sageBorder,
+		padding: 12,
+	},
+	badgeChoiceItemActive: {
+		borderColor: COLORS.olive,
+		backgroundColor: '#EEF5E7',
+	},
+	badgeChoiceIcon: {
+		width: 42,
+		height: 42,
+		borderRadius: 12,
 	},
 	badgeIcon: {
 		width: 46,

@@ -5,7 +5,7 @@ const { query } = require("../config/db");
  */
 
 const ATTEMPT_LIMIT = 3;
-const COOLDOWN_HOURS = 1;
+const COOLDOWN_HOURS = 0; // Set to 0 for testing - disable cooldown
 
 function normalizeQuestionType(questionType) {
   const normalized = String(questionType || '').toLowerCase();
@@ -197,17 +197,35 @@ async function submitAssessmentAttempt(userId, assessmentId, answers, timeUsedSe
 
     for (const answer of answers) {
       totalQuestions++;
-      const [options] = await query(
-        "SELECT IsCorrect FROM AssessmentOptions WHERE OptionID = ? LIMIT 1",
-        [answer.optionId]
-      );
+      
+      // Handle MCQ questions (with optionId)
+      if (answer.optionId !== undefined && answer.optionId !== null) {
+        const optionId = Number(answer.optionId);
+        
+        // Validate optionId is numeric and > 0
+        if (!Number.isInteger(optionId) || optionId <= 0) {
+          console.log(`Invalid optionId for question ${answer.questionId}: ${answer.optionId}`);
+          continue; // Skip this answer - unanswered question
+        }
+        
+        const [options] = await query(
+          "SELECT IsCorrect FROM AssessmentOptions WHERE OptionID = ? LIMIT 1",
+          [optionId]
+        );
 
-      if (options.length > 0 && options[0].IsCorrect) {
-        correctCount++;
+        if (options.length > 0 && Number(options[0].IsCorrect) === 1) {
+          correctCount++;
+        }
+      } else if (answer.answer !== undefined && answer.answer !== null) {
+        // Handle fill-in questions (with answer text)
+        // TODO: Implement proper text matching/comparison
+        console.log(`Fill-in question ${answer.questionId}: "${answer.answer}"`);
+        // For now, skip scoring fill-in questions - they need backend logic to match answers
       }
     }
 
-    const score = Math.round((correctCount / totalQuestions) * 100);
+    // Calculate score (prevent division by zero)
+    const score = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
     const status = score >= assessment.PassingScore ? "Passed" : "Failed";
 
     // Record attempt

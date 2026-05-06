@@ -59,12 +59,14 @@ function normaliseEvidenceRow(row) {
     getFirstMatchingValue(labels, ["parkName", "park", "siteName", "name", "locationName"]) ||
     row.Location ||
     "Unknown location";
-  const latitude = Number(
-    getFirstMatchingValue(labels, ["latitude", "lat", "y"], null)
-  );
-  const longitude = Number(
-    getFirstMatchingValue(labels, ["longitude", "lng", "lon", "x"], null)
-  );
+  const parkLatitude = Number(row.ParkLatitude);
+  const parkLongitude = Number(row.ParkLongitude);
+  const labelsLatitude = Number(getFirstMatchingValue(labels, ["latitude", "lat", "y"], null));
+  const labelsLongitude = Number(getFirstMatchingValue(labels, ["longitude", "lng", "lon", "x"], null));
+  const latitude = Number.isFinite(parkLatitude) ? parkLatitude : labelsLatitude;
+  const longitude = Number.isFinite(parkLongitude) ? parkLongitude : labelsLongitude;
+  const resolved = Boolean(Number(row.Status));
+  const unsolvedCount = Number(row.UnsolvedCount || 0);
   const status =
     getFirstMatchingValue(labels, ["status", "summary", "message", "description", "note"]) ||
     String(row.EventType || "abnormal_interaction_detected")
@@ -77,10 +79,14 @@ function normaliseEvidenceRow(row) {
     name: resolvedName,
     location: row.Location,
     status,
+    resolved,
     eventType: row.EventType,
     labels,
+    parkName: row.ParkName || row.Location || null,
     latitude: Number.isFinite(latitude) ? latitude : null,
     longitude: Number.isFinite(longitude) ? longitude : null,
+    unsolvedCountAtLocation: Number.isFinite(unsolvedCount) ? unsolvedCount : 0,
+    showOnMap: unsolvedCount > 0 && Number.isFinite(latitude) && Number.isFinite(longitude),
     timestamp: formatEvidenceTimestamp(row.EventTimestamp),
     createdAt: row.CreatedAt,
     videoFileName: row.VideoFileName,
@@ -639,18 +645,32 @@ async function listEvidenceAlerts(req, res) {
     const limit = Number.isInteger(limitValue) && limitValue > 0 ? Math.min(limitValue, 100) : 20;
 
     const [rows] = await query(
-      `SELECT EvidenceID,
-              EventTimestamp,
-              EventType,
-              LabelsJson,
-              Location,
-              VideoFileName,
-              VideoMimeType,
-              VideoSizeBytes,
-              VideoSha256,
-              CreatedAt
-         FROM Evidence
-        ORDER BY EventTimestamp DESC, EvidenceID DESC
+      `SELECT e.EvidenceID,
+              e.EventTimestamp,
+              e.EventType,
+              e.LabelsJson,
+              e.Location,
+              e.Status,
+              e.VideoFileName,
+              e.VideoMimeType,
+              e.VideoSizeBytes,
+              e.VideoSha256,
+              e.CreatedAt,
+              p.ParkName,
+              p.Latitude AS ParkLatitude,
+              p.Longitude AS ParkLongitude,
+              IFNULL(elu.UnsolvedCount, 0) AS UnsolvedCount
+         FROM Evidence e
+         LEFT JOIN Park p
+           ON LOWER(TRIM(e.Location)) = LOWER(TRIM(p.ParkName))
+         LEFT JOIN (
+           SELECT LOWER(TRIM(Location)) AS LocationKey,
+                  SUM(CASE WHEN Status = 0 THEN 1 ELSE 0 END) AS UnsolvedCount
+             FROM Evidence
+            GROUP BY LOWER(TRIM(Location))
+         ) elu
+           ON LOWER(TRIM(e.Location)) = elu.LocationKey
+        ORDER BY e.EventTimestamp DESC, e.EvidenceID DESC
         LIMIT ?`,
       [limit]
     );

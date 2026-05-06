@@ -40,6 +40,9 @@ import AddBadgeScreen from './Admin/AddBadgeScreen.js';
 import EditBadgeScreen from './Admin/EditBadgeScreen.js';
 import AdminResultVerificationScreen from './Admin/AdminResultVerificationScreen.js';
 import AnalyticsDashboard from './Admin/AnalyticsDashboard.js';
+import SensorAlertScreen from './Admin/SensorAlertScreen';
+import AlertOverview from './Admin/AlertOverview.js';
+import AlertDetail from './Admin/AlertDetail.js';
 import ProfileScreen from './Profile/ProfileScreen.js';
 import EditProfileScreen from './Profile/EditProfileScreen.js';
 import MFASettings from './auth/MFASettings.js';
@@ -326,6 +329,8 @@ const AddBadgeScreenWithSidebar = wrapWithChrome(AddBadgeScreen, 'Add Badge');
 const EditBadgeScreenWithSidebar = wrapWithChrome(EditBadgeScreen, 'Edit Badge');
 const AdminResultVerificationScreenWithSidebar = wrapWithChrome(AdminResultVerificationScreen, 'Result Verification');
 const AnalyticsDashboardWithSidebar = wrapWithChrome(AnalyticsDashboard, 'Analytics Dashboard');
+const SensorAlertScreenWithSidebar = wrapWithChrome(SensorAlertScreen, 'Sensor Alerts');
+const AlertOverviewWithSidebar = wrapWithChrome(AlertOverview, 'Alert Overview');
 const ProfileScreenWithSidebar = wrapWithChrome(ProfileScreen, 'My Profile');
 const EditProfileScreenWithSidebar = wrapWithChrome(EditProfileScreen, 'Edit Profile');
 const MFASettingsWithSidebar = wrapWithChrome(MFASettings, 'Security');
@@ -847,6 +852,24 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 									>
 										<Text style={styles.sidebarText}>Result Verification</Text>
 									</TouchableOpacity>
+									<TouchableOpacity
+										style={styles.sidebarItem}
+										onPress={() => {
+											setMenuVisible(false);
+											navigation.navigate('SensorAlerts');
+										}}
+									>
+										<Text style={styles.sidebarText}>Sensor Alerts</Text>
+															</TouchableOpacity>
+															<TouchableOpacity
+																style={styles.sidebarItem}
+																onPress={() => {
+																	setMenuVisible(false);
+																	navigation.navigate('AlertOverview');
+																}}
+															>
+																<Text style={styles.sidebarText}>Alert Overview</Text>
+															</TouchableOpacity>
 								</>
 							)}
 						</View>
@@ -1138,6 +1161,21 @@ export default function App() {
 					name="Analytics"
 					component={AnalyticsDashboardWithSidebar}
 					options={{ headerShown: false, title: 'Analytics Dashboard' }}
+				/>
+				<Stack.Screen
+					name="SensorAlerts"
+					component={SensorAlertScreenWithSidebar}
+					options={{ headerShown: false, title: 'Sensor Alerts' }}
+				/>
+				<Stack.Screen
+					name="AlertOverview"
+					component={AlertOverviewWithSidebar}
+					options={{ headerShown: false, title: 'Alert Overview' }}
+					/>
+				<Stack.Screen
+					name="AlertDetail"
+					component={AlertDetail}
+					options={{ headerShown: false, title: 'Alert Detail' }}
 				/>
 				<Stack.Screen
 					name="AdminFeature"

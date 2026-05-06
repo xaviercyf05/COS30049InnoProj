@@ -505,6 +505,15 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 									>
 										<Text style={styles.sidebarText}>Analytics Dashboard</Text>
 									</TouchableOpacity>
+									<TouchableOpacity
+										style={styles.sidebarItem}
+										onPress={() => {
+											setMenuVisible(false);
+											navigation.navigate('SensorAlerts');
+										}}
+									>
+										<Text style={styles.sidebarText}>Sensor Alerts</Text>
+									</TouchableOpacity>
 								</>
 							)}
 							</View>

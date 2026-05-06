@@ -148,26 +148,15 @@ async function checkAttemptEligibility(userId, assessmentId) {
       };
     }
 
-    // Check cooldown from last attempt
-    if (attempts.length > 0) {
-      const lastAttempt = new Date(attempts[0].SubmittedAt);
-      const now = new Date();
-      const hoursSinceLastAttempt = (now - lastAttempt) / (1000 * 60 * 60);
-
-      if (hoursSinceLastAttempt < COOLDOWN_HOURS) {
-        return {
-          canAttempt: false,
-          reason: `Must wait ${Math.ceil(
-            COOLDOWN_HOURS - hoursSinceLastAttempt
-          )} more hour(s) before next attempt`,
-          remainingAttempts,
-          maxAttempts,
-          cooldownEndsAt: new Date(
-            lastAttempt.getTime() + COOLDOWN_HOURS * 60 * 60 * 1000
-          ),
-        };
-      }
-    }
+    // TODO: Cooldown check temporarily disabled for testing. Re-enable later.
+    // if (attempts.length > 0) {
+    //   const lastAttempt = new Date(attempts[0].SubmittedAt);
+    //   const now = new Date();
+    //   const hoursSinceLastAttempt = (now - lastAttempt) / (1000 * 60 * 60);
+    //   if (hoursSinceLastAttempt < COOLDOWN_HOURS) {
+    //     return { ... };
+    //   }
+    // }
 
     return {
       canAttempt: true,

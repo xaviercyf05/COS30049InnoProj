@@ -582,6 +582,10 @@ router.post(
       .optional({ values: "falsy" })
       .isBoolean()
       .withMessage("isValid must be a boolean."),
+    body("validityMonths")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1, max: 120 })
+      .withMessage("Validity months must be between 1 and 120."),
     body("expiryDate")
       .optional({ values: "falsy" })
       .isISO8601()
@@ -614,6 +618,10 @@ router.put(
       .optional({ values: "falsy" })
       .isBoolean()
       .withMessage("isValid must be a boolean."),
+    body("validityMonths")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1, max: 120 })
+      .withMessage("Validity months must be between 1 and 120."),
     body("expiryDate")
       .optional({ values: "falsy" })
       .isISO8601()

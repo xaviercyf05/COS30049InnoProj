@@ -28,8 +28,12 @@ async function addMissingBadgeColumns() {
     alterStatements.push('ADD COLUMN IsValid TINYINT(1) NOT NULL DEFAULT 1 AFTER IsActive');
   }
 
+  if (!existingColumns.has('ValidityMonths')) {
+    alterStatements.push('ADD COLUMN ValidityMonths INT UNSIGNED NULL AFTER IsValid');
+  }
+
   if (!existingColumns.has('ExpiryDate')) {
-    alterStatements.push('ADD COLUMN ExpiryDate DATETIME NULL AFTER IsValid');
+    alterStatements.push('ADD COLUMN ExpiryDate DATETIME NULL AFTER ValidityMonths');
   }
 
   if (!existingColumns.has('LinkedModuleID')) {
@@ -120,6 +124,40 @@ function toNumberOrDefault(value, fallback) {
   return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback;
 }
 
+function toNullableInt(value) {
+  if (value === undefined || value === null || value === '') {
+    return null;
+  }
+
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function addMonthsToDate(months) {
+  if (!Number.isFinite(months) || months <= 0) {
+    return null;
+  }
+
+  const expiryDate = new Date();
+  expiryDate.setMonth(expiryDate.getMonth() + months);
+  return expiryDate.toISOString().slice(0, 19).replace('T', ' ');
+}
+
+function monthsUntilDate(dateValue) {
+  if (!dateValue) {
+    return null;
+  }
+
+  const expiryDate = new Date(dateValue);
+  if (Number.isNaN(expiryDate.getTime())) {
+    return null;
+  }
+
+  const now = new Date();
+  const diffMonths = (expiryDate.getFullYear() - now.getFullYear()) * 12 + (expiryDate.getMonth() - now.getMonth());
+  return diffMonths >= 0 ? diffMonths : 0;
+}
+
 function mapBadgeRow(badge, unlocked = false) {
   return {
     badgeId: badge.BadgeID,
@@ -131,9 +169,14 @@ function mapBadgeRow(badge, unlocked = false) {
     unlockThreshold: Number(badge.UnlockThreshold || 0),
     isValid: badge.IsValid === undefined ? true : Number(badge.IsValid) === 1,
     validity: badge.IsValid === undefined ? true : Number(badge.IsValid) === 1,
+    validityMonths:
+      badge.ValidityMonths === undefined || badge.ValidityMonths === null
+        ? monthsUntilDate(badge.ExpiryDate)
+        : Number(badge.ValidityMonths),
     expiryDate: badge.ExpiryDate || null,
     linkedModuleId: badge.LinkedModuleID || null,
     linkedModuleID: badge.LinkedModuleID || null,
+    linkedModuleName: badge.ModuleTitle || badge.linkedModuleName || null,
   };
 }
 
@@ -161,10 +204,11 @@ async function getUserBadges(req, res) {
     const userProgress = Number(progressRows[0].Progress || 0);
 
     const [badges] = await query(
-      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold
-         FROM Badges
-        WHERE IsActive = 1
-        ORDER BY UnlockThreshold ASC, BadgeID ASC`
+      `SELECT b.BadgeID, b.BadgeName, b.IconUrl, b.UnlockThreshold, b.IsValid, b.ValidityMonths, b.ExpiryDate, b.LinkedModuleID, m.ModuleTitle
+         FROM Badges b
+    LEFT JOIN Modules m ON m.ModuleID = b.LinkedModuleID
+      WHERE b.IsActive = 1
+        ORDER BY b.UnlockThreshold ASC, b.BadgeID ASC`
     );
 
     return res.json({
@@ -190,9 +234,10 @@ async function getAllBadges(req, res) {
     await ensureBadgeSchema();
 
     const [badges] = await query(
-      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold, IsActive, IsValid, ExpiryDate, LinkedModuleID
-         FROM Badges
-        ORDER BY BadgeID ASC`
+      `SELECT b.BadgeID, b.BadgeName, b.IconUrl, b.UnlockThreshold, b.IsActive, b.IsValid, b.ValidityMonths, b.ExpiryDate, b.LinkedModuleID, m.ModuleTitle
+         FROM Badges b
+    LEFT JOIN Modules m ON m.ModuleID = b.LinkedModuleID
+      ORDER BY b.BadgeID ASC`
     );
 
     return res.json({
@@ -222,8 +267,9 @@ async function createBadge(req, res) {
     const iconUrl = String(req.body.iconUrl || req.body.image || "").trim();
     const unlockThreshold = toNumberOrDefault(req.body.unlockThreshold, 0);
     const isValid = req.body.isValid !== undefined ? (Number(req.body.isValid) === 1 ? 1 : 0) : 1;
-    const expiryDate = req.body.expiryDate || null;
-    const linkedModuleId = req.body.linkedModuleId || req.body.linkedModuleID || null;
+    const validityMonths = toNullableInt(req.body.validityMonths ?? req.body.validity ?? req.body.validityMonth);
+    const expiryDate = req.body.expiryDate || addMonthsToDate(validityMonths);
+    const linkedModuleId = toNullableInt(req.body.linkedModuleId ?? req.body.linkedModuleID);
 
     if (!name) {
       return res.status(400).json({
@@ -233,15 +279,16 @@ async function createBadge(req, res) {
     }
 
     const [insertResult] = await query(
-      `INSERT INTO Badges (BadgeName, IconUrl, UnlockThreshold, IsActive, IsValid, ExpiryDate, LinkedModuleID, CreatedBy)
-       VALUES (?, ?, ?, 1, ?, ?, ?, ?)`,
-      [name, iconUrl || DEFAULT_BADGE_ICON, unlockThreshold, isValid, expiryDate, linkedModuleId, userId]
+      `INSERT INTO Badges (BadgeName, IconUrl, UnlockThreshold, IsActive, IsValid, ValidityMonths, ExpiryDate, LinkedModuleID, CreatedBy)
+       VALUES (?, ?, ?, 1, ?, ?, ?, ?, ?)`,
+      [name, iconUrl || DEFAULT_BADGE_ICON, unlockThreshold, isValid, validityMonths, expiryDate, linkedModuleId, userId]
     );
 
     const [rows] = await query(
-      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold, IsValid, ExpiryDate, LinkedModuleID
-         FROM Badges
-        WHERE BadgeID = ?
+      `SELECT b.BadgeID, b.BadgeName, b.IconUrl, b.UnlockThreshold, b.IsValid, b.ValidityMonths, b.ExpiryDate, b.LinkedModuleID, m.ModuleTitle
+         FROM Badges b
+    LEFT JOIN Modules m ON m.ModuleID = b.LinkedModuleID
+        WHERE b.BadgeID = ?
         LIMIT 1`,
       [insertResult.insertId]
     );
@@ -272,8 +319,9 @@ async function updateBadge(req, res) {
     const iconUrl = String(req.body.iconUrl || req.body.image || "").trim();
     const unlockThreshold = toNumberOrDefault(req.body.unlockThreshold, 0);
     const isValid = req.body.isValid !== undefined ? (Number(req.body.isValid) === 1 ? 1 : 0) : 1;
-    const expiryDate = req.body.expiryDate || null;
-    const linkedModuleId = req.body.linkedModuleId || req.body.linkedModuleID || null;
+    const validityMonths = toNullableInt(req.body.validityMonths ?? req.body.validity ?? req.body.validityMonth);
+    const expiryDate = req.body.expiryDate || addMonthsToDate(validityMonths);
+    const linkedModuleId = toNullableInt(req.body.linkedModuleId ?? req.body.linkedModuleID);
 
     if (!name) {
       return res.status(400).json({
@@ -288,11 +336,12 @@ async function updateBadge(req, res) {
               IconUrl = ?,
               UnlockThreshold = ?,
               IsValid = ?,
+              ValidityMonths = ?,
               ExpiryDate = ?,
               LinkedModuleID = ?
         WHERE BadgeID = ?
           AND IsActive = 1`,
-      [name, iconUrl || DEFAULT_BADGE_ICON, unlockThreshold, isValid, expiryDate, linkedModuleId, badgeId]
+      [name, iconUrl || DEFAULT_BADGE_ICON, unlockThreshold, isValid, validityMonths, expiryDate, linkedModuleId, badgeId]
     );
 
     if (result.affectedRows === 0) {
@@ -303,9 +352,10 @@ async function updateBadge(req, res) {
     }
 
     const [rows] = await query(
-      `SELECT BadgeID, BadgeName, IconUrl, UnlockThreshold, IsValid, ExpiryDate, LinkedModuleID
-         FROM Badges
-        WHERE BadgeID = ?
+      `SELECT b.BadgeID, b.BadgeName, b.IconUrl, b.UnlockThreshold, b.IsValid, b.ValidityMonths, b.ExpiryDate, b.LinkedModuleID, m.ModuleTitle
+         FROM Badges b
+    LEFT JOIN Modules m ON m.ModuleID = b.LinkedModuleID
+        WHERE b.BadgeID = ?
         LIMIT 1`,
       [badgeId]
     );

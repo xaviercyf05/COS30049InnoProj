@@ -27,12 +27,24 @@ const Editor =
 
 const PLACEHOLDER_COLOR = '#A8ADA3';
 const MODULE_TYPE_OPTIONS = [
-  { value: 'general', label: 'General' },
-  { value: 'park-specific', label: 'Total Protected Area (TPA) Modules' },
-  { value: 'on-site', label: 'On Site Training Modules' },
+  { id: 1, value: 'general', label: 'General' },
+  { id: 2, value: 'park-specific', label: 'Total Protected Area (TPA) Modules' },
+  { id: 3, value: 'on-site', label: 'On Site Training Modules' },
 ];
 
 function normalizeModuleType(value) {
+  if (value === 1 || value === '1') {
+    return 'general';
+  }
+
+  if (value === 2 || value === '2') {
+    return 'park-specific';
+  }
+
+  if (value === 3 || value === '3') {
+    return 'on-site';
+  }
+
   const normalized = String(value || '').trim().toLowerCase();
 
   if (normalized === 'general') {
@@ -71,6 +83,26 @@ function moduleTypeStringToId(normalizedTypeString) {
     default:
       return 1; // Default to General Modules
   }
+}
+
+function moduleTypeIdToString(moduleTypeId) {
+  switch (Number(moduleTypeId)) {
+    case 2:
+      return 'park-specific';
+    case 3:
+      return 'on-site';
+    case 1:
+    default:
+      return 'general';
+  }
+}
+
+function normalizeOrderingValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  return String(value).trim();
 }
 
 function createId(prefix = 'id') {
@@ -125,7 +157,7 @@ function normalizeSection(section) {
             id: subSection?.id || createId('subsection'),
             title: subTitle,
             content: subContent,
-            ordering: typeof subSection?.ordering === 'number' ? subSection.ordering : null,
+            ordering: normalizeOrderingValue(subSection?.ordering),
           };
         })
         .filter(Boolean)
@@ -145,7 +177,7 @@ function normalizeSection(section) {
   return {
     id: section.id || createId('section'),
     title: section.title || '',
-    ordering: typeof section.ordering === 'number' ? section.ordering : null,
+    ordering: normalizeOrderingValue(section.ordering),
     subsections: normalizedSubsections.length
       ? normalizedSubsections
       : [
@@ -164,6 +196,7 @@ function createEmptyDraft() {
     id: null,
     title: '',
     moduleType: 'general',
+    moduleTypeId: 1,
     moduleImageUrl: '',
     moduleLocalImageUri: '',
     moduleLocalImageAsset: null,
@@ -176,10 +209,21 @@ function toDraft(moduleEntry) {
     return createEmptyDraft();
   }
 
+  const moduleTypeFromId = moduleEntry.moduleTypeId ?? moduleEntry.ModuleTypeID;
+  const normalizedModuleType = Number.isFinite(Number(moduleTypeFromId))
+    ? moduleTypeIdToString(moduleTypeFromId)
+    : normalizeModuleType(
+        moduleEntry.moduleType ||
+          moduleEntry.type ||
+          moduleEntry.module_type ||
+          moduleEntry.category
+      );
+
   return {
     id: moduleEntry.id || (moduleEntry.moduleId ? `module-${moduleEntry.moduleId}` : null),
     title: moduleEntry.title || '',
-    moduleType: normalizeModuleType(moduleEntry.moduleType || moduleEntry.type || moduleEntry.module_type || moduleEntry.category),
+    moduleType: normalizedModuleType,
+    moduleTypeId: Number(moduleEntry.moduleTypeId || moduleEntry.module_type_id || moduleEntry.typeId || 0) || 1,
     moduleImageUrl: moduleEntry.moduleImageUrl || moduleEntry.image || '',
     moduleLocalImageUri: '',
     moduleLocalImageAsset: null,
@@ -639,14 +683,18 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
 
       const normalizedType = normalizeModuleType(draft.moduleType);
       const moduleTypeId = moduleTypeStringToId(normalizedType);
-
+    
       const modulePayload = {
         title: draft.title.trim(),
-        moduleTypeId: moduleTypeId,
+        moduleType: normalizedType,
+        moduleTypeId: normalizedTypeId,
+        type: normalizedType,
+        typeId: normalizedTypeId,
+        module_type: normalizedType,
+        module_type_id: normalizedTypeId,
         moduleImageUrl: normalizedModuleImageUrl,
         sections: normalizedSections,
       };
-
       if (numericModuleId) {
         await requestProfileApi(`/api/v1/admin/modules/${numericModuleId}`, token, {
           method: 'PUT',
@@ -803,6 +851,7 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
                       setDraft((previous) => ({
                         ...previous,
                         moduleType: option.value,
+                        moduleTypeId: option.id,
                       }));
                     }}
                   >

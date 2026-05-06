@@ -27,12 +27,24 @@ const Editor =
 
 const PLACEHOLDER_COLOR = '#A8ADA3';
 const MODULE_TYPE_OPTIONS = [
-  { value: 'general', label: 'General' },
-  { value: 'park-specific', label: 'Total Protected Area (TPA) Modules' },
-  { value: 'on-site', label: 'On Site Training Modules' },
+  { id: 1, value: 'general', label: 'General' },
+  { id: 2, value: 'park-specific', label: 'Total Protected Area (TPA) Modules' },
+  { id: 3, value: 'on-site', label: 'On Site Training Modules' },
 ];
 
 function normalizeModuleType(value) {
+  if (value === 1 || value === '1') {
+    return 'general';
+  }
+
+  if (value === 2 || value === '2') {
+    return 'park-specific';
+  }
+
+  if (value === 3 || value === '3') {
+    return 'on-site';
+  }
+
   const normalized = String(value || '').trim().toLowerCase();
 
   if (normalized === 'general') {
@@ -67,6 +79,7 @@ function createId() {
 function AddModuleScreen({ navigation }) {
   const [moduleTitle, setModuleTitle] = useState('');
   const [moduleType, setModuleType] = useState('general');
+  const [moduleTypeId, setModuleTypeId] = useState(1);
   const [moduleImageUrl, setModuleImageUrl] = useState('');
   const [moduleLocalImageUri, setModuleLocalImageUri] = useState('');
   const [moduleLocalImageAsset, setModuleLocalImageAsset] = useState(null);
@@ -349,14 +362,18 @@ function AddModuleScreen({ navigation }) {
       }
 
       const normalizedType = normalizeModuleType(moduleType);
+      const normalizedTypeId = MODULE_TYPE_OPTIONS.find((option) => option.value === normalizedType)?.id || 1;
 
       await requestProfileApi('/api/v1/admin/modules', token, {
         method: 'POST',
         body: {
           title: moduleTitle.trim(),
           moduleType: normalizedType,
+          moduleTypeId: normalizedTypeId,
           type: normalizedType,
+          typeId: normalizedTypeId,
           module_type: normalizedType,
+          module_type_id: normalizedTypeId,
           moduleImageUrl: normalizedModuleImageUrl,
           sections: normalizedSections,
         },
@@ -419,7 +436,10 @@ function AddModuleScreen({ navigation }) {
                 <TouchableOpacity
                   key={option.value}
                   style={[styles.typeOptionButton, isActive && styles.typeOptionButtonActive]}
-                  onPress={() => setModuleType(option.value)}
+                  onPress={() => {
+                    setModuleType(option.value);
+                    setModuleTypeId(option.id);
+                  }}
                 >
                   <Text style={[styles.typeOptionText, isActive && styles.typeOptionTextActive]}>
                     {option.label}

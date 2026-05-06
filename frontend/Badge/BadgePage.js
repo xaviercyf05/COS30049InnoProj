@@ -40,6 +40,9 @@ function BadgeScreen({ currentProfile }) {
             name: badge.name,
             unlocked: Boolean(badge.unlocked),
             image: badge.image,
+            validityMonths: badge.validityMonths || badge.validity_months || null,
+            linkedModuleId: badge.linkedModuleId || badge.moduleId || badge.linked_module_id || null,
+            linkedModuleName: badge.linkedModuleName || badge.moduleTitle || badge.moduleName || '',
           }))
         );
       } catch (_error) {
@@ -96,6 +99,12 @@ function BadgeScreen({ currentProfile }) {
                   style={[styles.badgeIcon, { opacity: badge.unlocked ? 1 : 0.3 }]}
                 />
                 <Text style={styles.badgeText}>{badge.name}</Text>
+                <Text style={styles.badgeMetaText}>
+                  Validity: {badge.validityMonths ? `${badge.validityMonths} month(s)` : 'Not set'}
+                </Text>
+                <Text style={styles.badgeMetaText} numberOfLines={2}>
+                  Linked Module: {badge.linkedModuleName || (badge.linkedModuleId ? `Module ${badge.linkedModuleId}` : 'Not linked')}
+                </Text>
               </TouchableOpacity>
             ))}
           </View>
@@ -165,6 +174,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 5,
     color: '#555',
+    fontWeight: '700',
+  },
+  badgeMetaText: {
+    marginTop: 3,
+    fontSize: 11,
+    textAlign: 'center',
+    color: '#6A7569',
   },
 });
 

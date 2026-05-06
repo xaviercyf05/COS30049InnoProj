@@ -44,12 +44,16 @@ function GuideAssessment({ navigation, route }) {
 	const [assessmentId, setAssessmentId] = useState(null);
 	const [error, setError] = useState('');
 
-	const answeredCount = useMemo(
-		() =>
-			questions.filter((question) => {
-				const answer = answers[question.id];
-				return typeof answer === 'string' && answer.trim().length > 0;
-			}).length,
+	const answeredCount = useMemo(() =>
+		questions.filter((question) => {
+			const answer = answers[question.id];
+			// MCQ answers are stored as numeric indices; treat numbers (including 0) as answered
+			if (question.type === 'mcq') {
+				return answer !== undefined && answer !== null && answer !== '';
+			}
+			// For text/fill-in questions, require non-empty trimmed string
+			return typeof answer === 'string' && answer.trim().length > 0;
+		}).length,
 		[answers, questions]
 	);
 
@@ -111,9 +115,9 @@ function GuideAssessment({ navigation, route }) {
 		}
 	}, [timeLeft, timeUpNotified]);
 
-	const onSelectOption = (questionId, option) => {
+	const onSelectOption = (questionId, optionId) => {
 		setWarningMessage('');
-		setAnswers((previousAnswers) => ({ ...previousAnswers, [questionId]: option }));
+		setAnswers((previousAnswers) => ({ ...previousAnswers, [questionId]: optionId }));
 	};
 
 	const onFillAnswer = (questionId, value) => {
@@ -122,10 +126,19 @@ function GuideAssessment({ navigation, route }) {
 	};
 
 	const onSubmit = async () => {
-		const unansweredCount = questions.length - answeredCount;
+		// Recompute answered locally to avoid any memo staleness
+		const localAnswered = questions.filter((question) => {
+			const answer = answers[question.id];
+			if (question.type === 'mcq') {
+				return answer !== undefined && answer !== null && answer !== '';
+			}
+			return typeof answer === 'string' && answer.trim().length > 0;
+		}).length;
+
+		const unansweredCount = Math.max(0, questions.length - localAnswered);
 
 		if (unansweredCount > 0) {
-			const message = `You still have ${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''}. Please answer all questions before submitting.`;
+			const message = `You still have ${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''}. Answered: ${localAnswered}/${questions.length}`;
 			setWarningMessage(message);
 			Alert.alert('Incomplete Assessment', message);
 			return;
@@ -136,11 +149,10 @@ function GuideAssessment({ navigation, route }) {
 
 		try {
 			const timeUsedSeconds = durationSeconds - timeLeft;
-			const { error: submitError, score, passed, feedbackMessage } =
-				await submitAssessmentAttempt(assessmentId || moduleId, answers, timeUsedSeconds);
+			const result = await submitAssessmentAttempt(assessmentId || moduleId, answers, timeUsedSeconds, questions);
 
-			if (submitError) {
-				Alert.alert('Submission Error', submitError);
+			if (result.error) {
+				Alert.alert('Submission Error', result.error.toString());
 				return;
 			}
 
@@ -149,15 +161,15 @@ function GuideAssessment({ navigation, route }) {
 				moduleName,
 				moduleOrder,
 				timeUsed,
-				answeredCount,
+				answeredCount: localAnswered,
 				totalQuestions: questions.length,
-				score,
-				passed,
-				feedbackMessage,
+				score: result.score,
+				passed: result.passed,
+				feedbackMessage: result.feedbackMessage,
 				moduleId,
 			});
 		} catch (err) {
-			Alert.alert('Error', 'Failed to submit assessment. Please try again.');
+			Alert.alert('Error', err.message || 'Failed to submit assessment. Please try again.');
 		} finally {
 			setSubmitting(false);
 		}
@@ -188,6 +200,7 @@ function GuideAssessment({ navigation, route }) {
 		);
 	}
 
+	return (
 		<SafeAreaView style={styles.container}>
 			<ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false} stickyHeaderIndices={[0]}>
 				<View style={styles.stickyHeaderWrap}>
@@ -220,15 +233,15 @@ function GuideAssessment({ navigation, route }) {
 						{item.type === 'mcq' ? (
 							<View style={styles.optionList}>
 								{item.options.map((option) => {
-									const selected = answers[item.id] === option;
+									const selected = String(answers[item.id]) === String(option.id);
 									return (
 										<TouchableOpacity
-											key={option}
+											key={String(option.id)}
 											style={[styles.optionButton, selected && styles.optionButtonSelected]}
-											onPress={() => onSelectOption(item.id, option)}
+											onPress={() => onSelectOption(item.id, option.id)}
 											activeOpacity={0.9}
 										>
-											<Text style={[styles.optionText, selected && styles.optionTextSelected]}>{option}</Text>
+											<Text style={[styles.optionText, selected && styles.optionTextSelected]}>{option.text}</Text>
 										</TouchableOpacity>
 									);
 								})}
@@ -257,6 +270,7 @@ function GuideAssessment({ navigation, route }) {
 				</TouchableOpacity>
 			</View>
 		</SafeAreaView>
+	);
 }
 
 const styles = StyleSheet.create({

@@ -46,6 +46,9 @@ function BadgeManagementScreen({ navigation, currentProfile }) {
           name: badge.name,
           unlocked: Boolean(badge.unlocked),
           image: badge.image,
+          validityMonths: badge.validityMonths || badge.validity_months || null,
+          linkedModuleId: badge.linkedModuleId || badge.moduleId || badge.linked_module_id || null,
+          linkedModuleName: badge.linkedModuleName || badge.moduleTitle || badge.moduleName || '',
         }))
       );
     } catch (_error) {
@@ -169,6 +172,12 @@ function BadgeManagementScreen({ navigation, currentProfile }) {
                 />
 
                 <Text style={styles.badgeText}>{badge.name}</Text>
+                <Text style={styles.badgeMetaText}>
+                  Validity: {badge.validityMonths ? `${badge.validityMonths} month(s)` : 'Not set'}
+                </Text>
+                <Text style={styles.badgeMetaText} numberOfLines={2}>
+                  Linked Module: {badge.linkedModuleName || (badge.linkedModuleId ? `Module ${badge.linkedModuleId}` : 'Not linked')}
+                </Text>
               </View>
             ))}
           </View>
@@ -306,6 +315,13 @@ const styles = StyleSheet.create({
     marginTop: 8,
     textAlign: 'center',
     color: '#4E5D53',
+    fontWeight: '700',
+  },
+  badgeMetaText: {
+    marginTop: 4,
+    fontSize: 11,
+    textAlign: 'center',
+    color: '#617261',
   },
   menuIcon: {
     position: 'absolute',

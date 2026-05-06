@@ -125,7 +125,7 @@ function GuideAssessment({ navigation, route }) {
 		setAnswers((previousAnswers) => ({ ...previousAnswers, [questionId]: value }));
 	};
 
-	const onSubmit = async () => {
+	const onSubmit = async (forceSubmit = false) => {
 		// Recompute answered locally to avoid any memo staleness
 		const localAnswered = questions.filter((question) => {
 			const answer = answers[question.id];
@@ -137,10 +137,13 @@ function GuideAssessment({ navigation, route }) {
 
 		const unansweredCount = Math.max(0, questions.length - localAnswered);
 
-		if (unansweredCount > 0) {
+		if (!forceSubmit && unansweredCount > 0) {
 			const message = `You still have ${unansweredCount} unanswered question${unansweredCount > 1 ? 's' : ''}. Answered: ${localAnswered}/${questions.length}`;
 			setWarningMessage(message);
-			Alert.alert('Incomplete Assessment', message);
+			Alert.alert('Incomplete Assessment', `${message}\n\nSubmit anyway?`, [
+				{ text: 'Cancel', style: 'cancel' },
+				{ text: 'Submit Anyway', onPress: () => onSubmit(true) },
+			]);
 			return;
 		}
 
@@ -150,32 +153,61 @@ function GuideAssessment({ navigation, route }) {
 		try {
 			const effectiveAssessmentId = assessmentId || route?.params?.assessmentId;
 			if (!effectiveAssessmentId) {
-				Alert.alert('Submission Error', 'Assessment ID is missing. Please reload and try again.');
+				const msg = 'Assessment ID is missing. Please reload and try again.';
+				console.error(msg);
+				Alert.alert('Submission Error', msg);
 				return;
 			}
+
+			console.log('Starting assessment submission', {
+				assessmentId: effectiveAssessmentId,
+				questionCount: questions.length,
+				answeredCount: localAnswered,
+			});
 
 			const timeUsedSeconds = durationSeconds - timeLeft;
 			const result = await submitAssessmentAttempt(effectiveAssessmentId, answers, timeUsedSeconds, questions);
 
+			console.log('Submission result:', result);
+
 			if (result.error) {
-				Alert.alert('Submission Error', result.error.toString());
+				const errorMsg = `Submission failed: ${result.error.toString()}`;
+				console.error(errorMsg);
+				Alert.alert('Submission Error', errorMsg);
+				setSubmitting(false);
+				return;
+			}
+
+			if (result.score === undefined || result.score === null) {
+				const msg = 'Invalid response from server: missing score';
+				console.error(msg, result);
+				Alert.alert('Submission Error', msg);
+				setSubmitting(false);
 				return;
 			}
 
 			const timeUsed = formatDuration(timeUsedSeconds);
+			console.log('Navigating to SubmittedPage with:', {
+				score: result.score,
+				passed: result.passed,
+				totalQuestions: questions.length,
+			});
+
 			navigation.navigate('SubmittedPage', {
 				moduleName,
 				moduleOrder,
 				timeUsed,
 				answeredCount: localAnswered,
 				totalQuestions: questions.length,
-				score: result.score,
-				passed: result.passed,
-				feedbackMessage: result.feedbackMessage,
+				score: result.score || 0,
+				passed: result.passed === true,
+				feedbackMessage: result.feedbackMessage || '',
 				moduleId,
 			});
 		} catch (err) {
-			Alert.alert('Error', err.message || 'Failed to submit assessment. Please try again.');
+			const errMsg = err.message || err.toString() || 'Unknown error';
+			console.error('Submit error:', err);
+			Alert.alert('Error', `Failed to submit assessment: ${errMsg}`);
 		} finally {
 			setSubmitting(false);
 		}

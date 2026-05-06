@@ -164,82 +164,71 @@ export async function submitAssessmentAttempt(assessmentId, answers, timeUsedSec
 	const questionList = Array.isArray(questions) ? questions : [];
 	const questionById = new Map(questionList.map((question) => [String(question.id), question]));
 
-	const answerArray = Array.isArray(answers)
-		? answers.map((value, index) => {
-			const question = questionList[index] || {};
-			const questionId = String(question.id || index + 1);
-
-			if (question.type === 'fill') {
-				return {
-					questionId,
-					answer: String(value || ''),
-				};
-			}
-
-			// Preserve non-numeric option ids (strings) and numeric ids as-is
-			let optionId = value;
-			if (typeof value === 'string' && /^\d+$/.test(value)) {
-				optionId = Number.parseInt(value, 10);
-			}
-
-			return {
-				questionId,
-				optionId,
-				answer: optionId,
-			};
-		})
-		: Object.entries(answers || {}).map(([questionId, value]) => {
-			const question = questionById.get(String(questionId)) || {};
-
-			if (question.type === 'fill') {
-				return {
-					questionId: String(questionId),
-					answer: String(value || ''),
-				};
-			}
-
-			let optionId = value;
-			if (typeof value === 'string' && /^\d+$/.test(value)) {
-				optionId = Number.parseInt(value, 10);
-			}
-
+	// Convert answers object to backend format
+	const answerArray = Object.entries(answers || {}).map(([questionId, userAnswer]) => {
+		const question = questionById.get(String(questionId)) || {};
+		const questionType = String(question.type || '').toLowerCase();
+		
+		// For MCQ: optionId is the selected option
+		// For fill-in: try to match answer text with options
+		if (questionType === 'fill' || questionType === 'fill_in') {
+			// For fill-in questions, send the answer as text
+			// Backend will need to handle matching with correct answer
 			return {
 				questionId: String(questionId),
-				optionId,
-				answer: optionId,
+				answer: String(userAnswer || ''),
 			};
-		});
+		}
+
+		// For MCQ: ensure optionId is an integer
+		let optionId = userAnswer;
+		if (typeof userAnswer === 'string' && /^\d+$/.test(userAnswer)) {
+			optionId = Number.parseInt(userAnswer, 10);
+		}
+
+		return {
+			questionId: String(questionId),
+			optionId: Number(optionId),
+		};
+	});
+
+	// Ensure assessmentId is an integer for backend validation
+	const assessmentIdInt = typeof assessmentId === 'string' ? Number.parseInt(assessmentId, 10) : Number(assessmentId);
+	const timeUsedInt = Number(timeUsedSeconds || 0);
+
+	console.log('Submitting assessment:', { assessmentId: assessmentIdInt, answerCount: answerArray.length, timeUsed: timeUsedInt });
 
 	const response = await requestAssessmentApi('/api/v1/assessments/submit', token, {
 		method: 'POST',
 		body: {
-			assessmentId,
+			assessmentId: assessmentIdInt,
 			answers: answerArray,
-			timeUsedSeconds,
+			timeUsedSeconds: timeUsedInt,
 		},
 	});
 
+	console.log('Assessment submit response:', response);
+
 	if (!response.success) {
+		console.error('Submit failed:', response.error);
 		return { error: response.error, score: 0, passed: false, totalQuestions: 0, correctCount: 0 };
 	}
 
-	const payload = getPayloadData(response.data);
-	const status = String(getFieldValue(payload, ['status'], '') || '').toLowerCase();
-	const passedField = getFieldValue(payload, ['passed'], undefined);
-
-	return {
+	// Parse backend response
+	const payload = response.data?.data || response.data || {};
+	const submitted = {
 		error: null,
-		score: Number(getFieldValue(payload, ['score'], 0)) || 0,
-		passed:
-			passedField === true ||
-			passedField === 1 ||
-			String(passedField).toLowerCase() === 'true' ||
-			status === 'passed',
-		status: getFieldValue(payload, ['status'], ''),
-		totalQuestions: Number(getFieldValue(payload, ['totalQuestions', 'questionCount'], 0)) || 0,
-		correctCount: Number(getFieldValue(payload, ['correctCount'], 0)) || 0,
-		feedbackMessage: getFieldValue(payload, ['feedbackMessage', 'feedback'], ''),
+		score: payload.score || 0,
+		passed: payload.passed === true,
+		status: payload.status || '',
+		totalQuestions: payload.totalQuestions || 0,
+		correctCount: payload.correctCount || 0,
+		feeedbackMessage: payload.feedbackMessage || '',
+		attemptId: payload.attemptId,
 	};
+
+	console.log('Assessment submitted successfully:', submitted);
+	return submitted;
 }
 
 export async function fetchAssessmentHistory(moduleId) {

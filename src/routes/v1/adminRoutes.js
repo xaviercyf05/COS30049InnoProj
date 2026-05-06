@@ -193,6 +193,20 @@ router.get(
 );
 
 /**
+ * PUT /admin/evidence/:evidenceId/status - Update evidence solved status
+ * Body: { resolved: boolean }
+ */
+router.put(
+  "/evidence/:evidenceId/status",
+  [
+    param("evidenceId").isInt({ min: 1 }).withMessage("Invalid evidence ID."),
+    body("resolved").isBoolean().withMessage("resolved must be a boolean."),
+  ],
+  validate,
+  asyncHandler(adminController.updateEvidenceStatus)
+);
+
+/**
  * GET /admin/evidence/:evidenceId/video - Stream an evidence video
  */
 router.get(

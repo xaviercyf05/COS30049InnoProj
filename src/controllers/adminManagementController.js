@@ -740,6 +740,29 @@ async function streamEvidenceVideo(req, res) {
   }
 }
 
+async function updateEvidenceStatus(req, res) {
+  try {
+    const { evidenceId } = req.params;
+    const resolved = req.body && (req.body.resolved === true || req.body.resolved === 'true' || req.body.resolved === 1 || req.body.resolved === '1');
+
+    const statusValue = resolved ? 1 : 0;
+
+    const [result] = await query(
+      `UPDATE Evidence SET Status = ? WHERE EvidenceID = ?`,
+      [statusValue, evidenceId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Evidence not found.' });
+    }
+
+    return res.json({ success: true, data: { evidenceId: Number(evidenceId), resolved: !!resolved } });
+  } catch (error) {
+    console.error('Update evidence status error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update evidence status.' });
+  }
+}
+
 module.exports = {
   createQualification,
   createAnnouncement,
@@ -752,4 +775,5 @@ module.exports = {
   getUserEnrollmentDetails,
   listEvidenceAlerts,
   streamEvidenceVideo,
+  updateEvidenceStatus,
 };

@@ -123,14 +123,53 @@ async function markMaterialComplete(userId, materialId) {
 async function getModuleChapters(moduleId) {
   try {
     const [chapters] = await query(
-      `SELECT s.SectionID, s.Title
+      `SELECT s.SectionID,
+              s.Title AS SectionTitle,
+              s.Description AS SectionDescription,
+              s.Ordering AS SectionOrdering,
+              sc.SubsectionID,
+              sc.Title AS SubTitle,
+              sc.ContentText,
+              sc.Ordering AS SubOrdering
        FROM Sections s
+       LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
        WHERE s.ModuleID = ?
-       ORDER BY s.Ordering ASC`,
+       ORDER BY s.Ordering ASC, sc.Ordering ASC`,
       [moduleId]
     );
 
-    return chapters.map((c) => ({ sectionId: c.SectionID, title: c.Title }));
+    const sectionsMap = new Map();
+
+    for (const row of chapters) {
+      const sectionId = row.SectionID;
+
+      if (!sectionsMap.has(sectionId)) {
+        sectionsMap.set(sectionId, {
+          id: `section-${sectionId}`,
+          sectionId,
+          title: row.SectionTitle,
+          description: row.SectionDescription || '',
+          ordering: row.SectionOrdering,
+          subsections: [],
+        });
+      }
+
+      if (row.SubsectionID) {
+        sectionsMap.get(sectionId).subsections.push({
+          id: `subsection-${row.SubsectionID}`,
+          subsectionId: row.SubsectionID,
+          title: row.SubTitle,
+          contentHtml: row.ContentText,
+          contentText: row.ContentText,
+          ordering: row.SubOrdering,
+          parentId: `section-${sectionId}`,
+        });
+      }
+    }
+
+    return Array.from(sectionsMap.values()).sort(
+      (left, right) => (left.ordering || 0) - (right.ordering || 0)
+    );
   } catch (error) {
     throw error;
   }

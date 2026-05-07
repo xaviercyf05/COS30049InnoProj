@@ -1,4 +1,3 @@
-const fileUpload = require('express-fileupload');
 const express = require("express");
 const path = require("path");
 const fs = require("fs");
@@ -10,7 +9,6 @@ const { ping } = require("./config/db");
 const { errorHandler } = require("./middleware/errorHandler");
 
 // Route imports
-const enrollmentRoutes = require('./routes/enrollmentsRoutes');
 const publicRoutes = require("./routes/v1/publicRoutes");
 const authRoutes = require("./routes/v1/authRoutes");
 const userRoutes = require("./routes/v1/userRoutes");
@@ -37,15 +35,6 @@ const richContentDemoDir = path.join(
 /**
  * Security and middleware setup
  */
-app.use(fileUpload({
-  useTempFiles: true,
-  tempFileDir: '/tmp/',
-  createParentPath: true,
-  limits: { fileSize: 5 * 1024 * 1024 }, // 5MB max
-}));
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-app.use('/api/v1/enrollmentsRoutes', enrollmentRoutes);
-
 app.disable("x-powered-by");
 app.use(helmet());
 const configuredCorsOrigins = Array.isArray(env.corsOrigin)

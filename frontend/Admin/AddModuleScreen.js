@@ -103,8 +103,7 @@ function AddModuleScreen({ navigation }) {
     resolveApiAssetUri(moduleImageUrl.trim()) ||
     moduleImageUrl.trim();
   const parkSpecificModules = moduleLibrary.filter((module) => {
-    const typeCandidate =
-      module.moduleType || module.module_type || module.type || module.category || module.moduleTypeId || module.module_type_id || module.typeId;
+    const typeCandidate = module._typeCandidate ?? (module.moduleType || module.module_type || module.type || module.category || module.moduleTypeId || module.module_type_id || module.typeId);
 
     // Accept explicit numeric type id for TPA (2)
     if (Number(typeCandidate) === 2) return true;
@@ -443,7 +442,11 @@ function AddModuleScreen({ navigation }) {
 
       const refreshed = Array.isArray(moduleListResponse.data) ? moduleListResponse.data : [];
       const normalizedRefreshed = refreshed.map((m) => {
-        const moduleId = m.moduleId || m.id || m.ModuleId || null;
+        let moduleId = m.moduleId || m.id || m.ModuleId || null;
+        if (typeof moduleId === 'string') {
+          const match = moduleId.match(/(\d+)/);
+          if (match) moduleId = Number.parseInt(match[1], 10);
+        }
         const title = m.title || m.name || m.moduleTitle || '';
         const typeCandidate =
           m.moduleType || m.module_type || m.type || m.category || m.moduleTypeId || m.module_type_id || m.typeId || m.ModuleTypeID;

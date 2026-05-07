@@ -112,6 +112,45 @@ const normalizeModuleStage = (module) => {
 	return 'other';
 };
 
+const getNumericModuleId = (module) => {
+	const rawId = module?.moduleId ?? module?.id ?? module?.ModuleID ?? null;
+
+	if (rawId === null || rawId === undefined || rawId === '') {
+		return null;
+	}
+
+	const numericId = Number(rawId);
+	if (Number.isFinite(numericId)) {
+		return numericId;
+	}
+
+	const match = String(rawId).match(/(\d+)/);
+	return match ? Number.parseInt(match[1], 10) : null;
+};
+
+const getLinkedTpaModuleId = (module) => {
+	const rawId =
+		module?.linkedTpaModuleId ??
+		module?.linked_tpa_module_id ??
+		module?.parentModuleId ??
+		module?.parent_module_id ??
+		module?.prerequisiteModuleId ??
+		module?.prerequisite_module_id ??
+		null;
+
+	if (rawId === null || rawId === undefined || rawId === '') {
+		return null;
+	}
+
+	const numericId = Number(rawId);
+	if (Number.isFinite(numericId)) {
+		return numericId;
+	}
+
+	const match = String(rawId).match(/(\d+)/);
+	return match ? Number.parseInt(match[1], 10) : null;
+};
+
 const toIdList = (value) => {
 	if (Array.isArray(value)) {
 		return value.map((item) => String(item).trim()).filter(Boolean);
@@ -248,12 +287,13 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return null;
 		}
 
-		const parkIndex = parkSpecificModules.findIndex(
-			(module) => String(module.moduleId) === String(selectedAssessmentModule.moduleId)
-		);
+		const selectedAssessmentModuleId = String(getNumericModuleId(selectedAssessmentModule) || '').trim();
+		if (!selectedAssessmentModuleId) {
+			return null;
+		}
 
-		return parkIndex >= 0 ? onSiteModules[parkIndex] || null : null;
-	}, [onSiteModules, parkSpecificModules, selectedAssessmentModule]);
+		return onSiteModules.find((module) => String(getLinkedTpaModuleId(module) || '') === selectedAssessmentModuleId) || null;
+	}, [onSiteModules, selectedAssessmentModule]);
 	const verificationRows = useMemo(() => {
 		const baseRows = results.map((item) => ({
 			...item,
@@ -323,6 +363,8 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const canIssueBadge = Boolean(
 		selectedResult?.userId &&
 		selectedBadge &&
+		selectedResult.rowType === 'assessment' &&
+		selectedResult.passed &&
 		(!selectedOnSiteModule || selectedGuideOnSiteCompletion === 'completed') &&
 		(selectedResult.rowType !== 'on-site' || selectedResult.completionStatus === 'completed')
 	);
@@ -385,10 +427,16 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 			const loadedModules = Array.isArray(response.data) ? response.data : [];
 			setModules(
-				loadedModules.map((module) => ({
-					...module,
-					title: module.title || module.name || module.moduleName || module.moduleTitle || `Module ${module.moduleId}`,
-				}))
+				loadedModules.map((module) => {
+					const moduleId = getNumericModuleId(module);
+
+					return {
+						...module,
+						moduleId,
+						title: module.title || module.name || module.moduleName || module.moduleTitle || `Module ${moduleId}`,
+						linkedTpaModuleId: getLinkedTpaModuleId(module),
+					};
+				})
 			);
 		} catch (error) {
 			setModules([]);
@@ -475,6 +523,14 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const handleIssueBadge = async () => {
 		if (!selectedResult) {
 			Alert.alert('Select a result', 'Please choose a row from the table first.');
+			return;
+		}
+
+		if (selectedResult.rowType !== 'assessment') {
+			Alert.alert(
+				'Select assessment result',
+				'Issue the badge from the passed TPA assessment row after the linked on-site module is marked completed.'
+			);
 			return;
 		}
 

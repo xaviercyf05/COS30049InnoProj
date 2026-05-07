@@ -256,8 +256,7 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
     resolveApiAssetUri(draft.moduleImageUrl.trim()) ||
     draft.moduleImageUrl.trim();
   const parkSpecificModules = modules.filter((module) => {
-    const typeCandidate =
-      module.moduleType || module.module_type || module.type || module.category || module.moduleTypeId || module.module_type_id || module.typeId;
+    const typeCandidate = module._typeCandidate ?? (module.moduleType || module.module_type || module.type || module.category || module.moduleTypeId || module.module_type_id || module.typeId);
 
     if (Number(typeCandidate) === 2) return true;
     if (normalizeModuleType(typeCandidate) === 'park-specific') return true;
@@ -356,7 +355,23 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
       });
 
       const updatedLibrary = Array.isArray(listResponse.data) ? listResponse.data : [];
-      setModules(updatedLibrary);
+
+      // Normalize modules so downstream filters and id lookups are reliable
+      const normalizedModules = updatedLibrary.map((m) => {
+        const rawId = m.moduleId ?? m.id ?? m.ModuleID ?? null;
+        const moduleId = extractNumericModuleId(rawId) || rawId || null;
+        const title = m.title || m.name || m.moduleName || m.moduleTitle || `Module ${moduleId}`;
+        const typeCandidate = m.moduleType || m.module_type || m.type || m.category || m.moduleTypeId || m.module_type_id || m.typeId || m.ModuleTypeID;
+
+        return {
+          ...m,
+          moduleId,
+          title,
+          _typeCandidate: typeCandidate,
+        };
+      });
+
+      setModules(normalizedModules);
 
       if (!updatedLibrary.length) {
         setDraft(createEmptyDraft());
@@ -366,7 +381,7 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
       const hasFocusedModuleInLibrary =
         focusedModuleId !== null &&
         focusedModuleId !== undefined &&
-        updatedLibrary.some((moduleItem) => Number(moduleItem.moduleId) === Number(focusedModuleId));
+        normalizedModules.some((moduleItem) => Number(moduleItem.moduleId) === Number(focusedModuleId));
 
       const fallbackId =
         (hasFocusedModuleInLibrary ? focusedModuleId : null) ||

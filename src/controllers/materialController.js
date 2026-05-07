@@ -1,5 +1,6 @@
 const { query } = require("../config/db");
 const materialService = require("../services/materialService");
+const qualificationService = require("../services/qualificationService");
 const progressService = require("../services/progressService");
 const {
   ensureModuleUiSchema,
@@ -10,6 +11,20 @@ const {
  * Controller for learning modules and materials.
  */
 
+function normalizeModuleStage(typeName) {
+  const normalized = String(typeName || "").trim().toLowerCase();
+
+  if (normalized.includes("on-site")) {
+    return "onsite";
+  }
+
+  if (normalized.includes("protected area") || normalized.includes("tpa")) {
+    return "tpa";
+  }
+
+  return "general";
+}
+
 /**
  * Get dashboard module cards with user-specific progress.
  */
@@ -19,38 +34,116 @@ async function getDashboardModules(req, res) {
 
     await ensureModuleUiSchema();
 
+    const [userRows] = await query(
+      `SELECT QualificationID, Progress
+         FROM Users
+        WHERE UserID = ?
+        LIMIT 1`,
+      [userId]
+    );
+
+    if (userRows.length === 0 || !userRows[0].QualificationID) {
+      return res.json({
+        success: true,
+        summary: {
+          overallProgress: Number(userRows[0]?.Progress || 0),
+        },
+        data: [],
+      });
+    }
+
+    const qualificationId = userRows[0].QualificationID;
+
     const [rows] = await query(
       `SELECT m.ModuleID,
               m.QualificationID,
               m.ModuleTitle,
               m.ModuleTypeID,
               mt.TypeName,
-              meta.CoverImageUrl,
-              COALESCE(up.progressPercent, 0) AS progressPercent
+              meta.CoverImageUrl
          FROM Modules m
          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
          LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-         LEFT JOIN user_progress up ON up.moduleId = m.ModuleID AND up.userId = ?
-        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, mt.TypeName, meta.CoverImageUrl, up.progressPercent
+        WHERE m.QualificationID = ?
         ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC`,
-      [userId]
+      [qualificationId]
     );
+
+    if (rows.length === 0) {
+      return res.json({
+        success: true,
+        summary: {
+          overallProgress: Number(userRows[0]?.Progress || 0),
+        },
+        data: [],
+      });
+    }
+
+    const moduleIds = rows.map((row) => row.ModuleID);
+    const [progressRows] = moduleIds.length > 0
+      ? await query(
+          `SELECT moduleId, progressPercent
+             FROM user_progress
+            WHERE userId = ?
+              AND moduleId IN (?)`,
+          [userId, moduleIds]
+        )
+      : [[]];
+
+    const qualificationProgress = await qualificationService.getQualificationProgress(
+      userId,
+      qualificationId
+    );
+
+    const progressByModuleId = new Map(
+      progressRows.map((row) => [Number(row.moduleId), Number(row.progressPercent || 0)])
+    );
+
+    const unlockByModuleId = new Map(
+      (qualificationProgress.moduleProgress || []).map((item) => [
+        Number(item.moduleId),
+        {
+          unlocked: !!item.isUnlocked,
+          assessmentPassed: !!item.assessmentPassed,
+        },
+      ])
+    );
+
+    const data = rows.map((row, index) => {
+      const progressPercent = Number(progressByModuleId.get(Number(row.ModuleID)) || 0);
+      const unlockState = unlockByModuleId.get(Number(row.ModuleID)) || {
+        unlocked: index === 0,
+        assessmentPassed: false,
+      };
+
+      return {
+        moduleId: row.ModuleID,
+        title: row.ModuleTitle,
+        stage: normalizeModuleStage(row.TypeName),
+        progressPercent,
+        unlocked: unlockState.unlocked,
+        lockReason: unlockState.unlocked ? "" : "Complete the previous module to unlock this module.",
+        qualificationId: row.QualificationID,
+        moduleTypeId: row.ModuleTypeID,
+        moduleType: row.TypeName || "Unassigned",
+        image: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
+      };
+    });
+
+    const overallProgress = data.length > 0
+      ? Math.round(data.reduce((sum, item) => sum + Number(item.progressPercent || 0), 0) / data.length)
+      : Number(userRows[0]?.Progress || 0);
+
+    progressService.syncUserOverallProgress(userId).catch((error) => {
+      console.warn("Unable to sync overall progress snapshot:", error.message);
+    });
 
     return res.json({
       success: true,
-      data: rows.map((row) => {
-        const progressPercent = Number(row.progressPercent || 0);
-
-        return {
-          moduleId: row.ModuleID,
-          qualificationId: row.QualificationID,
-          title: row.ModuleTitle,
-          moduleTypeId: row.ModuleTypeID,
-          moduleType: row.TypeName || "Unassigned",
-          image: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
-          progressPercent,
-        };
-      }),
+      summary: {
+        overallProgress,
+      },
+      data,
     });
   } catch (error) {
     console.error("Get dashboard modules error:", error);

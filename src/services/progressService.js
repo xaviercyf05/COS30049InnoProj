@@ -1,5 +1,26 @@
 const { query } = require("../config/db");
 
+function parseJsonValue(value, fallback = []) {
+  if (value == null) {
+    return fallback;
+  }
+
+  if (Array.isArray(value)) {
+    return value;
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : fallback;
+    } catch (error) {
+      return fallback;
+    }
+  }
+
+  return fallback;
+}
+
 /**
  * Service for handling user module progress tracking
  */
@@ -25,7 +46,7 @@ async function getUserModuleProgress(userId, moduleId) {
       id: rows[0].id,
       userId: rows[0].userId,
       moduleId: rows[0].moduleId,
-      visitedSectionIds: rows[0].visitedSectionIds ? JSON.parse(rows[0].visitedSectionIds) : [],
+      visitedSectionIds: parseJsonValue(rows[0].visitedSectionIds),
       progressPercent: rows[0].progressPercent || 0,
       lastSectionId: rows[0].lastSectionId,
       updatedAt: rows[0].updatedAt,
@@ -47,11 +68,22 @@ async function getUserModuleProgress(userId, moduleId) {
  */
 async function saveUserModuleProgress(userId, moduleId, visitedSectionIds = [], progressPercent = 0, lastSectionId = null) {
   try {
-    // Validate progressPercent
-    const validProgressPercent = Math.min(100, Math.max(0, Math.round(progressPercent)));
+    const normalizedVisitedSectionIds = Array.from(
+      new Set(
+        (Array.isArray(visitedSectionIds) ? visitedSectionIds : [])
+          .map((item) => String(item).trim())
+          .filter(Boolean)
+      )
+    );
 
-    // Convert array to JSON string
-    const visitedSectionIdsJson = JSON.stringify(visitedSectionIds || []);
+    const derivedProgressPercent = await calculateProgressPercent(moduleId, normalizedVisitedSectionIds);
+    const validProgressPercent = Number.isFinite(Number(derivedProgressPercent))
+      ? Math.min(100, Math.max(0, Math.round(derivedProgressPercent)))
+      : Math.min(100, Math.max(0, Math.round(progressPercent)));
+    const resolvedLastSectionId =
+      typeof lastSectionId === "string" && lastSectionId.trim().length > 0
+        ? lastSectionId.trim()
+        : normalizedVisitedSectionIds[normalizedVisitedSectionIds.length - 1] || null;
 
     // Try to insert or update
     const [result] = await query(
@@ -62,8 +94,10 @@ async function saveUserModuleProgress(userId, moduleId, visitedSectionIds = [], 
        progressPercent = VALUES(progressPercent),
        lastSectionId = VALUES(lastSectionId),
        updatedAt = CURRENT_TIMESTAMP`,
-      [userId, moduleId, visitedSectionIdsJson, validProgressPercent, lastSectionId]
+      [userId, moduleId, JSON.stringify(normalizedVisitedSectionIds), validProgressPercent, resolvedLastSectionId]
     );
+
+    await syncUserOverallProgress(userId);
 
     // Fetch and return the updated record
     return await getUserModuleProgress(userId, moduleId);
@@ -135,7 +169,7 @@ async function getAllUserProgress(limit = 100, offset = 0) {
       id: row.id,
       userId: row.userId,
       moduleId: row.moduleId,
-      visitedSectionIds: row.visitedSectionIds ? JSON.parse(row.visitedSectionIds) : [],
+      visitedSectionIds: parseJsonValue(row.visitedSectionIds),
       progressPercent: row.progressPercent || 0,
       lastSectionId: row.lastSectionId,
       updatedAt: row.updatedAt,
@@ -166,10 +200,33 @@ async function deleteUserModuleProgress(userId, moduleId) {
   }
 }
 
+/**
+ * Recalculate and persist the user's overall progress snapshot.
+ * Uses the average of module progress values stored in user_progress.
+ */
+async function syncUserOverallProgress(userId) {
+  const [rows] = await query(
+    `SELECT COALESCE(ROUND(AVG(progressPercent)), 0) AS overallProgress
+       FROM user_progress
+      WHERE userId = ?`,
+    [userId]
+  );
+
+  const overallProgress = Number(rows[0]?.overallProgress || 0);
+
+  await query(
+    "UPDATE Users SET Progress = ? WHERE UserID = ?",
+    [overallProgress, userId]
+  );
+
+  return overallProgress;
+}
+
 module.exports = {
   getUserModuleProgress,
   saveUserModuleProgress,
   calculateProgressPercent,
   getAllUserProgress,
   deleteUserModuleProgress,
+  syncUserOverallProgress,
 };

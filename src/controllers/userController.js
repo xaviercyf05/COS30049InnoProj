@@ -5,6 +5,7 @@ const { query } = require("../config/db");
 const emailService = require("../services/emailService");
 const emailVerificationService = require("../services/emailVerificationService");
 const { createAuthTokenService } = require("../services/authTokenService");
+const progressService = require("../services/progressService");
 
 const profileImagePrefix = "/uploads/profile-images/";
 const profileImageStorageDir = path.join(__dirname, "..", "..", "uploads", "profile-images");
@@ -24,7 +25,7 @@ async function getUserProfileRow(userId) {
             u.ProfileImageUrl,
             u.Status,
             u.IsActive,
-            u.Progress,
+            COALESCE((SELECT ROUND(AVG(up.progressPercent)) FROM user_progress up WHERE up.userId = u.UserID), u.Progress) AS Progress,
             u.CreatedAt,
             r.RoleTitle,
             q.QualificationName
@@ -219,6 +220,12 @@ async function loginUser(req, res) {
       userAgent: req.headers['user-agent'] || null,
       ipAddress: req.ip || req.socket?.remoteAddress || null,
     });
+
+    try {
+      await progressService.syncUserOverallProgress(user.UserID);
+    } catch (error) {
+      console.warn("Unable to sync overall progress on login:", error.message);
+    }
 
     return res.json({
       success: true,
@@ -1564,6 +1571,12 @@ async function completeMFALogin(req, res) {
       userAgent: req.headers['user-agent'] || null,
       ipAddress: req.ip || req.socket?.remoteAddress || null,
     });
+
+    try {
+      await progressService.syncUserOverallProgress(user.UserID);
+    } catch (error) {
+      console.warn("Unable to sync overall progress on MFA login:", error.message);
+    }
 
     return res.json({
       success: true,

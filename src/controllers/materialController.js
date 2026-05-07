@@ -153,14 +153,19 @@ async function getDashboardModules(req, res) {
       });
     }
 
-    const moduleIds = rows.map((row) => row.ModuleID);
+    const moduleIds = [...new Set(
+      rows
+        .map((row) => Number(row.ModuleID))
+        .filter((moduleId) => Number.isInteger(moduleId) && moduleId > 0)
+    )];
+
     const [progressRows] = moduleIds.length > 0
       ? await query(
           `SELECT moduleId, progressPercent
              FROM user_progress
             WHERE userId = ?
-              AND moduleId IN (?)`,
-          [userId, moduleIds]
+              AND moduleId IN (${moduleIds.map(() => "?").join(",")})`,
+          [userId, ...moduleIds]
         )
       : [[]];
 

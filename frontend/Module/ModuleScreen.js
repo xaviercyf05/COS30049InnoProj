@@ -14,6 +14,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { WebView } from 'react-native-webview';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { requestProfileApi } from '../Profile/profileApi.js';
+import { saveModuleProgress, fetchModuleProgress, calculateProgressPercent } from './moduleProgressApi.js';
 import withRoleGuard from '../auth/withRoleGuard';
 
 const MODULE_SECTIONS = [
@@ -331,8 +332,30 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
         if (active) {
           setSections(formattedSections);
           setSelectedSectionId(formattedSections[0]?.id || null);
-          setVisitedSectionIds(formattedSections[0]?.id ? new Set([formattedSections[0].id]) : new Set());
           setExpandedSectionIds(new Set());
+          
+          // Restore saved progress for this module
+          try {
+            const token = await AsyncStorage.getItem('innopapp_auth_token');
+            const savedProgress = await fetchModuleProgress(routeModuleId, token);
+            
+            if (active && savedProgress.visitedSectionIds && savedProgress.visitedSectionIds.length > 0) {
+              // Restore visited sections from saved progress
+              setVisitedSectionIds(new Set(savedProgress.visitedSectionIds));
+              // Auto-select the first section to show current progress
+              if (savedProgress.visitedSectionIds.length > 0) {
+                setSelectedSectionId(savedProgress.visitedSectionIds[0]);
+              }
+              console.log(`Restored progress for module ${routeModuleId}: ${savedProgress.visitedSectionIds.length} sections visited`);
+            } else {
+              // No saved progress, mark first section as visited
+              setVisitedSectionIds(formattedSections[0]?.id ? new Set([formattedSections[0].id]) : new Set());
+            }
+          } catch (progressError) {
+            console.warn('Could not restore progress, starting fresh:', progressError);
+            // Start fresh if progress fetch fails
+            setVisitedSectionIds(formattedSections[0]?.id ? new Set([formattedSections[0].id]) : new Set());
+          }
         }
       } catch (_error) {
         if (active) {
@@ -368,6 +391,53 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
       return hasExisting ? previousSelectedSectionId : sections[0].id;
     });
   }, [sections]);
+
+  // Auto-save progress when visited sections change
+  useEffect(() => {
+    if (!routeModuleId || sections.length === 0 || visitedSectionIds.size === 0) {
+      return;
+    }
+
+    let saveTimeout;
+    const autoSaveProgress = async () => {
+      try {
+        const token = await AsyncStorage.getItem('innopapp_auth_token');
+        if (!token) return;
+
+        const progressPercent = calculateProgressPercent(visitedSectionIds, sections);
+        await saveModuleProgress(routeModuleId, Array.from(visitedSectionIds), progressPercent, token);
+        console.log(`Auto-saved progress for module ${routeModuleId}: ${progressPercent}%`);
+      } catch (error) {
+        console.warn('Auto-save failed:', error);
+      }
+    };
+
+    // Debounce auto-save by 2 seconds to avoid too many requests
+    saveTimeout = setTimeout(autoSaveProgress, 2000);
+
+    return () => clearTimeout(saveTimeout);
+  }, [visitedSectionIds, routeModuleId, sections]);
+
+  // Save progress when leaving the module
+  useEffect(() => {
+    return () => {
+      // Cleanup function called when component unmounts
+      if (routeModuleId && sections.length > 0 && visitedSectionIds.size > 0) {
+        (async () => {
+          try {
+            const token = await AsyncStorage.getItem('innopapp_auth_token');
+            if (!token) return;
+            
+            const progressPercent = calculateProgressPercent(visitedSectionIds, sections);
+            await saveModuleProgress(routeModuleId, Array.from(visitedSectionIds), progressPercent, token);
+            console.log(`Saved progress on unmount for module ${routeModuleId}: ${progressPercent}%`);
+          } catch (error) {
+            console.warn('Could not save progress on unmount:', error);
+          }
+        })();
+      }
+    };
+  }, [routeModuleId, sections, visitedSectionIds]);
 
   const handleBack = () => {
     if (navigation.canGoBack()) {
@@ -648,6 +718,28 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
                 <Text style={styles.editModuleButtonText}>Edit This Module</Text>
               </TouchableOpacity>
             ) : null}
+
+            {!isAdmin && !isOnSite && sections.length > 0 && (
+              <View style={styles.progressDisplayCard}>
+                <View style={styles.progressDisplayHeader}>
+                  <Text style={styles.progressDisplayLabel}>Your Progress</Text>
+                  <Text style={styles.progressDisplayPercent}>
+                    {calculateProgressPercent(visitedSectionIds, sections)}%
+                  </Text>
+                </View>
+                <View style={styles.progressBar}>
+                  <View
+                    style={[
+                      styles.progressFill,
+                      { width: `${calculateProgressPercent(visitedSectionIds, sections)}%` },
+                    ]}
+                  />
+                </View>
+                <Text style={styles.progressDisplayHint}>
+                  {visitedSectionIds.size} of {sections.reduce((acc, s) => acc + 1 + (s.subsections?.length || 0), 0)} sections visited
+                </Text>
+              </View>
+            )}
 
             <TouchableOpacity
               style={[styles.assessmentButton, !canTakeAssessment && styles.assessmentButtonDisabled]}
@@ -978,6 +1070,49 @@ const styles = StyleSheet.create({
     color: '#6A7A67',
     fontSize: 12,
     fontWeight: '600',
+  },
+  progressDisplayCard: {
+    marginTop: 12,
+    marginBottom: 8,
+    backgroundColor: '#F5F8F2',
+    borderRadius: 12,
+    paddingVertical: 12,
+    paddingHorizontal: 14,
+    borderLeftWidth: 4,
+    borderLeftColor: '#2E6B4D',
+  },
+  progressDisplayHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  progressDisplayLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#2A5A40',
+  },
+  progressDisplayPercent: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#2E6B4D',
+  },
+  progressBar: {
+    height: 8,
+    backgroundColor: '#DDE8D6',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#2E6B4D',
+    borderRadius: 4,
+  },
+  progressDisplayHint: {
+    fontSize: 12,
+    color: '#6A7A67',
+    fontStyle: 'italic',
   },
 });
 

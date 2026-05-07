@@ -37,6 +37,7 @@ function toProgressPercent(value) {
 
 export default function ProfileScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
+  const [moduleProgress, setModuleProgress] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -57,9 +58,31 @@ export default function ProfileScreen({ navigation }) {
           return;
         }
 
-        const response = await requestProfileApi('/api/v1/user/profile', token, {
-          method: 'GET',
-        });
+        const [profileResponse, modulesResponse] = await Promise.all([
+          requestProfileApi('/api/v1/user/profile', token, {
+            method: 'GET',
+          }),
+          requestProfileApi('/api/v1/modules/dashboard', token, {
+            method: 'GET',
+          }).catch(() => null),
+        ]);
+
+        const response = profileResponse;
+
+        const rawModules = Array.isArray(modulesResponse?.data)
+          ? modulesResponse.data
+          : [];
+
+        const normalizedModules = rawModules.map((module, index) => ({
+          id: String(module.moduleId || module.id || index + 1),
+          title: module.title || module.name || `Module ${index + 1}`,
+          progressPercent: toProgressPercent(module.progressPercent ?? module.progress ?? 0),
+          stage: module.stage || module.moduleType || module.module_type || 'General',
+          unlocked: module.unlocked !== false,
+          lockReason: module.lockReason || module.progressMessage || '',
+        }));
+
+        setModuleProgress(normalizedModules);
 
         setProfile(response.data);
       } catch (error) {
@@ -96,13 +119,6 @@ export default function ProfileScreen({ navigation }) {
   const progressPercent = toProgressPercent(profile?.progress);
   const stationLabel = isAdmin ? 'Office' : 'Station';
   const statusText = profile?.status || 'Unknown';
-
-  const chapterStatus = profile?.chapterStatus || {
-    chapter1: 'Incomplete',
-    chapter2: 'Incomplete',
-    chapter3: 'Incomplete',
-    onSiteTraining: 'Incomplete',
-  };
 
   const resolvedProfileImagePath = pickProfileImagePath(profile);
   const avatarSource = resolvedProfileImagePath
@@ -221,30 +237,55 @@ export default function ProfileScreen({ navigation }) {
 
         {!isAdmin ? (
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Guide Progress</Text>
+            <Text style={styles.sectionTitle}>Module Progress</Text>
             <View style={styles.fieldRow}>
               <Text style={styles.fieldLabel}>Overall Progress</Text>
               <Text style={styles.fieldValue}>{progressPercent}%</Text>
             </View>
 
-            <View style={styles.statusPanel}>
-              <View style={styles.statusRow}>
-                <Text style={styles.statusText}>Chapter 1</Text>
-                <Text style={styles.statusValue}>{chapterStatus.chapter1}</Text>
-              </View>
-              <View style={styles.statusRow}>
-                <Text style={styles.statusText}>Chapter 2</Text>
-                <Text style={styles.statusValue}>{chapterStatus.chapter2}</Text>
-              </View>
-              <View style={styles.statusRow}>
-                <Text style={styles.statusText}>Chapter 3</Text>
-                <Text style={styles.statusValue}>{chapterStatus.chapter3}</Text>
-              </View>
-              <View style={styles.statusRowLast}>
-                <Text style={styles.statusText}>On-site Training</Text>
-                <Text style={styles.statusValue}>{chapterStatus.onSiteTraining}</Text>
-              </View>
+            <View style={styles.moduleListHeader}>
+              <Text style={styles.moduleListHeaderText}>Enrolled modules</Text>
+              <Text style={styles.moduleListHeaderCount}>{moduleProgress.length} total</Text>
             </View>
+
+            {moduleProgress.length > 0 ? (
+              <View style={styles.moduleList}>
+                {moduleProgress.map((module) => (
+                  <View key={module.id} style={styles.moduleCard}>
+                    <View style={styles.moduleCardTopRow}>
+                      <View style={styles.moduleCardTitleBlock}>
+                        <Text style={styles.moduleCardTitle} numberOfLines={2}>
+                          {module.title}
+                        </Text>
+                        <Text style={styles.moduleCardMeta}>
+                          {module.stage || 'General'}
+                        </Text>
+                      </View>
+                      <Text style={styles.moduleCardPercent}>{module.progressPercent}%</Text>
+                    </View>
+
+                    <View style={styles.moduleProgressBar}>
+                      <View
+                        style={[
+                          styles.moduleProgressFill,
+                          { width: `${module.progressPercent}%` },
+                        ]}
+                      />
+                    </View>
+
+                    <Text style={styles.moduleCardStatus}>
+                      {module.unlocked ? 'In progress' : module.lockReason || 'Locked'}
+                    </Text>
+                  </View>
+                ))}
+              </View>
+            ) : (
+              <View style={styles.emptyModuleState}>
+                <Text style={styles.emptyModuleStateText}>
+                  No enrolled modules were returned yet.
+                </Text>
+              </View>
+            )}
           </View>
         ) : null}
       </ScrollView>
@@ -466,5 +507,90 @@ const styles = StyleSheet.create({
     color: '#1F3F2A',
     fontSize: 13,
     fontWeight: '700',
+  },
+  moduleListHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 10,
+  },
+  moduleListHeaderText: {
+    color: '#556B5B',
+    fontSize: 12,
+    fontWeight: '800',
+    textTransform: 'uppercase',
+    letterSpacing: 0.6,
+  },
+  moduleListHeaderCount: {
+    color: '#6B7F70',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  moduleList: {
+    gap: 10,
+  },
+  moduleCard: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DCE3D2',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+  },
+  moduleCardTopRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    justifyContent: 'space-between',
+    gap: 10,
+  },
+  moduleCardTitleBlock: {
+    flex: 1,
+  },
+  moduleCardTitle: {
+    color: '#1B3225',
+    fontSize: 15,
+    fontWeight: '800',
+    marginBottom: 4,
+  },
+  moduleCardMeta: {
+    color: '#5B705F',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  moduleCardPercent: {
+    color: '#1F3F2A',
+    fontSize: 18,
+    fontWeight: '800',
+  },
+  moduleProgressBar: {
+    height: 8,
+    backgroundColor: '#E5ECE0',
+    borderRadius: 999,
+    overflow: 'hidden',
+    marginTop: 12,
+  },
+  moduleProgressFill: {
+    height: '100%',
+    backgroundColor: '#2E6B4D',
+    borderRadius: 999,
+  },
+  moduleCardStatus: {
+    marginTop: 8,
+    color: '#5A6B5B',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  emptyModuleState: {
+    backgroundColor: '#FFFFFF',
+    borderWidth: 1,
+    borderColor: '#DCE3D2',
+    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 16,
+  },
+  emptyModuleStateText: {
+    color: '#5A6B5B',
+    fontSize: 13,
+    lineHeight: 19,
   },
 });

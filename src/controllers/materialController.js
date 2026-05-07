@@ -1,5 +1,6 @@
 const { query } = require("../config/db");
 const materialService = require("../services/materialService");
+const progressService = require("../services/progressService");
 const {
   ensureModuleUiSchema,
   resolveModuleCoverImage,
@@ -25,17 +26,12 @@ async function getDashboardModules(req, res) {
               m.ModuleTypeID,
               mt.TypeName,
               meta.CoverImageUrl,
-              COUNT(DISTINCT sc.SubsectionID) AS TotalMaterials,
-              SUM(CASE WHEN mp.IsCompleted = 1 THEN 1 ELSE 0 END) AS CompletedMaterials
+              COALESCE(up.progressPercent, 0) AS progressPercent
          FROM Modules m
          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
          LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-         LEFT JOIN Sections s ON s.ModuleID = m.ModuleID
-         LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
-         LEFT JOIN MaterialProgress mp
-           ON mp.SubsectionID = sc.SubsectionID
-          AND mp.UserID = ?
-        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, mt.TypeName, meta.CoverImageUrl
+         LEFT JOIN user_progress up ON up.moduleId = m.ModuleID AND up.userId = ?
+        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, mt.TypeName, meta.CoverImageUrl, up.progressPercent
         ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC`,
       [userId]
     );
@@ -43,12 +39,7 @@ async function getDashboardModules(req, res) {
     return res.json({
       success: true,
       data: rows.map((row) => {
-        const totalMaterials = Number(row.TotalMaterials || 0);
-        const completedMaterials = Number(row.CompletedMaterials || 0);
-        const progressPercent =
-          totalMaterials > 0
-            ? Math.min(100, Math.round((completedMaterials / totalMaterials) * 100))
-            : 0;
+        const progressPercent = Number(row.progressPercent || 0);
 
         return {
           moduleId: row.ModuleID,
@@ -58,8 +49,6 @@ async function getDashboardModules(req, res) {
           moduleType: row.TypeName || "Unassigned",
           image: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
           progressPercent,
-          totalMaterials,
-          completedMaterials,
         };
       }),
     });
@@ -236,10 +225,111 @@ async function completeMaterial(req, res) {
   }
 }
 
+/**
+ * Get user's progress for a module
+ * Returns current progress percentage and visited sections
+ * If no progress exists, returns 0% with empty array
+ */
+async function getModuleProgress(req, res) {
+  try {
+    const { userId } = req.user;
+    const { moduleId } = req.params;
+
+    // Fetch progress from database
+    const progress = await progressService.getUserModuleProgress(userId, moduleId);
+
+    // Return empty progress if not found
+    if (!progress) {
+      return res.json({
+        success: true,
+        data: {
+          moduleId: parseInt(moduleId),
+          visitedSectionIds: [],
+          progressPercent: 0,
+          lastSectionId: null,
+        },
+      });
+    }
+
+    return res.json({
+      success: true,
+      data: {
+        moduleId: progress.moduleId,
+        visitedSectionIds: progress.visitedSectionIds,
+        progressPercent: progress.progressPercent,
+        lastSectionId: progress.lastSectionId,
+        updatedAt: progress.updatedAt,
+      },
+    });
+  } catch (error) {
+    console.error("Get module progress error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch module progress.",
+    });
+  }
+}
+
+/**
+ * Save user's progress for a module
+ * Accepts visitedSectionIds array and progressPercent
+ */
+async function saveModuleProgress(req, res) {
+  try {
+    const { userId } = req.user;
+    const { moduleId } = req.params;
+    const { visitedSectionIds, progressPercent, lastSectionId } = req.body;
+
+    // Validate input
+    if (!visitedSectionIds || !Array.isArray(visitedSectionIds)) {
+      return res.status(400).json({
+        success: false,
+        message: "visitedSectionIds must be an array.",
+      });
+    }
+
+    if (typeof progressPercent !== "number" || progressPercent < 0 || progressPercent > 100) {
+      return res.status(400).json({
+        success: false,
+        message: "progressPercent must be a number between 0 and 100.",
+      });
+    }
+
+    // Save progress
+    const savedProgress = await progressService.saveUserModuleProgress(
+      userId,
+      parseInt(moduleId),
+      visitedSectionIds,
+      progressPercent,
+      lastSectionId
+    );
+
+    return res.json({
+      success: true,
+      message: "Progress saved successfully.",
+      data: {
+        moduleId: savedProgress.moduleId,
+        visitedSectionIds: savedProgress.visitedSectionIds,
+        progressPercent: savedProgress.progressPercent,
+        lastSectionId: savedProgress.lastSectionId,
+        updatedAt: savedProgress.updatedAt,
+      },
+    });
+  } catch (error) {
+    console.error("Save module progress error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to save module progress.",
+    });
+  }
+}
+
 module.exports = {
   getDashboardModules,
   getQualificationModules,
   getModuleDetails,
   getMaterialContent,
   completeMaterial,
+  getModuleProgress,
+  saveModuleProgress,
 };

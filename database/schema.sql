@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS
   Announcements,
   Schedules,
   Certificates,
+  user_progress,
   MaterialProgress,
   LearningMaterials,
   AssessmentAttempts,
@@ -212,6 +213,24 @@ CREATE TABLE IF NOT EXISTS MaterialProgress (
   UNIQUE KEY uq_material_progress (SubsectionID, UserID),
   CONSTRAINT fk_material_progress_subsection FOREIGN KEY (SubsectionID) REFERENCES Subsections (SubsectionID) ON DELETE CASCADE,
   CONSTRAINT fk_material_progress_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_progress (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT UNSIGNED NOT NULL,
+  moduleId INT UNSIGNED NOT NULL,
+  visitedSectionIds JSON DEFAULT '[]' COMMENT 'Array of visited section/subsection IDs',
+  progressPercent INT DEFAULT 0 COMMENT 'Overall progress percentage (0-100)',
+  lastSectionId VARCHAR(100) NULL COMMENT 'Last read section ID for resume functionality',
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_user_module (userId, moduleId),
+  FOREIGN KEY (userId) REFERENCES Users(UserID) ON DELETE CASCADE,
+  FOREIGN KEY (moduleId) REFERENCES Modules(ModuleID) ON DELETE CASCADE,
+  INDEX idx_userId (userId),
+  INDEX idx_moduleId (moduleId),
+  INDEX idx_user_module (userId, moduleId),
+  INDEX idx_updated_at (updatedAt)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Certificates (

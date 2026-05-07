@@ -56,4 +56,30 @@ router.post(
   asyncHandler(materialController.completeMaterial)
 );
 
+/**
+ * GET /modules/:moduleId/progress - Get user's progress for a module
+ * Returns: { visitedSectionIds, progressPercent, lastSectionId }
+ */
+router.get(
+  "/:moduleId/progress",
+  [param("moduleId").isInt().withMessage("Invalid module ID.")],
+  validate,
+  asyncHandler(materialController.getModuleProgress)
+);
+
+/**
+ * POST /modules/:moduleId/progress - Save user's progress for a module
+ * Body: { visitedSectionIds: [], progressPercent: 45, lastSectionId?: "section-id" }
+ */
+router.post(
+  "/:moduleId/progress",
+  [
+    param("moduleId").isInt().withMessage("Invalid module ID."),
+    body("visitedSectionIds").isArray().withMessage("visitedSectionIds must be an array."),
+    body("progressPercent").isInt({ min: 0, max: 100 }).withMessage("progressPercent must be between 0 and 100."),
+  ],
+  validate,
+  asyncHandler(materialController.saveModuleProgress)
+);
+
 module.exports = router;

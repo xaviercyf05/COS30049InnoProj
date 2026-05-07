@@ -785,11 +785,11 @@ async function getAnalyticsDashboard(req, res) {
               u.Email,
               u.Username,
               u.Progress,
+              u.IsActive,
               q.QualificationName AS AssignedPark
          FROM Users u
          INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
          LEFT JOIN Qualifications q ON q.QualificationID = u.QualificationID
-        WHERE u.IsActive = 1
         ORDER BY u.UserID ASC`
     );
 
@@ -855,24 +855,35 @@ async function getAnalyticsDashboard(req, res) {
 
     const guides = guideRows.map((row) => {
       const progress = toSafeNumber(row.Progress, 0);
+      const isActive = Number(row.IsActive) === 1;
 
       return {
         guideId: row.UserID,
         fullName: row.FullName || row.Username || `Guide ${row.UserID}`,
         assignedPark: row.AssignedPark || 'Unassigned',
         contact: row.Email || '-',
+        isActive,
+        activeStatus: isActive ? 'Active' : 'Inactive',
         progress,
         earnedBadges: earnedBadgesByUser[row.UserID] || '-',
       };
     });
 
+    const guidesSortedByStatus = [...guides].sort((leftGuide, rightGuide) => {
+      if (leftGuide.isActive === rightGuide.isActive) {
+        return leftGuide.guideId - rightGuide.guideId;
+      }
+
+      return leftGuide.isActive ? -1 : 1;
+    });
+
+    const activeGuides = guides.filter((guide) => guide.isActive);
+
     const totalGuides = guides.length;
-    const fullyTrained = guides.filter((guide) => guide.progress >= 100).length;
-    const inTraining = guides.filter((guide) => guide.progress > 0 && guide.progress < 100).length;
-    const leadGuides = guides.filter((guide) => guide.progress >= 90).length;
+    const inactiveGuides = guides.filter((guide) => !guide.isActive).length;
     const averageProgress =
-      totalGuides > 0
-        ? guides.reduce((sum, guide) => sum + guide.progress, 0) / totalGuides
+      activeGuides.length > 0
+        ? activeGuides.reduce((sum, guide) => sum + guide.progress, 0) / activeGuides.length
         : 0;
 
     const enrolledGuides = toSafeNumber(enrollmentRows[0] && enrollmentRows[0].EnrolledUsers, 0);
@@ -908,7 +919,7 @@ async function getAnalyticsDashboard(req, res) {
     const badgeRowsNormalized = badgeRows.map((row) => {
       const awarded = toSafeNumber(row.AwardedCount, 0);
       const unlockThreshold = toSafeNumber(row.UnlockThreshold, 0);
-      const eligible = guides.filter((guide) => guide.progress >= unlockThreshold).length;
+      const eligible = activeGuides.filter((guide) => guide.progress >= unlockThreshold).length;
 
       return {
         badgeName: row.BadgeName || `Badge ${row.BadgeID}`,
@@ -927,18 +938,16 @@ async function getAnalyticsDashboard(req, res) {
       data: {
         parkGuides: {
           title: 'Park guides overview',
-          subtitle: 'Complete overview of all guides with assignments and completed modules.',
+          subtitle: 'Complete overview of active and inactive park guides.',
           kpis: [
-            { label: 'Total park guides', value: String(totalGuides), note: 'Active user accounts' },
-            { label: 'Fully trained', value: String(fullyTrained), note: 'Progress at 100%' },
-            { label: 'In training', value: String(inTraining), note: 'Progress between 1%-99%' },
-            { label: 'Lead guides', value: String(leadGuides), note: 'Progress at 90%+' },
+            { label: 'Total park guides', value: String(totalGuides), note: 'All user accounts with User role' },
+            { label: 'Inactive guides', value: String(inactiveGuides), note: 'Not currently active' },
           ],
-          columns: ['Guide ID', 'Full Name', 'Assigned Park', 'Contact (Email)'],
-          rows: guides.map((guide) => [
+          columns: ['Guide ID', 'Full Name', 'Active Status', 'Contact (Email)'],
+          rows: guidesSortedByStatus.map((guide) => [
             `G${String(guide.guideId).padStart(3, '0')}`,
             guide.fullName,
-            guide.assignedPark,
+            guide.activeStatus,
             guide.contact,
           ]),
         },

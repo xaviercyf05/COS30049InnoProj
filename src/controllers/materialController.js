@@ -73,30 +73,75 @@ async function getDashboardModules(req, res) {
       }
     }
 
-    if (!qualificationId) {
-      return res.json({
-        success: true,
-        summary: {
-          overallProgress: Number(userRows[0]?.Progress || 0),
-        },
-        data: [],
-      });
+    let rows = [];
+
+    if (qualificationId) {
+      const [qualificationRows] = await query(
+        `SELECT m.ModuleID,
+                m.QualificationID,
+                m.ModuleTitle,
+                m.ModuleTypeID,
+                mt.TypeName,
+                meta.CoverImageUrl
+           FROM Modules m
+           LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
+           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+          WHERE m.QualificationID = ?
+          ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC`,
+        [qualificationId]
+      );
+
+      rows = qualificationRows;
     }
 
-    const [rows] = await query(
-      `SELECT m.ModuleID,
-              m.QualificationID,
-              m.ModuleTitle,
-              m.ModuleTypeID,
-              mt.TypeName,
-              meta.CoverImageUrl
-         FROM Modules m
-         LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
-         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-        WHERE m.QualificationID = ?
-        ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC`,
-      [qualificationId]
-    );
+    if (rows.length === 0) {
+      const [certificateModuleRows] = await query(
+        `SELECT m.ModuleID,
+                m.QualificationID,
+                m.ModuleTitle,
+                m.ModuleTypeID,
+                mt.TypeName,
+                meta.CoverImageUrl
+           FROM Certificates c
+           INNER JOIN Modules m ON m.QualificationID = c.QualificationID
+           LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
+           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+          WHERE c.UserID = ?
+          ORDER BY c.CertificateID DESC, m.ModuleTypeID ASC, m.ModuleID ASC`,
+        [userId]
+      );
+
+      rows = certificateModuleRows;
+
+      if (!qualificationId && rows.length > 0 && rows[0].QualificationID) {
+        qualificationId = Number(rows[0].QualificationID);
+        await query(
+          "UPDATE Users SET QualificationID = ? WHERE UserID = ?",
+          [qualificationId, userId]
+        ).catch(() => {});
+      }
+    }
+
+    if (rows.length === 0) {
+      const [allModuleRows] = await query(
+        `SELECT m.ModuleID,
+                m.QualificationID,
+                m.ModuleTitle,
+                m.ModuleTypeID,
+                mt.TypeName,
+                meta.CoverImageUrl
+           FROM Modules m
+           LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
+           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+          ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC`
+      );
+
+      rows = allModuleRows;
+
+      if (!qualificationId && rows.length > 0 && rows[0].QualificationID) {
+        qualificationId = Number(rows[0].QualificationID);
+      }
+    }
 
     if (rows.length === 0) {
       return res.json({
@@ -119,10 +164,20 @@ async function getDashboardModules(req, res) {
         )
       : [[]];
 
-    const qualificationProgress = await qualificationService.getQualificationProgress(
-      userId,
-      qualificationId
-    );
+    const rowQualificationIds = [...new Set(rows.map((row) => Number(row.QualificationID)).filter(Boolean))];
+    const progressQualificationId = qualificationId || (rowQualificationIds.length === 1 ? rowQualificationIds[0] : 0);
+
+    let qualificationProgress = { moduleProgress: [] };
+    if (progressQualificationId) {
+      try {
+        qualificationProgress = await qualificationService.getQualificationProgress(
+          userId,
+          progressQualificationId
+        );
+      } catch (_error) {
+        qualificationProgress = { moduleProgress: [] };
+      }
+    }
 
     const progressByModuleId = new Map(
       progressRows.map((row) => [Number(row.moduleId), Number(row.progressPercent || 0)])

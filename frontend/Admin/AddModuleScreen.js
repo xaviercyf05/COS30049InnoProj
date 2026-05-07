@@ -76,6 +76,34 @@ function createId() {
   return `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
 
+function renumberSections(sections) {
+  return sections.map((section, sectionIndex) => ({
+    ...section,
+    ordering: sectionIndex + 1,
+    subsections: Array.isArray(section.subsections)
+      ? section.subsections.map((subsection, subsectionIndex) => ({
+          ...subsection,
+          ordering: subsectionIndex + 1,
+        }))
+      : [],
+  }));
+}
+
+function moveArrayItem(items, fromIndex, toIndex) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
+    return items;
+  }
+
+  if (fromIndex >= items.length || toIndex >= items.length) {
+    return items;
+  }
+
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, movedItem);
+  return nextItems;
+}
+
 function AddModuleScreen({ navigation }) {
   const [moduleTitle, setModuleTitle] = useState('');
   const [moduleType, setModuleType] = useState('general');
@@ -91,6 +119,7 @@ function AddModuleScreen({ navigation }) {
     {
       id: createId(),
       title: '',
+      description: '',
       ordering: null,
       subsections: [
         { id: createId(), title: '', content: '', ordering: null },
@@ -236,14 +265,34 @@ function AddModuleScreen({ navigation }) {
   }, [navigation]);
 
   const addSection = () => {
-    setSections((previous) => [
-      ...previous,
-      { id: createId(), title: '', ordering: null, subsections: [{ id: createId(), title: '', content: '', ordering: null }] },
-    ]);
+    setSections((previous) =>
+      renumberSections([
+        ...previous,
+        {
+          id: createId(),
+          title: '',
+          ordering: null,
+          subsections: [{ id: createId(), title: '', content: '', ordering: null }],
+        },
+      ])
+    );
+  };
+
+  const moveSection = (sectionId, direction) => {
+    setSections((previous) => {
+      const currentIndex = previous.findIndex((section) => section.id === sectionId);
+
+      if (currentIndex < 0) {
+        return previous;
+      }
+
+      const nextIndex = currentIndex + direction;
+      return renumberSections(moveArrayItem(previous, currentIndex, nextIndex));
+    });
   };
 
   const deleteSection = (sectionId) => {
-    setSections((previous) => previous.filter((section) => section.id !== sectionId));
+    setSections((previous) => renumberSections(previous.filter((section) => section.id !== sectionId)));
   };
 
   const updateSectionTitle = (sectionId, value) => {
@@ -253,28 +302,68 @@ function AddModuleScreen({ navigation }) {
       )
     );
   };
-  const addSubsection = (sectionId) => {
+
+  const updateSectionDescription = (sectionId, value) => {
     setSections((previous) =>
       previous.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              subsections: [
-                ...section.subsections,
-                { id: createId(), title: '', content: '', ordering: null },
-              ],
-            }
-          : section
+        section.id === sectionId ? { ...section, description: value } : section
+      )
+    );
+  };
+  const addSubsection = (sectionId) => {
+    setSections((previous) =>
+      renumberSections(
+        previous.map((section) =>
+          section.id === sectionId
+            ? {
+                ...section,
+                subsections: [
+                  ...section.subsections,
+                  { id: createId(), title: '', content: '', ordering: null },
+                ],
+              }
+            : section
+        )
+      )
+    );
+  };
+
+  const moveSubsection = (sectionId, subId, direction) => {
+    setSections((previous) =>
+      renumberSections(
+        previous.map((section) => {
+          if (section.id !== sectionId) {
+            return section;
+          }
+
+          const currentIndex = section.subsections.findIndex((subsection) => subsection.id === subId);
+
+          if (currentIndex < 0) {
+            return section;
+          }
+
+          const nextIndex = currentIndex + direction;
+
+          return {
+            ...section,
+            subsections: moveArrayItem(section.subsections, currentIndex, nextIndex),
+          };
+        })
       )
     );
   };
 
   const deleteSubsection = (sectionId, subId) => {
     setSections((previous) =>
-      previous.map((section) =>
-        section.id === sectionId
-          ? { ...section, subsections: section.subsections.filter((s) => s.id !== subId) }
-          : section
+      renumberSections(
+        previous.map((section) =>
+          section.id === sectionId
+            ? {
+                ...section,
+                subsections: section.subsections.filter((s) => s.id !== subId),
+              }
+            : section
+        )
       )
     );
   };
@@ -364,9 +453,10 @@ function AddModuleScreen({ navigation }) {
       return;
     }
 
-    const normalizedSections = sections
+    const normalizedSections = renumberSections(sections)
       .map((section, index) => {
         const normalizedTitle = String(section.title || '').trim();
+        const normalizedDescription = String(section.description || '').trim();
 
         const normalizedSubsections = Array.isArray(section.subsections)
           ? section.subsections
@@ -379,18 +469,21 @@ function AddModuleScreen({ navigation }) {
                 return {
                   title: stitle || `Part ${si + 1}`,
                   content: scontent || '<p>No content provided.</p>',
-                  ordering: typeof sub.ordering === 'number' ? sub.ordering : null,
+                  ordering: si + 1,
                 };
               })
               .filter(Boolean)
           : [];
 
-        if (!normalizedTitle && normalizedSubsections.length === 0) return null;
+        if (!normalizedTitle && normalizedSubsections.length === 0 && !normalizedDescription) return null;
 
         return {
           title: normalizedTitle || `Section ${index + 1}`,
-          ordering: typeof section.ordering === 'number' ? section.ordering : null,
-          subsections: normalizedSubsections.length ? normalizedSubsections : [{ title: normalizedTitle || `Section ${index + 1}`, content: '<p>No content provided.</p>', ordering: null }],
+          description: normalizedDescription || '',
+          ordering: index + 1,
+          subsections: normalizedSubsections.length
+            ? normalizedSubsections
+            : [{ title: normalizedTitle || `Section ${index + 1}`, content: '<p>No content provided.</p>', ordering: 1 }],
         };
       })
       .filter(Boolean);
@@ -604,8 +697,45 @@ function AddModuleScreen({ navigation }) {
           <Text style={styles.addText}>+ Add Section</Text>
         </TouchableOpacity>
 
-        {sections.map((section) => (
+        {renumberSections(sections).map((section, sectionIndex) => (
           <View key={section.id} style={styles.sectionBox}>
+            <View style={styles.sectionOrderRow}>
+              <Text style={styles.sectionOrderBadge}>Section {sectionIndex + 1}</Text>
+              <View style={styles.reorderControls}>
+                <TouchableOpacity
+                  style={[styles.reorderButton, sectionIndex === 0 && styles.reorderButtonDisabled]}
+                  onPress={() => moveSection(section.id, -1)}
+                  disabled={sectionIndex === 0}
+                >
+                  <Text
+                    style={[
+                      styles.reorderButtonText,
+                      sectionIndex === 0 && styles.reorderButtonTextDisabled,
+                    ]}
+                  >
+                    Move Section Up
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.reorderButton,
+                    sectionIndex === sections.length - 1 && styles.reorderButtonDisabled,
+                  ]}
+                  onPress={() => moveSection(section.id, 1)}
+                  disabled={sectionIndex === sections.length - 1}
+                >
+                  <Text
+                    style={[
+                      styles.reorderButtonText,
+                      sectionIndex === sections.length - 1 && styles.reorderButtonTextDisabled,
+                    ]}
+                  >
+                    Move Section Down
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+
             <View style={styles.sectionHeader}>
               <TextInput
                 placeholder="Section Title"
@@ -623,6 +753,14 @@ function AddModuleScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
+            <TextInput
+              placeholder="Section Description (plain text)"
+              placeholderTextColor={PLACEHOLDER_COLOR}
+              value={section.description || ''}
+              onChangeText={(value) => updateSectionDescription(section.id, value)}
+              style={styles.sectionDescriptionInput}
+            />
+
             <View style={styles.subsectionsHeaderRow}>
               <Text style={styles.subsectionsLabel}>Subsections</Text>
               <TouchableOpacity style={styles.addSubBtn} onPress={() => addSubsection(section.id)}>
@@ -630,8 +768,50 @@ function AddModuleScreen({ navigation }) {
               </TouchableOpacity>
             </View>
 
-            {section.subsections.map((sub) => (
+            {section.subsections.map((sub, subIndex) => (
               <View key={sub.id} style={styles.subsectionBox}>
+                <View style={styles.subsectionOrderRow}>
+                  <Text style={styles.subsectionOrderBadge}>
+                    Subsection {sectionIndex + 1}.{subIndex + 1}
+                  </Text>
+                  <View style={styles.reorderControls}>
+                    <TouchableOpacity
+                      style={[
+                        styles.reorderButton,
+                        subIndex === 0 && styles.reorderButtonDisabled,
+                      ]}
+                      onPress={() => moveSubsection(section.id, sub.id, -1)}
+                      disabled={subIndex === 0}
+                    >
+                      <Text
+                        style={[
+                          styles.reorderButtonText,
+                          subIndex === 0 && styles.reorderButtonTextDisabled,
+                        ]}
+                      >
+                        Move Subsection Up
+                      </Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={[
+                        styles.reorderButton,
+                        subIndex === section.subsections.length - 1 && styles.reorderButtonDisabled,
+                      ]}
+                      onPress={() => moveSubsection(section.id, sub.id, 1)}
+                      disabled={subIndex === section.subsections.length - 1}
+                    >
+                      <Text
+                        style={[
+                          styles.reorderButtonText,
+                          subIndex === section.subsections.length - 1 && styles.reorderButtonTextDisabled,
+                        ]}
+                      >
+                        Move Subsection Down
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+
                 <View style={styles.subsectionHeader}>
                   <TextInput
                     placeholder="Subsection Title"
@@ -828,6 +1008,64 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: '#EFF2EA',
   },
+  sectionOrderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    gap: 8,
+  },
+  sectionOrderBadge: {
+    backgroundColor: '#EEF3E7',
+    color: '#35513F',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+  },
+  subsectionOrderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  subsectionOrderBadge: {
+    backgroundColor: '#F4F6EE',
+    color: '#4A5D23',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  reorderControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reorderButton: {
+    backgroundColor: '#F1F5EA',
+    borderWidth: 1,
+    borderColor: '#DDE6D4',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 54,
+    alignItems: 'center',
+  },
+  reorderButtonDisabled: {
+    opacity: 0.45,
+  },
+  reorderButtonText: {
+    color: '#35513F',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  reorderButtonTextDisabled: {
+    color: '#6F7B6A',
+  },
   sectionDeleteBtn: {
     width: 22,
     height: 22,
@@ -851,6 +1089,15 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
   },
+  sectionDescriptionInput: {
+    borderWidth: 1,
+    borderColor: '#D9DED2',
+    padding: 10,
+    marginTop: 10,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    color: '#223327',
+  },
   subsectionsHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -864,9 +1111,11 @@ const styles = StyleSheet.create({
   },
   addSubBtn: {
     backgroundColor: '#E6EFE0',
-    paddingVertical: 6,
+    paddingVertical: 8,
     paddingHorizontal: 10,
     borderRadius: 8,
+    marginLeft: 12,
+    marginTop: 5,
   },
   addSubText: {
     color: '#2E6B4D',

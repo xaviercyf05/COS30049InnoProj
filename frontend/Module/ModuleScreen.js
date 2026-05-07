@@ -50,6 +50,21 @@ const MODULE_SECTIONS = [
   },
 ];
 
+function readSectionDescription(source) {
+  if (!source) {
+    return '';
+  }
+
+  return String(
+    source.description ||
+    source.Description ||
+    source.sectionDescription ||
+    source.section_description ||
+    source.summary ||
+    ''
+  ).trim();
+}
+
 const TRACK_SUMMARY = {
   General: 'Conservation • Biodiversity • Eco-tourism • Legislation • Safety',
   'Park 1': 'Park 1 Training Track',
@@ -231,6 +246,10 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
           ? response.data.materials
           : [];
 
+        const apiSections = Array.isArray(response?.data?.sections)
+          ? response.data.sections
+          : null;
+
         // Detect module type (on-site) from API response or route params.
         const moduleTypeCandidate =
           response?.data?.moduleType ||
@@ -261,7 +280,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
           setModuleDisplayName(resolvedTitle);
         }
 
-        if (!materials.length) {
+        if (!materials.length && !apiSections?.length) {
           if (active) {
             setSections([]);
             setSelectedSectionId(null);
@@ -273,59 +292,91 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
 
         const groupedSections = [];
         const sectionIndexByTitle = new Map();
+        if (apiSections) {
+          // API provides explicit sections structure (created by admin UI)
+          apiSections.forEach((s, idx) => {
+            const secId = s.id || s.sectionId || `section-${idx + 1}`;
+            const title = String(s.title || s.name || `Section ${idx + 1}`).trim();
+            const description = readSectionDescription(s);
+            const subsections = Array.isArray(s.subsections)
+              ? s.subsections.map((sub, si) => ({
+                  id: sub.id || sub.subsectionId || `subsection-${idx + 1}-${si + 1}`,
+                  title: String(sub.title || `Part ${si + 1}`).trim(),
+                  contentHtml: String(sub.content || sub.contentHtml || '').trim(),
+                  contentText: stripHtmlContent(sub.content || sub.contentHtml || ''),
+                  parentId: secId,
+                }))
+              : [];
 
-        materials.forEach((material, index) => {
-          const sectionTitle = String(material.sectionTitle || material.chapter || '').trim();
-          const itemTitle = String(material.title || material.subTitle || '').trim();
-          const contentHtml = String(material.content || material.contentHtml || '').trim();
-          const materialId = String(material.materialId || `material-${index + 1}`);
-
-          if (!sectionTitle) {
-            const fallbackSectionTitle = itemTitle || `Section ${groupedSections.length + 1}`;
             groupedSections.push({
-              id: `section-${materialId}`,
-              title: fallbackSectionTitle,
-              contentHtml,
-              contentText: stripHtmlContent(contentHtml),
-              subsections: [],
-            });
-            return;
-          }
-
-          const sectionKey = sectionTitle.toLowerCase();
-          let sectionIndex = sectionIndexByTitle.get(sectionKey);
-
-          if (sectionIndex === undefined) {
-            sectionIndex = groupedSections.length;
-            sectionIndexByTitle.set(sectionKey, sectionIndex);
-            groupedSections.push({
-              id: `section-${materialId}`,
-              title: sectionTitle,
+              id: secId,
+              title,
+              description,
               contentHtml: '',
-              contentText: '',
-              subsections: [],
+              contentText: description || '',
+              subsections,
             });
-          }
+          });
+        } else {
+          materials.forEach((material, index) => {
+            const sectionTitle = String(material.sectionTitle || material.chapter || '').trim();
+            const itemTitle = String(material.title || material.subTitle || '').trim();
+            const contentHtml = String(material.content || material.contentHtml || '').trim();
+            const description = readSectionDescription(material);
+            const materialId = String(material.materialId || `material-${index + 1}`);
 
-          const section = groupedSections[sectionIndex];
-          const isSubsection = itemTitle && itemTitle.toLowerCase() !== sectionTitle.toLowerCase();
+            if (!sectionTitle) {
+              const fallbackSectionTitle = itemTitle || `Section ${groupedSections.length + 1}`;
+              groupedSections.push({
+                id: `section-${materialId}`,
+                title: fallbackSectionTitle,
+                contentHtml,
+                description,
+                contentText: stripHtmlContent(contentHtml),
+                subsections: [],
+              });
+              return;
+            }
 
-          if (isSubsection) {
-            section.subsections.push({
-              id: `subsection-${materialId}`,
-              title: itemTitle,
-              contentHtml,
-              contentText: stripHtmlContent(contentHtml),
-              parentId: section.id,
-            });
-            return;
-          }
+            const sectionKey = sectionTitle.toLowerCase();
+            let sectionIndex = sectionIndexByTitle.get(sectionKey);
 
-          if (!section.contentHtml) {
-            section.contentHtml = contentHtml;
-            section.contentText = stripHtmlContent(contentHtml);
-          }
-        });
+            if (sectionIndex === undefined) {
+              sectionIndex = groupedSections.length;
+              sectionIndexByTitle.set(sectionKey, sectionIndex);
+              groupedSections.push({
+                id: `section-${materialId}`,
+                title: sectionTitle,
+                contentHtml: '',
+                description: '',
+                contentText: '',
+                subsections: [],
+              });
+            }
+
+            const section = groupedSections[sectionIndex];
+            if (!section.description && description) {
+              section.description = description;
+            }
+            const isSubsection = itemTitle && itemTitle.toLowerCase() !== sectionTitle.toLowerCase();
+
+            if (isSubsection) {
+              section.subsections.push({
+                id: `subsection-${materialId}`,
+                title: itemTitle,
+                contentHtml,
+                contentText: stripHtmlContent(contentHtml),
+                parentId: section.id,
+              });
+              return;
+            }
+
+            if (!section.contentHtml) {
+              section.contentHtml = contentHtml;
+              section.contentText = stripHtmlContent(contentHtml);
+            }
+          });
+        }
 
         const formattedSections = groupedSections;
 
@@ -511,47 +562,80 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
       );
     }
 
-    const richDocumentHtml = buildRichContentDocument(section.title, section.contentHtml || '');
+    const isSubsection = Boolean(section.parentId);
 
-    if (isWeb) {
-      const iframeHeight = variant === 'mobile' ? 300 : 560;
+    if (isSubsection) {
+      const richDocumentHtml = buildRichContentDocument(section.title, section.contentHtml || section.content || '');
 
-      return React.createElement('iframe', {
-        title: `section-content-${section.id}`,
-        srcDoc: richDocumentHtml,
-        style: {
-          width: '100%',
-          height: `${iframeHeight}px`,
-          border: '0',
-          borderRadius: '10px',
-          backgroundColor: '#ffffff',
-        },
-        allow:
-          'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen',
-        allowFullScreen: true,
-        loading: 'lazy',
-      });
+      if (isWeb) {
+        const iframeHeight = variant === 'mobile' ? 300 : 560;
+
+        return React.createElement('iframe', {
+          title: `section-content-${section.id}`,
+          srcDoc: richDocumentHtml,
+          style: {
+            width: '100%',
+            height: `${iframeHeight}px`,
+            border: '0',
+            borderRadius: '10px',
+            backgroundColor: '#ffffff',
+          },
+          allow:
+            'accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen',
+          allowFullScreen: true,
+          loading: 'lazy',
+        });
+      }
+
+      const webViewHeight = variant === 'mobile' ? 300 : 560;
+
+      return (
+        <WebView
+          originWhitelist={['*']}
+          source={{ html: richDocumentHtml }}
+          style={[styles.contentWebView, { height: webViewHeight }]}
+          javaScriptEnabled
+          domStorageEnabled
+          scrollEnabled
+          nestedScrollEnabled
+          allowsInlineMediaPlayback
+          mediaPlaybackRequiresUserAction={false}
+          allowsFullscreenVideo
+          mixedContentMode="always"
+          setSupportMultipleWindows={false}
+          automaticallyAdjustContentInsets={false}
+        />
+      );
     }
 
-    const webViewHeight = variant === 'mobile' ? 300 : 560;
+    // Top-level section: show the admin-entered description in the body.
+    const plainDescription = readSectionDescription(section);
 
-    return (
-      <WebView
-        originWhitelist={['*']}
-        source={{ html: richDocumentHtml }}
-        style={[styles.contentWebView, { height: webViewHeight }]}
-        javaScriptEnabled
-        domStorageEnabled
-        scrollEnabled
-        nestedScrollEnabled
-        allowsInlineMediaPlayback
-        mediaPlaybackRequiresUserAction={false}
-        allowsFullscreenVideo
-        mixedContentMode="always"
-        setSupportMultipleWindows={false}
-        automaticallyAdjustContentInsets={false}
-      />
-    );
+    if (plainDescription) {
+      if (isWeb) {
+        return React.createElement(
+          'div',
+          {
+            style: {
+              width: '100%',
+              padding: 12,
+              backgroundColor: '#ffffff',
+              color: '#3E5648',
+              fontSize: 15,
+              lineHeight: '23px',
+              borderRadius: 8,
+              border: '1px solid #EEF2EA',
+              whiteSpace: 'pre-wrap',
+            },
+          },
+          plainDescription
+        );
+      }
+
+      return <Text style={styles.contentText}>{plainDescription}</Text>;
+    }
+
+    return <Text style={styles.contentText}>No description available for this section.</Text>;
   };
 
   const goToAssessment = () => {

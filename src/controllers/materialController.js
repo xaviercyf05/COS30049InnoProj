@@ -59,7 +59,7 @@ async function getDashboardModules(req, res) {
         `SELECT QualificationID
            FROM Certificates
           WHERE UserID = ?
-          ORDER BY CreatedAt DESC, CertificateID DESC
+          ORDER BY CertificateID DESC
           LIMIT 1`,
         [userId]
       );

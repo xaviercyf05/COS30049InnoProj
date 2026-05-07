@@ -102,9 +102,30 @@ function AddModuleScreen({ navigation }) {
     moduleLocalImageUri ||
     resolveApiAssetUri(moduleImageUrl.trim()) ||
     moduleImageUrl.trim();
-  const parkSpecificModules = moduleLibrary.filter(
-    (module) => normalizeModuleType(module.moduleType || module.module_type || module.moduleTypeId || module.module_type_id || module.type || module.typeId) === 'park-specific'
-  );
+  const parkSpecificModules = moduleLibrary.filter((module) => {
+    const typeCandidate =
+      module.moduleType || module.module_type || module.type || module.category || module.moduleTypeId || module.module_type_id || module.typeId;
+
+    // Accept explicit numeric type id for TPA (2)
+    if (Number(typeCandidate) === 2) return true;
+
+    // Use existing normalizer for textual matches
+    if (normalizeModuleType(typeCandidate) === 'park-specific') return true;
+
+    // Fallback: treat modules whose title suggests TPA as park-specific
+    const title = String(module.title || module.name || '').toLowerCase();
+    if (title.includes('tpa') || title.includes('total protected area') || title.includes('park-specific')) return true;
+
+    return false;
+  });
+
+  useEffect(() => {
+    if (typeof console !== 'undefined' && console.debug) {
+      try {
+        console.debug('AddModuleScreen: parkSpecificModules computed:', parkSpecificModules.map((m) => ({ moduleId: m.moduleId, title: m.title, type: m._typeCandidate })), 'selected linkedTpaModuleId:', linkedTpaModuleId);
+      } catch (_e) {}
+    }
+  }, [moduleLibrary, linkedTpaModuleId]);
 
   const navigateToHome = () => {
     navigation.navigate('Home');
@@ -173,8 +194,28 @@ function AddModuleScreen({ navigation }) {
         }
 
         const loadedModules = Array.isArray(response.data) ? response.data : [];
-        setModuleLibrary(loadedModules);
-        setSavedCount(loadedModules.length);
+
+        // Normalize module entries so downstream filters reliably detect TPA modules
+        const normalized = loadedModules.map((m) => {
+          const moduleId = m.moduleId || m.id || m.ModuleId || null;
+          const title = m.title || m.name || m.moduleTitle || '';
+          const typeCandidate =
+            m.moduleType || m.module_type || m.type || m.category || m.moduleTypeId || m.module_type_id || m.typeId || m.ModuleTypeID;
+
+          return {
+            ...m,
+            moduleId,
+            title,
+            _typeCandidate: typeCandidate,
+          };
+        });
+
+        if (typeof console !== 'undefined' && console.debug) {
+          console.debug('AddModuleScreen: loaded modules (normalized):', normalized.map((m) => ({ moduleId: m.moduleId, title: m.title, type: m._typeCandidate })));
+        }
+
+        setModuleLibrary(normalized);
+        setSavedCount(normalized.length);
       } catch (_error) {
         if (active) {
           setSavedCount(0);
@@ -400,8 +441,27 @@ function AddModuleScreen({ navigation }) {
         method: 'GET',
       });
 
-      setSavedCount(Array.isArray(moduleListResponse.data) ? moduleListResponse.data.length : 0);
-      setModuleLibrary(Array.isArray(moduleListResponse.data) ? moduleListResponse.data : []);
+      const refreshed = Array.isArray(moduleListResponse.data) ? moduleListResponse.data : [];
+      const normalizedRefreshed = refreshed.map((m) => {
+        const moduleId = m.moduleId || m.id || m.ModuleId || null;
+        const title = m.title || m.name || m.moduleTitle || '';
+        const typeCandidate =
+          m.moduleType || m.module_type || m.type || m.category || m.moduleTypeId || m.module_type_id || m.typeId || m.ModuleTypeID;
+
+        return {
+          ...m,
+          moduleId,
+          title,
+          _typeCandidate: typeCandidate,
+        };
+      });
+
+      if (typeof console !== 'undefined' && console.debug) {
+        console.debug('AddModuleScreen: refreshed modules (normalized):', normalizedRefreshed.map((m) => ({ moduleId: m.moduleId, title: m.title, type: m._typeCandidate })));
+      }
+
+      setSavedCount(normalizedRefreshed.length);
+      setModuleLibrary(normalizedRefreshed);
       setModuleImageUrl(normalizedModuleImageUrl);
       setModuleLocalImageUri('');
       setModuleLocalImageAsset(null);

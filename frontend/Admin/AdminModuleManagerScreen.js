@@ -255,16 +255,18 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
     draft.moduleLocalImageUri ||
     resolveApiAssetUri(draft.moduleImageUrl.trim()) ||
     draft.moduleImageUrl.trim();
-  const parkSpecificModules = modules.filter((module) =>
-    normalizeModuleType(
-      module.moduleType ||
-      module.module_type ||
-      module.moduleTypeId ||
-      module.module_type_id ||
-      module.type ||
-      module.typeId
-    ) === 'park-specific'
-  );
+  const parkSpecificModules = modules.filter((module) => {
+    const typeCandidate =
+      module.moduleType || module.module_type || module.type || module.category || module.moduleTypeId || module.module_type_id || module.typeId;
+
+    if (Number(typeCandidate) === 2) return true;
+    if (normalizeModuleType(typeCandidate) === 'park-specific') return true;
+
+    const title = String(module.title || module.name || '').toLowerCase();
+    if (title.includes('tpa') || title.includes('total protected area') || title.includes('park-specific')) return true;
+
+    return false;
+  });
 
   const navigateToHome = () => {
     navigation.navigate('Home');

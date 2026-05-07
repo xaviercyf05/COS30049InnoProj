@@ -19,6 +19,7 @@ DROP TABLE IF EXISTS
   RegistrationRequests,
   Users,
   Qualifications,
+  ModuleTypes,
   Roles,
   posts,
   users,
@@ -43,6 +44,17 @@ CREATE TABLE IF NOT EXISTS Qualifications (
   Status VARCHAR(50) NOT NULL DEFAULT 'Active',
   CONSTRAINT chk_qualifications_status CHECK (Status IN ('Active', 'Inactive'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ModuleTypes (
+  ModuleTypeID TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  TypeName VARCHAR(50) NOT NULL UNIQUE,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO ModuleTypes (TypeName) VALUES
+  ('General Modules'),
+  ('Total Protected Area Modules'),
+  ('On-Site Training Modules');
 
 CREATE TABLE IF NOT EXISTS Users (
   UserID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -78,6 +90,13 @@ INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID, Status) VALU
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
 CREATE INDEX idx_users_mfa_enabled ON Users (MFAEnabled);
 
+CREATE INDEX idx_modules_module_type ON Modules (ModuleTypeID);
+CREATE INDEX idx_modules_qualification_type ON Modules (QualificationID, ModuleTypeID);
+CREATE INDEX idx_modules_linked_tpa ON Modules (LinkedTpaModuleID);
+CREATE INDEX idx_modules_linked_onsite ON Modules (LinkedOnsiteModuleID);
+CREATE INDEX idx_modules_type_linked_tpa ON Modules (ModuleTypeID, LinkedTpaModuleID);
+CREATE INDEX idx_modules_type_linked_onsite ON Modules (ModuleTypeID, LinkedOnsiteModuleID);
+
 CREATE TABLE IF NOT EXISTS RegistrationRequests (
   RegistrationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   Username VARCHAR(100) NOT NULL,
@@ -102,9 +121,11 @@ CREATE TABLE IF NOT EXISTS Modules (
   ModuleID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   QualificationID INT UNSIGNED NOT NULL,
   ModuleTitle VARCHAR(160) NOT NULL,
+  ModuleTypeID TINYINT UNSIGNED NULL DEFAULT 1,
   LinkedTpaModuleID INT UNSIGNED NULL,
   LinkedOnsiteModuleID INT UNSIGNED NULL,
   CONSTRAINT fk_modules_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE,
+  CONSTRAINT fk_modules_module_type FOREIGN KEY (ModuleTypeID) REFERENCES ModuleTypes (ModuleTypeID) ON DELETE SET NULL,
   CONSTRAINT fk_modules_linked_tpa_module FOREIGN KEY (LinkedTpaModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL,
   CONSTRAINT fk_modules_linked_onsite_module FOREIGN KEY (LinkedOnsiteModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

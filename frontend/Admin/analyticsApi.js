@@ -26,12 +26,6 @@ export const workbookSheets = [
     title: 'Badge Distribution',
     subtitle: 'Achievement distribution across park guides',
     accent: '#4D7A72'
-  },
-  {
-    key: 'station',
-    title: 'Station Coverage',
-    subtitle: 'Park guides assigned to each station',
-    accent: '#B55A4C'
   }
 ];
 

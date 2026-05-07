@@ -341,6 +341,7 @@ async function getModuleDetails(req, res) {
         moduleTypeId: module.ModuleTypeID,
         moduleType: module.TypeName || "Unassigned",
         chapters,
+        sections: chapters,
         materials,
       },
     });

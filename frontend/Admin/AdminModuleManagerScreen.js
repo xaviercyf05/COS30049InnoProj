@@ -105,6 +105,71 @@ function normalizeOrderingValue(value) {
   return String(value).trim();
 }
 
+function parseOrderingValue(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function sortByOrdering(items) {
+  return [...items]
+    .map((item, index) => ({
+      item,
+      index,
+      ordering: parseOrderingValue(item?.ordering),
+    }))
+    .sort((left, right) => {
+      const leftHasOrdering = Number.isFinite(left.ordering);
+      const rightHasOrdering = Number.isFinite(right.ordering);
+
+      if (leftHasOrdering && rightHasOrdering && left.ordering !== right.ordering) {
+        return left.ordering - right.ordering;
+      }
+
+      if (leftHasOrdering !== rightHasOrdering) {
+        return leftHasOrdering ? -1 : 1;
+      }
+
+      if (leftHasOrdering && rightHasOrdering) {
+        return left.index - right.index;
+      }
+
+      return left.index - right.index;
+    })
+    .map(({ item }) => item);
+}
+
+function renumberSections(sections) {
+  return sections.map((section, sectionIndex) => ({
+    ...section,
+    ordering: sectionIndex + 1,
+    subsections: Array.isArray(section.subsections)
+      ? section.subsections.map((subsection, subsectionIndex) => ({
+          ...subsection,
+          ordering: subsectionIndex + 1,
+        }))
+      : [],
+  }));
+}
+
+function moveArrayItem(items, fromIndex, toIndex) {
+  if (fromIndex === toIndex || fromIndex < 0 || toIndex < 0) {
+    return items;
+  }
+
+  if (fromIndex >= items.length || toIndex >= items.length) {
+    return items;
+  }
+
+  const nextItems = [...items];
+  const [movedItem] = nextItems.splice(fromIndex, 1);
+  nextItems.splice(toIndex, 0, movedItem);
+  return nextItems;
+}
+
 function createId(prefix = 'id') {
   return `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
@@ -126,6 +191,7 @@ function makeDefaultSection() {
   return {
     id: createId('section'),
     title: '',
+    description: '',
     ordering: null,
     subsections: [
       {
@@ -143,6 +209,7 @@ function normalizeSection(section) {
     return makeDefaultSection();
   }
 
+  const sectionDescription = String(section.description || section.summary || '').trim();
   const normalizedSubsections = Array.isArray(section.subsections)
     ? section.subsections
         .map((subSection) => {
@@ -163,7 +230,9 @@ function normalizeSection(section) {
         .filter(Boolean)
     : [];
 
-  const composedFromSubsections = normalizedSubsections
+  const sortedSubsections = sortByOrdering(normalizedSubsections);
+
+  const composedFromSubsections = sortedSubsections
     .map((subSection) => {
       if (subSection.title && subSection.content) {
         return `<h4>${subSection.title}</h4>${subSection.content}`;
@@ -177,9 +246,10 @@ function normalizeSection(section) {
   return {
     id: section.id || createId('section'),
     title: section.title || '',
+    description: sectionDescription,
     ordering: normalizeOrderingValue(section.ordering),
-    subsections: normalizedSubsections.length
-      ? normalizedSubsections
+    subsections: sortedSubsections.length
+      ? sortedSubsections
       : [
           {
             id: createId('subsection'),
@@ -238,7 +308,7 @@ function toDraft(moduleEntry) {
     moduleLocalImageUri: '',
     moduleLocalImageAsset: null,
     sections: moduleEntry.sections?.length
-      ? moduleEntry.sections.map((section) => normalizeSection(section))
+      ? sortByOrdering(moduleEntry.sections.map((section) => normalizeSection(section)))
       : [makeDefaultSection()],
   };
 }
@@ -462,8 +532,24 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
   const addSection = () => {
     setDraft((previous) => ({
       ...previous,
-      sections: [...previous.sections, makeDefaultSection()],
+      sections: renumberSections([...previous.sections, makeDefaultSection()]),
     }));
+  };
+
+  const moveSection = (sectionId, direction) => {
+    setDraft((previous) => {
+      const currentIndex = previous.sections.findIndex((section) => section.id === sectionId);
+
+      if (currentIndex < 0) {
+        return previous;
+      }
+
+      const nextIndex = currentIndex + direction;
+      return {
+        ...previous,
+        sections: renumberSections(moveArrayItem(previous.sections, currentIndex, nextIndex)),
+      };
+    });
   };
 
   const updateSectionTitle = (sectionId, titleValue) => {
@@ -480,14 +566,14 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
     }));
   };
 
-  const updateSectionOrdering = (sectionId, orderingValue) => {
+  const updateSectionDescription = (sectionId, descriptionValue) => {
     setDraft((previous) => ({
       ...previous,
       sections: previous.sections.map((section) =>
         section.id === sectionId
           ? {
               ...section,
-              ordering: orderingValue,
+              description: descriptionValue,
             }
           : section
       ),
@@ -497,7 +583,7 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
   const addSubsection = (sectionId) => {
     setDraft((previous) => ({
       ...previous,
-      sections: previous.sections.map((section) =>
+      sections: renumberSections(previous.sections.map((section) =>
         section.id === sectionId
           ? {
               ...section,
@@ -512,6 +598,32 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
               ],
             }
           : section
+      )),
+    }));
+  };
+
+  const moveSubsection = (sectionId, subsectionId, direction) => {
+    setDraft((previous) => ({
+      ...previous,
+      sections: renumberSections(
+        previous.sections.map((section) => {
+          if (section.id !== sectionId) {
+            return section;
+          }
+
+          const currentIndex = section.subsections.findIndex((subsection) => subsection.id === subsectionId);
+
+          if (currentIndex < 0) {
+            return section;
+          }
+
+          const nextIndex = currentIndex + direction;
+
+          return {
+            ...section,
+            subsections: moveArrayItem(section.subsections, currentIndex, nextIndex),
+          };
+        })
       ),
     }));
   };
@@ -519,13 +631,15 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
   const deleteSubsection = (sectionId, subsectionId) => {
     setDraft((previous) => ({
       ...previous,
-      sections: previous.sections.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              subsections: section.subsections.filter((subsection) => subsection.id !== subsectionId),
-            }
-          : section
+      sections: renumberSections(
+        previous.sections.map((section) =>
+          section.id === sectionId
+            ? {
+                ...section,
+                subsections: section.subsections.filter((subsection) => subsection.id !== subsectionId),
+              }
+            : section
+        )
       ),
     }));
   };
@@ -572,31 +686,10 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
     }));
   };
 
-  const updateSubsectionOrdering = (sectionId, subsectionId, orderingValue) => {
-    setDraft((previous) => ({
-      ...previous,
-      sections: previous.sections.map((section) =>
-        section.id === sectionId
-          ? {
-              ...section,
-              subsections: section.subsections.map((subsection) =>
-                subsection.id === subsectionId
-                  ? {
-                      ...subsection,
-                      ordering: orderingValue,
-                    }
-                  : subsection
-              ),
-            }
-          : section
-      ),
-    }));
-  };
-
   const deleteSection = (sectionId) => {
     setDraft((previous) => ({
       ...previous,
-      sections: previous.sections.filter((section) => section.id !== sectionId),
+      sections: renumberSections(previous.sections.filter((section) => section.id !== sectionId)),
     }));
   };
 
@@ -652,23 +745,16 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
       return;
     }
 
-    const normalizedSections = draft.sections
+    const normalizedSections = renumberSections(draft.sections)
       .map((section, index) => {
         const normalizedTitle = String(section.title || '').trim();
-        const normalizedOrdering =
-          section.ordering === null || section.ordering === undefined || section.ordering === ''
-            ? null
-            : Number.parseFloat(section.ordering);
+        const normalizedDescription = String(section.description || '').trim();
 
         const normalizedSubsections = Array.isArray(section.subsections)
           ? section.subsections
               .map((subsection, subsectionIndex) => {
                 const normalizedSubTitle = String(subsection.title || '').trim();
                 const normalizedSubContent = String(subsection.content || '').trim();
-                const normalizedSubOrdering =
-                  subsection.ordering === null || subsection.ordering === undefined || subsection.ordering === ''
-                    ? null
-                    : Number.parseFloat(subsection.ordering);
 
                 if (!normalizedSubTitle && !normalizedSubContent) {
                   return null;
@@ -677,26 +763,27 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
                 return {
                   title: normalizedSubTitle || `Subsection ${subsectionIndex + 1}`,
                   content: normalizedSubContent || '<p>No content provided.</p>',
-                  ordering: Number.isFinite(normalizedSubOrdering) ? normalizedSubOrdering : null,
+                  ordering: subsectionIndex + 1,
                 };
               })
               .filter(Boolean)
           : [];
 
-        if (!normalizedTitle && normalizedSubsections.length === 0) {
+        if (!normalizedTitle && !normalizedDescription && normalizedSubsections.length === 0) {
           return null;
         }
 
         return {
           title: normalizedTitle || `Section ${index + 1}`,
-          ordering: Number.isFinite(normalizedOrdering) ? normalizedOrdering : null,
+          description: normalizedDescription || '',
+          ordering: index + 1,
           subsections: normalizedSubsections.length
             ? normalizedSubsections
             : [
                 {
                   title: normalizedTitle || `Subsection ${index + 1}`,
                   content: '<p>No content provided.</p>',
-                  ordering: null,
+                  ordering: 1,
                 },
               ],
         };
@@ -765,6 +852,8 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
       setIsSaving(false);
     }
   };
+
+  const orderedSections = renumberSections(draft.sections);
 
   return (
     <SafeAreaView style={styles.safeArea} edges={['top', 'left', 'right']}>
@@ -988,8 +1077,45 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
             <Text style={styles.addText}>+ Add Section</Text>
           </TouchableOpacity>
 
-          {draft.sections.map((section) => (
+          {orderedSections.map((section, sectionIndex) => (
             <View key={section.id} style={styles.sectionBox}>
+              <View style={styles.sectionOrderRow}>
+                <Text style={styles.sectionOrderBadge}>Section {sectionIndex + 1}</Text>
+                <View style={styles.reorderControls}>
+                  <TouchableOpacity
+                    style={[styles.reorderButton, sectionIndex === 0 && styles.reorderButtonDisabled]}
+                    onPress={() => moveSection(section.id, -1)}
+                    disabled={sectionIndex === 0}
+                  >
+                    <Text
+                      style={[
+                        styles.reorderButtonText,
+                        sectionIndex === 0 && styles.reorderButtonTextDisabled,
+                      ]}
+                    >
+                      Move Section Up
+                    </Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={[
+                      styles.reorderButton,
+                      sectionIndex === orderedSections.length - 1 && styles.reorderButtonDisabled,
+                    ]}
+                    onPress={() => moveSection(section.id, 1)}
+                    disabled={sectionIndex === orderedSections.length - 1}
+                  >
+                    <Text
+                      style={[
+                        styles.reorderButtonText,
+                        sectionIndex === orderedSections.length - 1 && styles.reorderButtonTextDisabled,
+                      ]}
+                    >
+                      Move Section Down
+                    </Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+
               <View style={styles.sectionHeader}>
                 <TextInput
                   placeholder="Section Title"
@@ -1007,16 +1133,13 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
                 </TouchableOpacity>
               </View>
 
-              <View style={styles.orderingRow}>
-                <TextInput
-                  placeholder="Ordering e.g. 1.0"
-                  placeholderTextColor={PLACEHOLDER_COLOR}
-                  value={section.ordering === null || section.ordering === undefined ? '' : String(section.ordering)}
-                  onChangeText={(value) => updateSectionOrdering(section.id, value)}
-                  style={styles.orderingInput}
-                  keyboardType={Platform.OS === 'web' ? 'text' : 'decimal-pad'}
-                />
-              </View>
+              <TextInput
+                placeholder="Section Description (plain text)"
+                placeholderTextColor={PLACEHOLDER_COLOR}
+                value={section.description || ''}
+                onChangeText={(value) => updateSectionDescription(section.id, value)}
+                style={styles.sectionDescriptionInput}
+              />
 
               <View style={styles.subsectionToolbar}>
                 <Text style={styles.subsectionToolbarTitle}>Subsections</Text>
@@ -1025,8 +1148,50 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
                 </TouchableOpacity>
               </View>
 
-              {section.subsections.map((subsection) => (
+              {section.subsections.map((subsection, subsectionIndex) => (
                 <View key={subsection.id} style={styles.subsectionBoxInner}>
+                  <View style={styles.subsectionOrderRow}>
+                    <Text style={styles.subsectionOrderBadge}>
+                      Subsection {sectionIndex + 1}.{subsectionIndex + 1}
+                    </Text>
+                    <View style={styles.reorderControls}>
+                      <TouchableOpacity
+                        style={[
+                          styles.reorderButton,
+                          subsectionIndex === 0 && styles.reorderButtonDisabled,
+                        ]}
+                        onPress={() => moveSubsection(section.id, subsection.id, -1)}
+                        disabled={subsectionIndex === 0}
+                      >
+                        <Text
+                          style={[
+                            styles.reorderButtonText,
+                            subsectionIndex === 0 && styles.reorderButtonTextDisabled,
+                          ]}
+                        >
+                          Move Subsection Up
+                        </Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        style={[
+                          styles.reorderButton,
+                          subsectionIndex === section.subsections.length - 1 && styles.reorderButtonDisabled,
+                        ]}
+                        onPress={() => moveSubsection(section.id, subsection.id, 1)}
+                        disabled={subsectionIndex === section.subsections.length - 1}
+                      >
+                        <Text
+                          style={[
+                            styles.reorderButtonText,
+                            subsectionIndex === section.subsections.length - 1 && styles.reorderButtonTextDisabled,
+                          ]}
+                        >
+                          Move Subsection Down
+                        </Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+
                   <View style={styles.subsectionHeaderRow}>
                     <TextInput
                       placeholder="Subsection Title"
@@ -1042,17 +1207,6 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
                     >
                       <Text style={styles.deleteX}>X</Text>
                     </TouchableOpacity>
-                  </View>
-
-                  <View style={styles.subsectionOrderingRow}>
-                    <TextInput
-                      placeholder="Ordering e.g. 1.1"
-                      placeholderTextColor={PLACEHOLDER_COLOR}
-                      value={subsection.ordering === null || subsection.ordering === undefined ? '' : String(subsection.ordering)}
-                      onChangeText={(value) => updateSubsectionOrdering(section.id, subsection.id, value)}
-                      style={styles.orderingInput}
-                      keyboardType={Platform.OS === 'web' ? 'text' : 'decimal-pad'}
-                    />
                   </View>
 
                   <View style={styles.editorBox}>
@@ -1389,8 +1543,30 @@ const styles = StyleSheet.create({
     borderRadius: 8,
     backgroundColor: '#FFFFFF',
   },
-  orderingRow: {
-    marginBottom: 12,
+  sectionDescriptionInput: {
+    borderWidth: 1,
+    borderColor: '#D9DED2',
+    padding: 10,
+    marginBottom: 10,
+    borderRadius: 8,
+    backgroundColor: '#FFFFFF',
+    color: '#223327',
+  },
+  sectionOrderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+    gap: 8,
+  },
+  sectionOrderBadge: {
+    backgroundColor: '#EEF3E7',
+    color: '#35513F',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
   },
   subsectionToolbar: {
     flexDirection: 'row',
@@ -1428,6 +1604,48 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     marginBottom: 10,
   },
+  subsectionOrderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+    gap: 8,
+  },
+  subsectionOrderBadge: {
+    backgroundColor: '#F4F6EE',
+    color: '#4A5D23',
+    fontSize: 12,
+    fontWeight: '700',
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  reorderControls: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  reorderButton: {
+    backgroundColor: '#F1F5EA',
+    borderWidth: 1,
+    borderColor: '#DDE6D4',
+    borderRadius: 999,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    minWidth: 54,
+    alignItems: 'center',
+  },
+  reorderButtonDisabled: {
+    opacity: 0.45,
+  },
+  reorderButtonText: {
+    color: '#35513F',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  reorderButtonTextDisabled: {
+    color: '#6F7B6A',
+  },
   subsectionTitleInput: {
     flex: 1,
     borderWidth: 1,
@@ -1443,16 +1661,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: 'transparent',
-  },
-  subsectionOrderingRow: {
-    marginBottom: 10,
-  },
-  orderingInput: {
-    borderWidth: 1,
-    borderColor: '#D9DED2',
-    padding: 10,
-    borderRadius: 8,
-    backgroundColor: '#FFFFFF',
   },
   deleteX: {
     fontSize: 14,

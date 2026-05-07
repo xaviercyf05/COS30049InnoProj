@@ -11,7 +11,7 @@ async function getModuleMaterials(userId, moduleId) {
   try {
     // Return flattened list of subsections for the module with progress
     const [rows] = await query(
-      `SELECT sc.SubsectionID, sc.Title AS SubTitle, sc.ContentType, sc.ContentText, s.SectionID, s.Title AS SectionTitle, s.Description AS SectionDescription
+      `SELECT sc.SubsectionID, sc.Title AS SubTitle, sc.ContentType, sc.ContentText, s.SectionID, s.Title AS SectionTitle
        FROM Sections s
        LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
        WHERE s.ModuleID = ?
@@ -32,7 +32,6 @@ async function getModuleMaterials(userId, moduleId) {
         materialId: r.SubsectionID,
         sectionId: r.SectionID,
         sectionTitle: r.SectionTitle,
-        sectionDescription: r.SectionDescription || '',
         title: r.SubTitle,
         contentType: r.ContentType,
         content: r.ContentText,
@@ -52,7 +51,7 @@ async function getModuleMaterials(userId, moduleId) {
 async function getMaterialContent(userId, materialId) {
   try {
     const [rows] = await query(
-      `SELECT sc.SubsectionID, sc.Title AS SubTitle, sc.ContentType, sc.ContentText, s.SectionID, s.ModuleID, s.Title AS SectionTitle, s.Description AS SectionDescription
+      `SELECT sc.SubsectionID, sc.Title AS SubTitle, sc.ContentType, sc.ContentText, s.SectionID, s.ModuleID
        FROM Subsections sc
        JOIN Sections s ON s.SectionID = sc.SectionID
        WHERE sc.SubsectionID = ? LIMIT 1`,
@@ -79,8 +78,6 @@ async function getMaterialContent(userId, materialId) {
       materialId: material.SubsectionID,
       moduleId: material.ModuleID,
       sectionId: material.SectionID,
-      sectionTitle: material.SectionTitle,
-      sectionDescription: material.SectionDescription || '',
       title: material.SubTitle,
       contentType: material.ContentType,
       content: material.ContentText,
@@ -126,18 +123,14 @@ async function markMaterialComplete(userId, materialId) {
 async function getModuleChapters(moduleId) {
   try {
     const [chapters] = await query(
-      `SELECT s.SectionID, s.Title, s.Description
+      `SELECT s.SectionID, s.Title
        FROM Sections s
        WHERE s.ModuleID = ?
        ORDER BY s.Ordering ASC`,
       [moduleId]
     );
 
-    return chapters.map((c) => ({
-      sectionId: c.SectionID,
-      title: c.Title,
-      description: c.Description || '',
-    }));
+    return chapters.map((c) => ({ sectionId: c.SectionID, title: c.Title }));
   } catch (error) {
     throw error;
   }

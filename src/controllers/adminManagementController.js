@@ -848,19 +848,6 @@ async function getAnalyticsDashboard(req, res) {
         ORDER BY AwardedCount DESC, b.BadgeID ASC`
     );
 
-    const [parkRows] = await query(
-      `SELECT p.ParkID,
-              p.ParkName,
-              COUNT(DISTINCT CASE WHEN r.RoleTitle = 'User' THEN u.UserID END) AS GuidesAssigned,
-              COUNT(DISTINCT CASE WHEN r.RoleTitle = 'User' AND COALESCE(u.Progress, 0) >= 90 THEN u.UserID END) AS LeadGuides
-         FROM Park p
-         LEFT JOIN Qualifications q ON LOWER(TRIM(q.QualificationName)) = LOWER(TRIM(p.ParkName))
-         LEFT JOIN Users u ON u.QualificationID = q.QualificationID
-         LEFT JOIN Roles r ON r.RoleID = u.RoleID
-        GROUP BY p.ParkID, p.ParkName
-        ORDER BY GuidesAssigned DESC, p.ParkName ASC`
-    );
-
     const earnedBadgesByUser = userBadgeRows.reduce((accumulator, row) => {
       accumulator[row.UserID] = row.EarnedBadges || '-';
       return accumulator;
@@ -934,28 +921,6 @@ async function getAnalyticsDashboard(req, res) {
     const totalAwardedBadges = badgeRowsNormalized.reduce((sum, row) => sum + row.awarded, 0);
     const totalEligibleGuides = badgeRowsNormalized.reduce((sum, row) => sum + row.eligible, 0);
     const totalPendingBadges = badgeRowsNormalized.reduce((sum, row) => sum + row.pending, 0);
-
-    const stations = parkRows.map((row) => {
-      const guidesAssigned = toSafeNumber(row.GuidesAssigned, 0);
-      const lead = toSafeNumber(row.LeadGuides, 0);
-      const status = guidesAssigned >= 6 ? 'Optimal' : guidesAssigned >= 4 ? 'Adequate' : 'Understaffed';
-      const notes =
-        status === 'Optimal'
-          ? 'Good coverage'
-          : status === 'Adequate'
-            ? 'Monitor closely'
-            : 'Needs additional trained guides';
-
-      return {
-        parkName: row.ParkName,
-        guidesAssigned,
-        leadGuides: lead,
-        status,
-        notes,
-      };
-    });
-
-    const understaffedCount = stations.filter((station) => station.status === 'Understaffed').length;
 
     return res.json({
       success: true,
@@ -1046,31 +1011,6 @@ async function getAnalyticsDashboard(req, res) {
             String(row.eligible),
             String(row.awarded),
             String(row.pending),
-          ]),
-        },
-        station: {
-          title: 'Park guide distribution by station',
-          subtitle: 'Identify understaffed parks and optimize resource allocation.',
-          chartType: 'bar',
-          kpis: [
-            { label: 'Parks covered', value: String(stations.length), note: 'Total known park stations' },
-            { label: 'Total guides', value: String(totalGuides), note: 'Assigned to parks by qualification' },
-            { label: 'Avg. per park', value: stations.length > 0 ? (totalGuides / stations.length).toFixed(1) : '0.0', note: 'Guides per station' },
-            { label: 'Understaffed', value: String(understaffedCount), note: 'Below 4 assigned guides' },
-          ],
-          chartTitle: 'Guide distribution across parks',
-          chartSubtitle: 'Number of guides per park station.',
-          bars: stations.map((station) => ({
-            label: station.parkName.split(' ')[0],
-            value: station.guidesAssigned,
-          })),
-          columns: ['Park / Station', 'Guides Assigned', 'Lead Guides', 'Status', 'Notes'],
-          rows: stations.map((station) => [
-            station.parkName,
-            String(station.guidesAssigned),
-            String(station.leadGuides),
-            station.status,
-            station.notes,
           ]),
         },
         generatedAt: new Date().toISOString(),

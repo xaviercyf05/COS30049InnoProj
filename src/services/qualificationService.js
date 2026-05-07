@@ -71,6 +71,11 @@ async function enrollUserInQualification(userId, qualificationId) {
       [userId, qualificationId, qualName]
     );
 
+    await query(
+      "UPDATE Users SET QualificationID = ? WHERE UserID = ?",
+      [qualificationId, userId]
+    );
+
     return {
       certificateId: result.insertId,
       qualificationId,

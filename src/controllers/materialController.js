@@ -42,7 +42,7 @@ async function getDashboardModules(req, res) {
       [userId]
     );
 
-    if (userRows.length === 0 || !userRows[0].QualificationID) {
+    if (userRows.length === 0) {
       return res.json({
         success: true,
         summary: {
@@ -52,7 +52,36 @@ async function getDashboardModules(req, res) {
       });
     }
 
-    const qualificationId = userRows[0].QualificationID;
+    let qualificationId = Number(userRows[0].QualificationID || 0);
+
+    if (!qualificationId) {
+      const [certificateRows] = await query(
+        `SELECT QualificationID
+           FROM Certificates
+          WHERE UserID = ?
+          ORDER BY CreatedAt DESC, CertificateID DESC
+          LIMIT 1`,
+        [userId]
+      );
+
+      if (certificateRows.length > 0 && certificateRows[0].QualificationID) {
+        qualificationId = Number(certificateRows[0].QualificationID);
+        await query(
+          "UPDATE Users SET QualificationID = ? WHERE UserID = ?",
+          [qualificationId, userId]
+        ).catch(() => {});
+      }
+    }
+
+    if (!qualificationId) {
+      return res.json({
+        success: true,
+        summary: {
+          overallProgress: Number(userRows[0]?.Progress || 0),
+        },
+        data: [],
+      });
+    }
 
     const [rows] = await query(
       `SELECT m.ModuleID,

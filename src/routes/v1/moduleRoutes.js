@@ -82,6 +82,4 @@ router.post(
   asyncHandler(materialController.saveModuleProgress)
 );
 
-router.get('/:moduleId/payment-status', protect, enrollmentController.getPaymentStatus);
-
 module.exports = router;

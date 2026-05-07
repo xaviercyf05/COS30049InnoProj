@@ -498,6 +498,19 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return;
 		}
 
+		// Resolve assessment id (attempt records from API may omit it)
+		const resolvedAssessmentId =
+			selectedResult?.assessmentId ||
+			selectedAssessment?.id ||
+			routeAssessmentId ||
+			selectedAssessmentId ||
+			null;
+
+		if (!resolvedAssessmentId) {
+			Alert.alert('Missing assessment', 'Cannot issue badge because the assessment id is not available.');
+			return;
+		}
+
 		setIssuing(true);
 		setStatusMessage('');
 
@@ -508,22 +521,57 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				throw new Error('Session expired. Please log in again.');
 			}
 
-			await requestProfileApi('/api/v1/admin/badges/issue', token, {
-				method: 'POST',
-				body: {
-					badgeId: selectedBadge.id,
-					userId: selectedResult.userId,
-					assessmentId: selectedResult.assessmentId,
-					attemptId: selectedResult.attemptId,
-					note: note.trim(),
-				},
-			});
+						const payload = {
+							badgeId: selectedBadge.id,
+							userId: selectedResult.userId,
+							assessmentId: resolvedAssessmentId,
+							attemptId: selectedResult.attemptId,
+							note: note.trim(),
+						};
 
-			setStatusType('success');
-			setStatusMessage(`${selectedBadge.name} has been issued to ${selectedResult.parkGuideName}.`);
+						if (typeof console !== 'undefined' && console.debug) {
+							console.debug('Issuing badge payload:', payload);
+						}
+
+						try {
+							const resp = await requestProfileApi('/api/v1/admin/badges/issue', token, {
+								method: 'POST',
+								body: payload,
+							});
+
+							if (typeof console !== 'undefined' && console.debug) {
+								console.debug('Badge issue response:', resp);
+							}
+
+							setStatusType('success');
+							setStatusMessage(`${selectedBadge.name} has been issued to ${selectedResult.parkGuideName}.`);
+						} catch (err) {
+							// Re-throw to outer catch handler for unified handling, but attach payload for debugging
+							err.requestPayload = payload;
+							throw err;
+						}
 		} catch (error) {
+			if (typeof console !== 'undefined' && console.error) {
+				console.error('Badge issue failed:', error);
+			}
+
 			setStatusType('error');
-			setStatusMessage(error?.message || 'Unable to issue badge right now.');
+
+			// Prefer structured payload message when available
+			const serverMessage = error?.payload?.message || error?.payload?.message?.message || error?.message || (error?.data && error.data.message);
+			let displayMessage = serverMessage || 'Unable to issue badge right now.';
+
+			// Include short request payload info for debugging
+			if (error?.requestPayload) {
+				try {
+					const shortPayload = JSON.stringify(error.requestPayload);
+					displayMessage += ` Details: ${shortPayload}`;
+				} catch (_e) {
+					// ignore serialization errors
+				}
+			}
+
+			setStatusMessage(displayMessage);
 		} finally {
 			setIssuing(false);
 		}

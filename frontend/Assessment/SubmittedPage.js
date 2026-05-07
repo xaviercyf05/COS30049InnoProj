@@ -11,20 +11,35 @@ function SubmittedPage({ navigation, route }) {
 	const totalQuestions = route?.params?.totalQuestions || 0;
 	const score = route?.params?.score !== undefined ? route?.params?.score : null;
 	const correctCount = route?.params?.correctCount !== undefined ? route?.params?.correctCount : null;
-	const passingScore = route?.params?.passingScore;
-	const passed = Number.isFinite(Number(passingScore))
-		? Number(score) >= Number(passingScore)
-		: route?.params?.passed === true;
+		const passingScore = route?.params?.passingScore;
+
+		// Normalize score into a percentage value (0-100).
+		// Backends may return score as fraction (0.5) or percentage (50).
+		const rawScore = score !== null ? Number(score) : null;
+		let scorePercent = null;
+		if (rawScore !== null && Number.isFinite(rawScore)) {
+			if (rawScore >= 0 && rawScore <= 1) {
+				scorePercent = Math.round(rawScore * 100);
+			} else {
+				scorePercent = Math.round(rawScore);
+			}
+		}
+
+		const numericPassing = Number.isFinite(Number(passingScore)) ? Number(passingScore) : null;
+
+		const passed = numericPassing !== null
+			? (scorePercent !== null ? Number(scorePercent) >= Number(numericPassing) : route?.params?.passed === true)
+			: route?.params?.passed === true;
 	const feedbackMessage = route?.params?.feedbackMessage || '';
 	const attemptId = route?.params?.attemptId;
 	const assessmentId = route?.params?.assessmentId;
 
-	const scorePercentage =
-		score !== null
-				? Math.max(0, Math.min(100, Math.round(Number(score))))
-			: correctCount !== null && totalQuestions > 0
-				? Math.round((Number(correctCount) / totalQuestions) * 100)
-				: null;
+		const scorePercentage =
+			scorePercent !== null
+				? Math.max(0, Math.min(100, Math.round(Number(scorePercent))))
+				: correctCount !== null && totalQuestions > 0
+					? Math.round((Number(correctCount) / totalQuestions) * 100)
+					: null;
 
 	const handleViewResults = () => {
 		if (attemptId) {

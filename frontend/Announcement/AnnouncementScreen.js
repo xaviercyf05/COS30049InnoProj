@@ -13,15 +13,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestProfileApi } from '../Profile/profileApi.js';
 import withRoleGuard from '../auth/withRoleGuard';
 
-function nowLabel() {
-  return new Date().toLocaleString('en-MY', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
 
 const SAMPLE_ANNOUNCEMENTS = [
   {
@@ -137,7 +128,7 @@ function AnnouncementScreen({ navigation, useSharedChrome = false }) {
             title: item.title || 'Announcement',
             teaser: item.teaser || item.content || '',
             fullDesc: item.fullDesc || item.content || item.teaser || '',
-            posted: nowLabel() || item.posted,
+            posted: item.posted || item.createdAt || created_At(),
             avatarLabel: item.avatarLabel || 'AN',
           }))
         );

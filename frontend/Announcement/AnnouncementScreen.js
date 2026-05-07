@@ -13,6 +13,16 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestProfileApi } from '../Profile/profileApi.js';
 import withRoleGuard from '../auth/withRoleGuard';
 
+function nowLabel() {
+  return new Date().toLocaleString('en-MY', {
+    day: '2-digit',
+    month: 'short',
+    year: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
+
 const SAMPLE_ANNOUNCEMENTS = [
   {
     id: 1,

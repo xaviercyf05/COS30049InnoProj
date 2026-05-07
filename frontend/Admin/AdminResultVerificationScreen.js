@@ -554,13 +554,28 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return;
 		}
 
-		// Resolve assessment id (attempt records from API may omit it)
-		const resolvedAssessmentId =
-			selectedResult?.assessmentId ||
-			selectedAssessment?.id ||
-			routeAssessmentId ||
-			selectedAssessmentId ||
-			null;
+				// Resolve assessment id (attempt records from API may omit it)
+				let resolvedAssessmentId =
+					selectedResult?.assessmentId ||
+					selectedAssessment?.id ||
+					routeAssessmentId ||
+					selectedAssessmentId ||
+					null;
+
+				// If there is a linked on-site module, try to find an assessment that belongs to that on-site module
+				let onSiteModuleAssessmentId = null;
+				if (selectedOnSiteModule) {
+					try {
+						const { assessments: siteAssessments, error } = await fetchAllAssessments(selectedOnSiteModule.moduleId);
+						if (!error && Array.isArray(siteAssessments) && siteAssessments.length > 0) {
+							onSiteModuleAssessmentId = String(siteAssessments[0].id);
+							// Prefer the on-site module's assessment id when available (backend may require an on-site assessment)
+							resolvedAssessmentId = onSiteModuleAssessmentId || resolvedAssessmentId;
+						}
+					} catch (_e) {
+						// ignore - we'll fallback to existing resolvedAssessmentId
+					}
+				}
 
 		if (!resolvedAssessmentId) {
 			Alert.alert('Missing assessment', 'Cannot issue badge because the assessment id is not available.');
@@ -577,16 +592,18 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				throw new Error('Session expired. Please log in again.');
 			}
 
+						// Build payload. Include moduleId when there is a linked on-site module to help backend validation.
 						const payload = {
 							badgeId: selectedBadge.id,
 							userId: selectedResult.userId,
 							assessmentId: resolvedAssessmentId,
 							attemptId: selectedResult.attemptId,
 							note: note.trim(),
+							moduleId: selectedOnSiteModule ? selectedOnSiteModule.moduleId : undefined,
 						};
 
 						if (typeof console !== 'undefined' && console.debug) {
-							console.debug('Issuing badge payload:', payload);
+							console.debug('Issuing badge payload:', payload, 'resolvedAssessmentId:', resolvedAssessmentId, 'onSiteAssessmentId:', onSiteModuleAssessmentId);
 						}
 
 						try {

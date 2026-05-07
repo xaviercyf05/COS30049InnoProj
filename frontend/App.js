@@ -683,10 +683,12 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 						<Text style={styles.lockReasonText}>{module.lockReason}</Text>
 					) : null}
 
-					<View style={styles.progressBar}>
-						<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
-						<Text style={styles.progressText}>{module.progressPercent}%</Text>
-					</View>
+					{!isAdmin && (
+						<View style={styles.progressBar}>
+							<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
+							<Text style={styles.progressText}>{module.progressPercent}%</Text>
+						</View>
+					)}
 				</ImageBackground>
 			</TouchableOpacity>
 		);

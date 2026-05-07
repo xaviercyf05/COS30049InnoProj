@@ -168,6 +168,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
   const [visitedSectionIds, setVisitedSectionIds] = useState(new Set());
   const [expandedSectionIds, setExpandedSectionIds] = useState(new Set());
   const [loading, setLoading] = useState(Boolean(routeModuleId));
+  const [isOnSite, setIsOnSite] = useState(false);
 
   const selectedSection = useMemo(() => {
     const selectedTopLevelSection = sections.find((section) => section.id === selectedSectionId);
@@ -228,6 +229,32 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
         const materials = Array.isArray(response?.data?.materials)
           ? response.data.materials
           : [];
+
+        // Detect module type (on-site) from API response or route params.
+        const moduleTypeCandidate =
+          response?.data?.moduleType ||
+          response?.data?.module_type ||
+          response?.data?.type ||
+          response?.data?.moduleTypeId ||
+          response?.data?.module_type_id ||
+          route?.params?.moduleType ||
+          route?.params?.moduleTypeId ||
+          null;
+
+        const isOnSiteValue = (candidate) => {
+          if (candidate === null || candidate === undefined || candidate === '') return false;
+          const asNum = Number(candidate);
+          const asStr = String(candidate).trim().toLowerCase();
+          if (!Number.isNaN(asNum) && asNum === 3) return true;
+          if (asStr === '3' || asStr === 'on-site' || asStr === 'onsite' || asStr === 'on site' || asStr.includes('on-site') || asStr.includes('onsite') || asStr.includes('on site')) return true;
+          return false;
+        };
+
+        if (isOnSiteValue(moduleTypeCandidate)) {
+          setIsOnSite(true);
+        } else {
+          setIsOnSite(false);
+        }
 
         if (active && resolvedTitle) {
           setModuleDisplayName(resolvedTitle);
@@ -393,6 +420,7 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
   };
 
   const assessmentUnlocked =
+    !isOnSite &&
     sections.length > 0 &&
     sections.every((section) => {
       const subsectionIds = (section.subsections || []).map((subsection) => subsection.id);
@@ -402,7 +430,9 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
         subsectionIds.every((subsectionId) => visitedSectionIds.has(subsectionId))
       );
     });
-  const canTakeAssessment = assessmentUnlocked && progressionUnlocked;
+
+  // Admins should always be able to navigate to the Assessment page to edit questions.
+  const canTakeAssessment = isAdmin ? true : (!isOnSite && assessmentUnlocked && progressionUnlocked);
 
   const renderSectionBody = (section, variant = 'desktop') => {
     if (!section) {
@@ -455,6 +485,15 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
   };
 
   const goToAssessment = () => {
+    // Admins can always go to the admin assessment editor without needing to unlock sections.
+    if (isAdmin) {
+      navigation.navigate('AdminAssessment', {
+        moduleName: moduleDisplayName,
+        moduleId: routeModuleId,
+      });
+      return;
+    }
+
     if (!progressionUnlocked) {
       Alert.alert(
         'Assessment Locked',
@@ -616,17 +655,25 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
               disabled={!canTakeAssessment}
             >
               <Text style={[styles.assessmentButtonText, !canTakeAssessment && styles.assessmentButtonTextDisabled]}>
-                {!progressionUnlocked
-                  ? 'Locked by Learning Pathway'
-                  : assessmentUnlocked
-                    ? 'Take Assessment'
-                    : 'Review Sections First'}
+                {isAdmin
+                  ? 'Go to Assessment Page to Edit Questions'
+                  : isOnSite
+                    ? 'On-site module — no assessment'
+                    : !progressionUnlocked
+                      ? 'Locked by Learning Pathway'
+                      : assessmentUnlocked
+                        ? 'Take Assessment'
+                        : 'Review Sections First'}
               </Text>
               <Text style={styles.assessmentArrow}>{'>'}</Text>
             </TouchableOpacity>
-            {!progressionUnlocked ? (
+            {isOnSite ? (
+              <Text style={styles.assessmentHintText}>
+                This on-site module has no assessment. Completion is recorded by an admin after training.
+              </Text>
+            ) : !progressionUnlocked ? (
               <Text style={styles.assessmentHintText}>{progressionLockReason}</Text>
-            ) : !assessmentUnlocked && sections.length > 0 ? (
+            ) : !assessmentUnlocked && sections.length > 0 && !isAdmin ? (
               <Text style={styles.assessmentHintText}>
                 Open each section and every subsection once to unlock the assessment.
               </Text>

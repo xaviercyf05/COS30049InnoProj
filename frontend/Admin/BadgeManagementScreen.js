@@ -19,6 +19,8 @@ function BadgeManagementScreen({ navigation, currentProfile }) {
   const [activeMenu, setActiveMenu] = useState(null);
   const [deleteModalVisible, setDeleteModalVisible] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
+  const role = currentProfile?.viewerRole || currentProfile?.role || 'User';
+  const isAdmin = role === 'Admin';
 
   const getAuthToken = async () => {
     const token = await AsyncStorage.getItem('innopapp_auth_token');
@@ -136,9 +138,11 @@ function BadgeManagementScreen({ navigation, currentProfile }) {
         <Image source={avatarSource} style={styles.profileImage} />
         <View style={styles.profileMeta}>
           <Text style={styles.profileName}>{displayName}</Text>
-          <Text style={styles.profileSubtext}>
-            {earnedBadges} / {badges.length} badges unlocked
-          </Text>
+          {!isAdmin && (
+            <Text style={styles.profileSubtext}>
+              {earnedBadges} / {badges.length} badges unlocked
+            </Text>
+          )}
         </View>
       </View>
 
@@ -194,7 +198,7 @@ function BadgeManagementScreen({ navigation, currentProfile }) {
 
                 <Image
                   source={{ uri: badge.image || 'https://cdn-icons-png.flaticon.com/512/16779/16779402.png' }}
-                  style={[styles.badgeIcon, { opacity: badge.unlocked ? 1 : 0.35 }]}
+                  style={[styles.badgeIcon, { opacity: isAdmin || badge.unlocked ? 1 : 0.35 }]}
                 />
 
                 <Text style={styles.badgeText}>{badge.name}</Text>

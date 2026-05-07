@@ -8,9 +8,24 @@ const {
 } = require("../services/moduleUiService");
 
 const moduleCoverPathPrefix = "/uploads/module-covers/";
+const ONSITE_MODULE_TYPE_NAME = "On-Site Training Modules";
+const TPA_MODULE_TYPE_NAME = "Total Protected Area Modules";
 
 function createModuleCoverImageUrl(fileName) {
   return `${moduleCoverPathPrefix}${fileName}`;
+}
+
+async function getModuleTypeNameById(execute, moduleTypeId) {
+  if (!Number.isFinite(moduleTypeId) || moduleTypeId <= 0) {
+    return null;
+  }
+
+  const [rows] = await execute(
+    "SELECT TypeName FROM ModuleTypes WHERE ModuleTypeID = ? LIMIT 1",
+    [moduleTypeId]
+  );
+
+  return rows.length > 0 ? rows[0].TypeName : null;
 }
 
 async function resolveModuleTypeId(execute, requestedModuleTypeId, fallbackModuleTypeId = null) {
@@ -142,6 +157,7 @@ async function readModuleById(moduleId) {
             m.ModuleTitle,
             m.ModuleTypeID,
             m.LinkedTpaModuleID,
+            m.LinkedOnsiteModuleID,
             mt.TypeName,
             meta.CoverImageUrl
        FROM Modules m
@@ -184,6 +200,7 @@ async function readModuleById(moduleId) {
     moduleTypeId: moduleRow.ModuleTypeID,
     moduleType: moduleRow.TypeName || 'General Modules',
     linkedTpaModuleId: moduleRow.LinkedTpaModuleID || null,
+    linkedOnsiteModuleId: moduleRow.LinkedOnsiteModuleID || null,
     moduleImageUrl: resolveModuleCoverImage(moduleRow.ModuleID, moduleRow.CoverImageUrl),
     sections,
     sectionCount: sections.length,
@@ -203,6 +220,7 @@ async function listModules(req, res) {
               m.ModuleTitle,
               m.ModuleTypeID,
               m.LinkedTpaModuleID,
+              m.LinkedOnsiteModuleID,
               mt.TypeName,
               meta.CoverImageUrl,
               COUNT(sc.SubsectionID) AS SectionCount
@@ -212,7 +230,7 @@ async function listModules(req, res) {
          LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
          LEFT JOIN LearningMaterials lm ON lm.ModuleID = m.ModuleID
          LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, m.LinkedTpaModuleID, mt.TypeName, meta.CoverImageUrl
+        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, m.LinkedTpaModuleID, m.LinkedOnsiteModuleID, mt.TypeName, meta.CoverImageUrl
         ORDER BY m.ModuleID DESC`
     );
 
@@ -224,6 +242,7 @@ async function listModules(req, res) {
       moduleTypeId: row.ModuleTypeID,
       moduleType: row.TypeName || 'Theory',
       linkedTpaModuleId: row.LinkedTpaModuleID || null,
+      linkedOnsiteModuleId: row.LinkedOnsiteModuleID || null,
       moduleImageUrl: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
       sectionCount: Number(row.SectionCount || 0),
     }));
@@ -385,11 +404,28 @@ async function createModule(req, res) {
 
     console.debug('createModule resolved moduleTypeId:', { requestedModuleTypeId, resolvedModuleTypeId: moduleTypeId });
 
-    // Validate linkedTpaModuleId if provided
+    // Validate linked TPA relationship if provided
     let linkedTpaModuleId = null;
     if (Number.isFinite(requestedLinkedTpaModuleId) && requestedLinkedTpaModuleId > 0) {
+      const sourceModuleTypeName = await getModuleTypeNameById(
+        connection.execute.bind(connection),
+        moduleTypeId
+      );
+
+      if (sourceModuleTypeName !== ONSITE_MODULE_TYPE_NAME) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Only On-Site Training Modules can be linked to a TPA module.",
+        });
+      }
+
       const [tpaModuleRows] = await connection.execute(
-        "SELECT ModuleID FROM Modules WHERE ModuleID = ? LIMIT 1",
+        `SELECT m.ModuleID, mt.TypeName
+           FROM Modules m
+           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+          WHERE m.ModuleID = ?
+          LIMIT 1`,
         [requestedLinkedTpaModuleId]
       );
 
@@ -398,6 +434,14 @@ async function createModule(req, res) {
         return res.status(400).json({
           success: false,
           message: "Linked TPA module does not exist.",
+        });
+      }
+
+      if (tpaModuleRows[0].TypeName !== TPA_MODULE_TYPE_NAME) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Linked module must be a Total Protected Area module.",
         });
       }
 
@@ -536,11 +580,36 @@ async function updateModule(req, res) {
       currentModuleTypeId
     );
 
-    // Validate linkedTpaModuleId if provided
+    // Validate linked TPA relationship if provided
     let linkedTpaModuleId = currentLinkedTpaModuleId;
     if (Number.isFinite(requestedLinkedTpaModuleId) && requestedLinkedTpaModuleId > 0) {
+      if (Number(moduleId) === requestedLinkedTpaModuleId) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "A module cannot be linked to itself.",
+        });
+      }
+
+      const sourceModuleTypeName = await getModuleTypeNameById(
+        connection.execute.bind(connection),
+        moduleTypeId
+      );
+
+      if (sourceModuleTypeName !== ONSITE_MODULE_TYPE_NAME) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Only On-Site Training Modules can be linked to a TPA module.",
+        });
+      }
+
       const [tpaModuleRows] = await connection.execute(
-        "SELECT ModuleID FROM Modules WHERE ModuleID = ? LIMIT 1",
+        `SELECT m.ModuleID, mt.TypeName
+           FROM Modules m
+           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+          WHERE m.ModuleID = ?
+          LIMIT 1`,
         [requestedLinkedTpaModuleId]
       );
 
@@ -552,10 +621,31 @@ async function updateModule(req, res) {
         });
       }
 
+      if (tpaModuleRows[0].TypeName !== TPA_MODULE_TYPE_NAME) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Linked module must be a Total Protected Area module.",
+        });
+      }
+
       linkedTpaModuleId = requestedLinkedTpaModuleId;
     } else if (requestedLinkedTpaModuleId === 0) {
       // Explicitly clear the link if 0 is passed
       linkedTpaModuleId = null;
+    }
+
+    const finalModuleTypeName = await getModuleTypeNameById(
+      connection.execute.bind(connection),
+      moduleTypeId
+    );
+
+    if (finalModuleTypeName !== ONSITE_MODULE_TYPE_NAME && linkedTpaModuleId) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Only On-Site Training Modules can keep a linked TPA module. Clear the link first.",
+      });
     }
 
     await connection.execute(
@@ -634,6 +724,136 @@ async function updateModule(req, res) {
 }
 
 /**
+ * Admin: link or unlink an On-Site module to a TPA module by module ID.
+ */
+async function linkModuleToTpa(req, res) {
+  const moduleId = Number.parseInt(req.params.moduleId, 10);
+  const requestedLinkedTpaModuleId = Number.parseInt(req.body.linkedTpaModuleId, 10);
+  const shouldClear = requestedLinkedTpaModuleId === 0;
+
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [sourceRows] = await connection.execute(
+      `SELECT m.ModuleID, m.ModuleTypeID, mt.TypeName, m.LinkedTpaModuleID
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.ModuleID = ?
+        LIMIT 1`,
+      [moduleId]
+    );
+
+    if (sourceRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Module not found.",
+      });
+    }
+
+    const source = sourceRows[0];
+
+    if (source.TypeName !== ONSITE_MODULE_TYPE_NAME) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Only On-Site Training Modules can be linked to a TPA module.",
+      });
+    }
+
+    if (shouldClear) {
+      await connection.execute(
+        "UPDATE Modules SET LinkedTpaModuleID = NULL WHERE ModuleID = ?",
+        [moduleId]
+      );
+
+      await connection.commit();
+      return res.json({
+        success: true,
+        message: "TPA link cleared successfully.",
+        data: {
+          moduleId,
+          linkedTpaModuleId: null,
+        },
+      });
+    }
+
+    if (!Number.isFinite(requestedLinkedTpaModuleId) || requestedLinkedTpaModuleId <= 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "linkedTpaModuleId is required and must be a positive integer, or 0 to clear.",
+      });
+    }
+
+    if (moduleId === requestedLinkedTpaModuleId) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "A module cannot be linked to itself.",
+      });
+    }
+
+    const [targetRows] = await connection.execute(
+      `SELECT m.ModuleID, mt.TypeName
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.ModuleID = ?
+        LIMIT 1`,
+      [requestedLinkedTpaModuleId]
+    );
+
+    if (targetRows.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Linked TPA module does not exist.",
+      });
+    }
+
+    if (targetRows[0].TypeName !== TPA_MODULE_TYPE_NAME) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Linked module must be a Total Protected Area module.",
+      });
+    }
+
+    await connection.execute(
+      "UPDATE Modules SET LinkedTpaModuleID = ? WHERE ModuleID = ?",
+      [requestedLinkedTpaModuleId, moduleId]
+    );
+
+    await connection.commit();
+    return res.json({
+      success: true,
+      message: "Module linked to TPA successfully.",
+      data: {
+        moduleId,
+        linkedTpaModuleId: requestedLinkedTpaModuleId,
+      },
+    });
+  } catch (error) {
+    if (connection) {
+      await connection.rollback().catch(() => {});
+    }
+
+    console.error("Link module to TPA error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to link module to TPA.",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+}
+
+/**
  * Admin: delete module.
  */
 async function deleteModule(req, res) {
@@ -698,6 +918,7 @@ module.exports = {
   uploadModuleCoverImage,
   createModule,
   updateModule,
+  linkModuleToTpa,
   deleteModule,
   getModuleTypes,
 };

@@ -102,8 +102,10 @@ CREATE TABLE IF NOT EXISTS Modules (
   QualificationID INT UNSIGNED NOT NULL,
   ModuleTitle VARCHAR(160) NOT NULL,
   LinkedTpaModuleID INT UNSIGNED NULL,
+  LinkedOnsiteModuleID INT UNSIGNED NULL,
   CONSTRAINT fk_modules_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE,
-  CONSTRAINT fk_modules_linked_tpa_module FOREIGN KEY (LinkedTpaModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL
+  CONSTRAINT fk_modules_linked_tpa_module FOREIGN KEY (LinkedTpaModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL,
+  CONSTRAINT fk_modules_linked_onsite_module FOREIGN KEY (LinkedOnsiteModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS ModuleUiMeta (

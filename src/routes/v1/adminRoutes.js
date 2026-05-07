@@ -388,6 +388,22 @@ router.put(
 );
 
 /**
+ * PATCH /admin/modules/:moduleId/link-tpa - Link/unlink On-Site module to TPA module by ID
+ */
+router.patch(
+  "/modules/:moduleId/link-tpa",
+  [
+    param("moduleId").isInt({ min: 1 }).withMessage("Invalid module ID."),
+    body("linkedTpaModuleId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0 })
+      .withMessage("Linked TPA Module ID must be a positive integer or 0 to clear the link."),
+  ],
+  validate,
+  asyncHandler(moduleAdminController.linkModuleToTpa)
+);
+
+/**
  * DELETE /admin/modules/:moduleId - Delete module
  */
 router.delete(

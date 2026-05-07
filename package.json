@@ -9,6 +9,7 @@
     "seed:admin": "node scripts/seedAdmin.js",
     "seed:sample": "node scripts/seedSampleData.js",
     "seed:clear": "node scripts/clearSampleData.js",
+    "migrate:linked-tpa": "node scripts/runLinkedTpaMigration.js",
     "mobile:start": "npm --prefix mobile run start",
     "mobile:android": "npm --prefix mobile run android",
     "mobile:ios": "npm --prefix mobile run ios",

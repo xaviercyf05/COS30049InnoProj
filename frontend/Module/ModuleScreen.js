@@ -18,6 +18,7 @@ import {
   useSafeAreaInsets,
 } from "react-native-safe-area-context";
 import { requestProfileApi } from "../Profile/profileApi.js";
+import * as DocumentPicker from 'expo-document-picker';
 import {
   saveModuleProgress,
   fetchModuleProgress,
@@ -249,15 +250,28 @@ function ModuleScreen({
     }
   };
 
-  const pickPaymentEvidence = () => {
+  const pickPaymentEvidence = async () => {
     if (isWeb) {
       fileInputRef.current?.click();
-    } else {
-      Alert.alert(
-        "File Upload",
-        "Please use the web version or install expo-document-picker for full mobile support.",
-        [{ text: "OK" }],
-      );
+      return;
+    }
+
+    try {
+      const result = await DocumentPicker.getDocumentAsync({
+        type: 'application/pdf',
+        copyToCacheDirectory: true,
+      });
+
+      if (!result.canceled && result.assets?.length > 0) {
+        const file = result.assets[0];
+        setSelectedFile({
+          name: file.name,
+          uri: file.uri,
+          type: file.mimeType || 'application/pdf',
+        });
+      }
+    } catch (err) {
+      Alert.alert('Error', 'Failed to pick file');
     }
   };
 
@@ -1225,6 +1239,7 @@ function ModuleScreen({
         transparent={true}
         visible={paymentModalVisible}
         onRequestClose={() => setPaymentModalVisible(false)}
+        statusBarTranslucent={true}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.paymentModalCard}>
@@ -1651,11 +1666,17 @@ const styles = StyleSheet.create({
     backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "center",
     padding: 20,
+    paddingTop: Platform.OS === 'android' ? 30 : 0,
   },
   paymentModalCard: {
-    backgroundColor: "#FFFFFF",
+    backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 24,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1,
+    shadowRadius: 10,
+    elevation: 5,
   },
   modalTitle: {
     fontSize: 20,
@@ -1822,6 +1843,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '800',
+  },
+  fullModalContainer: {
+    flex: 1,
+    backgroundColor: '#F7F9F4',
+  },
+  modalScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    padding: 20,
   }
 });
 

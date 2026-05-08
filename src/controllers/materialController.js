@@ -82,7 +82,9 @@ async function getDashboardModules(req, res) {
                 m.ModuleTitle,
                 m.ModuleTypeID,
                 mt.TypeName,
-                meta.CoverImageUrl
+                 meta.CoverImageUrl,
+                 m.LinkedTpaModuleID,
+                 m.LinkedOnsiteModuleID
            FROM Modules m
            LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
            LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
@@ -101,7 +103,9 @@ async function getDashboardModules(req, res) {
                 m.ModuleTitle,
                 m.ModuleTypeID,
                 mt.TypeName,
-                meta.CoverImageUrl
+                 meta.CoverImageUrl,
+                 m.LinkedTpaModuleID,
+                 m.LinkedOnsiteModuleID
            FROM Certificates c
            INNER JOIN Modules m ON m.QualificationID = c.QualificationID
            LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
@@ -129,7 +133,9 @@ async function getDashboardModules(req, res) {
                 m.ModuleTitle,
                 m.ModuleTypeID,
                 mt.TypeName,
-                meta.CoverImageUrl
+                 meta.CoverImageUrl,
+                 m.LinkedTpaModuleID,
+                 m.LinkedOnsiteModuleID
            FROM Modules m
            LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
            LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
@@ -216,7 +222,9 @@ async function getDashboardModules(req, res) {
         moduleTypeId: row.ModuleTypeID,
         moduleType: row.TypeName || "Unassigned",
         image: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
-      };
+          linkedTpaModuleId: row.LinkedTpaModuleID || null,
+          linkedOnsiteModuleId: row.LinkedOnsiteModuleID || null,
+        };
     });
 
     const overallProgress = data.length > 0

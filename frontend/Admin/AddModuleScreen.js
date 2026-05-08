@@ -47,7 +47,7 @@ function normalizeModuleType(value) {
 
   const normalized = String(value || '').trim().toLowerCase();
 
-  if (normalized === 'general') {
+  if (normalized === 'general modules' || normalized === 'general') {
     return 'general';
   }
 
@@ -55,7 +55,8 @@ function normalizeModuleType(value) {
     normalized === 'park-specific' ||
     normalized === 'park_specific' ||
     normalized === 'tpa' ||
-    normalized === 'total protected area'
+    normalized === 'total protected area' ||
+    normalized === 'total protected area modules'
   ) {
     return 'park-specific';
   }
@@ -64,7 +65,8 @@ function normalizeModuleType(value) {
     normalized === 'on-site' ||
     normalized === 'onsite' ||
     normalized === 'on_site' ||
-    normalized === 'on site training'
+    normalized === 'on site training' ||
+    normalized === 'on-site training modules'
   ) {
     return 'on-site';
   }

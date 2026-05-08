@@ -47,7 +47,7 @@ function normalizeModuleType(value) {
 
   const normalized = String(value || '').trim().toLowerCase();
 
-  if (normalized === 'general') {
+  if (normalized === 'general modules' || normalized === 'general') {
     return 'general';
   }
 
@@ -55,7 +55,8 @@ function normalizeModuleType(value) {
     normalized === 'park-specific' ||
     normalized === 'park_specific' ||
     normalized === 'tpa' ||
-    normalized === 'total protected area'
+    normalized === 'total protected area' ||
+    normalized === 'total protected area modules'
   ) {
     return 'park-specific';
   }
@@ -64,7 +65,8 @@ function normalizeModuleType(value) {
     normalized === 'on-site' ||
     normalized === 'onsite' ||
     normalized === 'on_site' ||
-    normalized === 'on site training'
+    normalized === 'on site training' ||
+    normalized === 'on-site training modules'
   ) {
     return 'on-site';
   }
@@ -904,6 +906,22 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
               const moduleIdentifier = moduleItem.id || `module-${moduleItem.moduleId}`;
               const moduleNumericId = moduleItem.moduleId || extractNumericModuleId(moduleIdentifier);
               const isActive = draft.id === moduleIdentifier;
+              
+              // Find linked module names for display
+              let linkedModuleDisplay = '';
+              const normalizedType = moduleTypeIdToString(moduleItem.moduleTypeId);
+              
+              if (normalizedType === 'on-site' && moduleItem.linkedTpaModuleId) {
+                const linkedModule = modules.find(m => m.moduleId === moduleItem.linkedTpaModuleId);
+                if (linkedModule) {
+                  linkedModuleDisplay = ` (linked to: ${linkedModule.title})`;
+                }
+              } else if (normalizedType === 'park-specific' && moduleItem.linkedOnsiteModuleId) {
+                const linkedOnSiteModule = modules.find(m => m.moduleId === moduleItem.linkedOnsiteModuleId);
+                if (linkedOnSiteModule) {
+                  linkedModuleDisplay = ` (has on-site: ${linkedOnSiteModule.title})`;
+                }
+              }
 
               return (
                 <TouchableOpacity
@@ -915,7 +933,7 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
                   <View style={styles.libraryMeta}>
                     <Text style={styles.libraryName}>{moduleItem.title}</Text>
                     <Text style={styles.librarySubtext}>
-                      {moduleItem.sectionCount || 0} section(s)
+                      Type: {moduleItem.moduleType || 'Unknown'} • {moduleItem.sectionCount || 0} section(s){linkedModuleDisplay}
                     </Text>
                   </View>
 

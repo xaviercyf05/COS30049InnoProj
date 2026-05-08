@@ -385,19 +385,38 @@ function ModuleScreen({ route, navigation, currentProfile, useSharedChrome = fal
           setSelectedSectionId(formattedSections[0]?.id || null);
           setExpandedSectionIds(new Set());
           
-          // Restore saved progress for this module
+          // Restore saved progress for this module (but filter to current section IDs)
           try {
             const token = await AsyncStorage.getItem('innopapp_auth_token');
             const savedProgress = await fetchModuleProgress(routeModuleId, token);
-            
-            if (active && savedProgress.visitedSectionIds && savedProgress.visitedSectionIds.length > 0) {
-              // Restore visited sections from saved progress
-              setVisitedSectionIds(new Set(savedProgress.visitedSectionIds));
-              // Auto-select the first section to show current progress
-              if (savedProgress.visitedSectionIds.length > 0) {
-                setSelectedSectionId(savedProgress.visitedSectionIds[0]);
-              }
-              console.log(`Restored progress for module ${routeModuleId}: ${savedProgress.visitedSectionIds.length} sections visited`);
+
+            const allIds = new Set();
+            const subsectionToParent = new Map();
+            formattedSections.forEach((sec) => {
+              allIds.add(sec.id);
+              (sec.subsections || []).forEach((sub) => {
+                allIds.add(sub.id);
+                subsectionToParent.set(sub.id, sec.id);
+              });
+            });
+
+            const cleanedVisited = new Set();
+
+            (savedProgress.visitedSectionIds || []).forEach((id) => {
+              if (!id) return;
+              if (!allIds.has(id)) return; // ignore stale ids
+              cleanedVisited.add(id);
+              // ensure parent section is marked visited if a subsection was visited
+              const parent = subsectionToParent.get(id);
+              if (parent) cleanedVisited.add(parent);
+            });
+
+            if (cleanedVisited.size > 0) {
+              setVisitedSectionIds(cleanedVisited);
+              // pick a sensible selected section: first cleaned id or first section
+              const firstSelected = Array.from(cleanedVisited)[0] || formattedSections[0]?.id;
+              setSelectedSectionId(firstSelected);
+              console.log(`Restored progress for module ${routeModuleId}: ${cleanedVisited.size} sections visited`);
             } else {
               // No saved progress, mark first section as visited
               setVisitedSectionIds(formattedSections[0]?.id ? new Set([formattedSections[0].id]) : new Set());

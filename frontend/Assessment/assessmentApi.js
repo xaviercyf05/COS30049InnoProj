@@ -218,13 +218,14 @@ export async function submitAssessmentAttempt(assessmentId, answers, timeUsedSec
 	const payload = response.data?.data || response.data || {};
 	const submitted = {
 		error: null,
-		score: payload.score || 0,
+		score: payload.score ?? 0,
 		passed: payload.passed === true,
 		status: payload.status || '',
 		totalQuestions: payload.totalQuestions || 0,
 		correctCount: payload.correctCount || 0,
-		feeedbackMessage: payload.feedbackMessage || '',
+		feedbackMessage: payload.feedbackMessage || payload.feeedbackMessage || '',
 		attemptId: payload.attemptId,
+		passingScore: payload.passingScore ?? payload.passing_score ?? null,
 	};
 
 	console.log('Assessment submitted successfully:', submitted);

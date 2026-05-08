@@ -426,6 +426,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 10,
+    marginTop: 8,
   },
   heroButtonText: {
     color: '#FFFFFF',

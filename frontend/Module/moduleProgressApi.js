@@ -82,8 +82,21 @@ export function calculateProgressPercent(visitedSectionIds, allSections) {
     return 0;
   }
 
-  // Count visited items
-  visitedSectionIds.forEach((sectionId) => {
+  // Build set of valid ids from current section structure
+  const validIds = new Set();
+  allSections.forEach((section) => {
+    validIds.add(section.id);
+    (section.subsections || []).forEach((sub) => validIds.add(sub.id));
+  });
+
+  // Count visited items but only those present in the current module structure
+  const visitedIterable = Array.isArray(visitedSectionIds) ? visitedSectionIds : Array.from(visitedSectionIds);
+  const seen = new Set();
+  visitedIterable.forEach((sectionId) => {
+    if (!sectionId) return;
+    if (!validIds.has(sectionId)) return;
+    if (seen.has(sectionId)) return;
+    seen.add(sectionId);
     visitedItems += 1;
   });
 

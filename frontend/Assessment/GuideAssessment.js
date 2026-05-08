@@ -189,19 +189,18 @@ function GuideAssessment({ navigation, route }) {
 			const timeUsed = formatDuration(timeUsedSeconds);
 			console.log('Navigating to SubmittedPage with:', {
 				score: result.score,
-				passed: result.passed,
 				totalQuestions: questions.length,
 			});
 
+			// Let SubmittedPage compute pass/fail from provided `score` and `passingScore`.
 			navigation.navigate('SubmittedPage', {
 				moduleName,
 				moduleOrder,
 				timeUsed,
 				answeredCount: localAnswered,
 				totalQuestions: questions.length,
-				score: result.score || 0,
+				score: result.score ?? 0,
 				correctCount: result.correctCount ?? null,
-				passed: result.passed === true || (Number.isFinite(Number(result.passingScore)) && Number(result.score) >= Number(result.passingScore)),
 				feedbackMessage: result.feedbackMessage || '',
 				moduleId,
 				attemptId: result.attemptId,

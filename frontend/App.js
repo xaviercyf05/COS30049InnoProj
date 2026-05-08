@@ -90,7 +90,7 @@ function normalizeModuleType(value, fallback = 'general') {
 
 	const normalized = String(value || '').trim().toLowerCase();
 
-	if (normalized === 'general') {
+	if (normalized === 'general modules' || normalized === 'general') {
 		return 'general';
 	}
 
@@ -98,7 +98,8 @@ function normalizeModuleType(value, fallback = 'general') {
 		normalized === 'park-specific' ||
 		normalized === 'park_specific' ||
 		normalized === 'tpa' ||
-		normalized === 'total protected area'
+		normalized === 'total protected area' ||
+		normalized === 'total protected area modules'
 	) {
 		return 'park-specific';
 	}
@@ -107,7 +108,8 @@ function normalizeModuleType(value, fallback = 'general') {
 		normalized === 'on-site' ||
 		normalized === 'onsite' ||
 		normalized === 'on_site' ||
-		normalized === 'on site training'
+		normalized === 'on site training' ||
+		normalized === 'on-site training modules'
 	) {
 		return 'on-site';
 	}
@@ -275,11 +277,12 @@ function buildProgressionModules(modules, isAdmin) {
 		}
 
 		if (stage === 'on-site') {
-			const trackIndex = onSiteModules.findIndex(
-				(onSiteModule) => String(onSiteModule.moduleId) === String(module.moduleId)
-			);
-			prerequisiteModuleId = parkSpecificModules[trackIndex]?.moduleId ?? null;
-			unlocked = !prerequisiteModuleId || passedModuleIds.has(String(prerequisiteModuleId));
+			// Use the linkedTpaModuleId from the module object (database relationship)
+			// instead of array index matching to correctly link to the corresponding TPA module
+			prerequisiteModuleId = module.linkedTpaModuleId ?? null;
+			// On-site modules MUST have a TPA prerequisite and it MUST be passed to unlock
+			// If linkedTpaModuleId is null/undefined, the module stays locked
+			unlocked = prerequisiteModuleId ? passedModuleIds.has(String(prerequisiteModuleId)) : false;
 			lockReason = unlocked
 				? ''
 				: 'Complete and pass the matching Park Specific assessment to unlock this On-Site module.';
@@ -474,6 +477,9 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 						moduleTypeId: parseModuleTypeId(module) || normalizeModuleTypeId(getModuleTypeValue(module)),
 						image: resolveApiAssetUri(module.moduleImageUrl || module.image) || module.moduleImageUrl || module.image,
 						progressPercent: Number(module.progressPercent || module.progress || 0),
+						// Preserve linking relationships from the API response
+						linkedTpaModuleId: module.linkedTpaModuleId || null,
+						linkedOnsiteModuleId: module.linkedOnsiteModuleId || null,
 					};
 				});
 

@@ -273,9 +273,7 @@ export default function ProfileScreen({ navigation }) {
                       />
                     </View>
 
-                    <Text style={styles.moduleCardStatus}>
-                      {module.unlocked ? 'In progress' : module.lockReason || 'Locked'}
-                    </Text>
+                    {/* status text intentionally removed per UX request */}
                   </View>
                 ))}
               </View>
@@ -428,6 +426,7 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     paddingHorizontal: 16,
     paddingVertical: 10,
+    marginTop: 8,
   },
   heroButtonText: {
     color: '#FFFFFF',

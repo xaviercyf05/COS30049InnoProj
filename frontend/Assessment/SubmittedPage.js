@@ -25,11 +25,31 @@ function SubmittedPage({ navigation, route }) {
 			}
 		}
 
-		const numericPassing = Number.isFinite(Number(passingScore)) ? Number(passingScore) : null;
+	// Normalize passing score: backends may send fraction (0.7) or percent (70)
+	let numericPassing = Number.isFinite(Number(passingScore)) ? Number(passingScore) : null;
+	if (numericPassing !== null) {
+		if (numericPassing > 0 && numericPassing <= 1) {
+			numericPassing = numericPassing * 100;
+		}
+	}
 
-		const passed = numericPassing !== null
-			? (scorePercent !== null ? Number(scorePercent) >= Number(numericPassing) : route?.params?.passed === true)
-			: route?.params?.passed === true;
+	// Compute pass/fail: require numericPassing to be present and compare against normalized scorePercent
+	const passed = numericPassing !== null
+		? (scorePercent !== null ? Number(scorePercent) >= Number(numericPassing) : route?.params?.passed === true)
+		: route?.params?.passed === true;
+
+	// Debug log to help track incorrect pass/fail cases
+	if (typeof console !== 'undefined' && console.debug) {
+		console.debug('SubmittedPage params:', {
+			moduleId,
+			score,
+			rawScore,
+			scorePercent,
+			passingScore,
+			numericPassing,
+			passed,
+		});
+	}
 	const feedbackMessage = route?.params?.feedbackMessage || '';
 	const attemptId = route?.params?.attemptId;
 	const assessmentId = route?.params?.assessmentId;

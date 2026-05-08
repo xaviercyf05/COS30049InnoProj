@@ -273,9 +273,7 @@ export default function ProfileScreen({ navigation }) {
                       />
                     </View>
 
-                    <Text style={styles.moduleCardStatus}>
-                      {module.unlocked ? 'In progress' : module.lockReason || 'Locked'}
-                    </Text>
+                    {/* status text intentionally removed per UX request */}
                   </View>
                 ))}
               </View>

@@ -565,20 +565,26 @@ function ModuleScreen({
           setSections(formattedSections);
           setSelectedSectionId(formattedSections[0]?.id || null);
           setExpandedSectionIds(new Set());
-          
-          // Restore saved progress for this module
+
           try {
-            const token = await AsyncStorage.getItem('innopapp_auth_token');
-            const savedProgress = await fetchModuleProgress(routeModuleId, token);
-            
-            if (active && savedProgress.visitedSectionIds && savedProgress.visitedSectionIds.length > 0) {
-              // Restore visited sections from saved progress
+            const token = await AsyncStorage.getItem("innopapp_auth_token");
+            const savedProgress = await fetchModuleProgress(
+              routeModuleId,
+              token,
+            );
+
+            if (
+              active &&
+              savedProgress.visitedSectionIds &&
+              savedProgress.visitedSectionIds.length > 0
+            ) {
               setVisitedSectionIds(new Set(savedProgress.visitedSectionIds));
-              // Auto-select the first section to show current progress
               if (savedProgress.visitedSectionIds.length > 0) {
                 setSelectedSectionId(savedProgress.visitedSectionIds[0]);
               }
-              console.log(`Restored progress for module ${routeModuleId}: ${savedProgress.visitedSectionIds.length} sections visited`);
+              console.log(
+                `Restored progress for module ${routeModuleId}: ${savedProgress.visitedSectionIds.length} sections visited`,
+              );
             } else {
               setVisitedSectionIds(
                 formattedSections[0]?.id

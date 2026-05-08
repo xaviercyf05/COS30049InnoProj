@@ -256,13 +256,14 @@ function ModuleScreen({
       return;
     }
 
+    // Mobile
     try {
       const result = await DocumentPicker.getDocumentAsync({
         type: 'application/pdf',
         copyToCacheDirectory: true,
       });
 
-      if (!result.canceled && result.assets?.length > 0) {
+      if (!result.canceled && result.assets?.[0]) {
         const file = result.assets[0];
         setSelectedFile({
           name: file.name,
@@ -271,7 +272,7 @@ function ModuleScreen({
         });
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to pick file');
+      Alert.alert('Error', 'Failed to pick PDF file');
     }
   };
 
@@ -291,51 +292,68 @@ function ModuleScreen({
 
   const submitPaymentEvidence = async () => {
     if (!selectedFile) {
-      Alert.alert("Missing File", "Please upload your payment receipt (PDF)");
+      Alert.alert('Missing File', 'Please select a PDF file first');
       return;
     }
 
     setIsSubmitting(true);
 
     try {
-      const token = await AsyncStorage.getItem("innopapp_auth_token");
-      if (!token) throw new Error("No session");
+      const token = await AsyncStorage.getItem('innopapp_auth_token');
+      if (!token) {
+        Alert.alert('Error', 'No authentication token found');
+        return;
+      }
 
       const formData = new FormData();
+      formData.append('moduleId', routeModuleId);
+      formData.append('reference', BANK_DETAILS.referenceFormat);
 
-      formData.append("moduleId", routeModuleId);
-      formData.append("reference", BANK_DETAILS.referenceFormat);
-
+      // === WEB vs MOBILE handling ===
       if (isWeb && selectedFile.fileObject) {
-        formData.append("evidence", selectedFile.fileObject);
+        formData.append('evidence', selectedFile.fileObject, selectedFile.fileObject.name);
       } else if (selectedFile.uri) {
-        formData.append("evidence", {
+        formData.append('evidence', {
           uri: selectedFile.uri,
           name: selectedFile.name,
-          type: selectedFile.type || "application/pdf",
+          type: selectedFile.type || 'application/pdf',
         });
       }
 
-      const response = await requestProfileApi(
-        "/api/v1/enrollment/submit-payment",
-        token,
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
+      console.log('🚀 Submitting payment on', isWeb ? 'WEB' : 'MOBILE'); // Debug log
 
-      if (response?.success || response?.ok) {
-        Alert.alert(
-          "✅ Submitted",
-          "Payment evidence submitted successfully. Admin will review it.",
-        );
-        setPaymentModalVisible(false);
-        setSelectedFile(null);
-        setPaymentStatus("pending");
+      const response = await requestProfileApi('/api/v1/enrollment/submit-payment', token, {
+        method: 'POST',
+        body: formData,
+        headers: {
+          // Do NOT set Content-Type manually for FormData
+        },
+      });
+
+      console.log('✅ API Response:', response);
+
+      if (response?.success || response?.ok || response?.status === 200) {
+        Alert.alert('✅ Success', 'Payment evidence submitted successfully!', [
+          { 
+            text: 'OK', 
+            onPress: () => {
+              setPaymentModalVisible(false);
+              setSelectedFile(null);
+              setPaymentStatus('pending');
+              fetchPaymentStatus();
+            } 
+          }
+        ]);
+      } else {
+        throw new Error('Server returned error');
       }
-    } catch (error) {
-      Alert.alert("Error", "Failed to submit payment evidence.");
+    } catch (err) {
+      console.error('❌ Submit Error:', err);
+      Alert.alert(
+        'Submission Failed', 
+        'Please check your connection and try again.\n\n' + 
+        (err.message ? err.message : 'Unknown error')
+      );
     } finally {
       setIsSubmitting(false);
     }

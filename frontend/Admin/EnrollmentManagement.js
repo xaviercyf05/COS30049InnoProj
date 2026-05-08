@@ -40,7 +40,7 @@ const DEFAULT_REQUESTS = [
 		paymentReference: 'TXN-884201',
 		evidenceLabel: 'receipt_bako_101.pdf',
 		submittedAt: 'Today, 8:20 AM',
-		evidenceVerified: true,
+		evidenceVerified: false,
 		status: 'pending',
 		note: 'Uploaded bank receipt and transaction slip.',
 	},
@@ -251,21 +251,12 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 							<View style={styles.cardHeader}>
 								<View>
 									<Text style={styles.cardTitle}>{item.guideName}</Text>
-									<Text style={styles.cardMeta}>{item.guideId} • {item.park}</Text>
-								</View>
-								<View style={[styles.statusBadge, { backgroundColor: statusStyle.backgroundColor }]}>
-									<Text style={[styles.statusText, { color: statusStyle.color }]}>
-										{item.status.toUpperCase()}
-									</Text>
 								</View>
 							</View>
 
-							<Text style={styles.detail}>Module: {item.module}</Text>
+							<Text style={styles.detail}>Module: {item.park}</Text>
 							<Text style={styles.detail}>Fee: {item.fee}</Text>
-							<Text style={styles.detail}>Payment method: {item.paymentMethod}</Text>
-							<Text style={styles.detail}>Reference: {item.paymentReference}</Text>
 							<Text style={styles.detail}>Submitted: {item.submittedAt}</Text>
-							<Text style={styles.noteText}>Note: {item.note}</Text>
 
 							<View style={styles.evidenceRow}>
 								<View style={[styles.evidencePill, item.evidenceVerified ? styles.evidenceVerified : styles.evidencePending]}>

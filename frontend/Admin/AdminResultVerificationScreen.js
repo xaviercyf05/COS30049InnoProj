@@ -81,7 +81,7 @@ const normalizeResult = (item, fallbackIndex = 0) => {
 		id: String(item?.id || item?.attemptId || item?.AttemptID || item?.userId || fallbackIndex),
 		userId: item?.userId || item?.UserID || null,
 		parkGuideName: item?.parkGuideName || item?.userName || item?.UserName || `Park Guide ${fallbackIndex + 1}`,
-		moduleName: item?.moduleName || item?.assessmentTitle || item?.Title || item?.module || 'Module',
+		moduleName: item?.moduleName || item?.assessmentTitle || item?.Title || item?.module,
 		moduleId: item?.moduleId || item?.ModuleID || null,
 		dateAttempt: item?.dateAttempt || item?.submittedAt || item?.SubmittedAt || null,
 		timeUsedSeconds: item?.timeUsedSeconds ?? item?.timeUsed ?? item?.TimeUsedSeconds ?? null,
@@ -756,7 +756,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 							const passed = item.passed || Number(item.finalScore) >= itemPassingScore;
 							const statusLabel = item.rowType === 'on-site'
 								? item.completionStatus === 'completed' ? 'Completed' : 'Incomplete'
-								: passed ? 'Passed' : 'Attempt';
+								: passed ? 'Passed' : 'Failed';
 							const statusStyle = item.rowType === 'on-site'
 								? item.completionStatus === 'completed' ? styles.statusPillComplete : styles.statusPillIncomplete
 								: passed ? styles.statusPillComplete : styles.statusPillIncomplete;
@@ -1007,7 +1007,8 @@ const styles = StyleSheet.create({
 		borderWidth: 1,
 		borderColor: COLORS.sageBorder,
 		padding: 18,
-		marginBottom: 14,
+		marginTop: 8,
+		marginBottom: 8,
 	},
 	heroKicker: {
 		fontSize: 11,
@@ -1146,7 +1147,7 @@ const styles = StyleSheet.create({
 		paddingHorizontal: 12,
 		borderWidth: 1,
 		borderColor: COLORS.sageBorder,
-		marginTop: 6,
+		marginBottom: 10,
 	},
 	emptyText: {
 		fontSize: 13,

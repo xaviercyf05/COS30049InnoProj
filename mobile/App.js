@@ -321,14 +321,12 @@ export default function App() {
             <>
               <TextInput
                 style={styles.input}
-                placeholder="Admin username"
                 value={loginUsername}
                 onChangeText={setLoginUsername}
                 autoCapitalize="none"
               />
               <TextInput
                 style={styles.input}
-                placeholder="Admin password"
                 secureTextEntry
                 value={loginPassword}
                 onChangeText={setLoginPassword}
@@ -352,13 +350,11 @@ export default function App() {
               <Text style={styles.formTitle}>Create Qualification</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Qualification name"
                 value={qualificationName}
                 onChangeText={setQualificationName}
               />
               <TextInput
                 style={styles.input}
-                placeholder="Status: Active or Inactive"
                 value={qualificationStatus}
                 onChangeText={setQualificationStatus}
                 autoCapitalize="none"
@@ -370,20 +366,17 @@ export default function App() {
               <Text style={styles.formTitle}>Create Announcement</Text>
               <TextInput
                 style={styles.input}
-                placeholder="Announcement title"
                 value={announcementTitle}
                 onChangeText={setAnnouncementTitle}
               />
               <TextInput
                 style={[styles.input, styles.textArea]}
-                placeholder="Announcement content"
                 multiline
                 value={announcementContent}
                 onChangeText={setAnnouncementContent}
               />
               <TextInput
                 style={styles.input}
-                placeholder="Target role: User, Admin, or All"
                 value={announcementTargetRole}
                 onChangeText={setAnnouncementTargetRole}
                 autoCapitalize="none"

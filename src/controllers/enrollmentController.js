@@ -9,6 +9,8 @@ async function submitPaymentEvidence(req, res) {
     const reference = String(req.body.reference || '').trim();
     const file = req.file;
 
+    console.log('[submitPaymentEvidence] userId:', userId, 'moduleId:', moduleId, 'reference:', reference, 'file:', file?.filename);
+
     if (!userId) {
       return res.status(401).json({ success: false, message: 'Authentication required.' });
     }
@@ -21,11 +23,15 @@ async function submitPaymentEvidence(req, res) {
     const evidenceName = file ? file.originalname || file.filename : null;
     const evidenceMime = file ? file.mimetype : null;
 
+    console.log('[submitPaymentEvidence] Inserting payment record:', { userId, moduleId, reference, evidencePath, evidenceName, evidenceMime });
+
     const [result] = await query(
       `INSERT INTO Payments (UserID, ModuleID, Reference, EvidenceFilePath, EvidenceFileName, EvidenceMimeType, Status)
          VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
       [userId, moduleId, reference || null, evidencePath, evidenceName, evidenceMime]
     );
+
+    console.log('[submitPaymentEvidence] Insert successful, insertId:', result.insertId);
 
     // Notify admins about new payment evidence (best-effort)
     try {
@@ -50,8 +56,8 @@ async function submitPaymentEvidence(req, res) {
 
     return res.status(201).json({ success: true, message: 'Payment evidence submitted.', data: { paymentId: result.insertId } });
   } catch (error) {
-    console.error('Submit payment evidence error:', error);
-    return res.status(500).json({ success: false, message: 'Failed to submit payment evidence.' });
+    console.error('Submit payment evidence error:', error.message, error.code);
+    return res.status(500).json({ success: false, message: `Failed to submit payment evidence: ${error.message}` });
   }
 }
 

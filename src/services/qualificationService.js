@@ -314,15 +314,8 @@ async function canIssueBadgeForAssessment(userId, assessmentId) {
   }
 
   const assessment = assessmentRows[0];
-  const isOnsiteModule = String(assessment.TypeName || '').trim() === 'On-Site Training Modules';
-
-  if (!isOnsiteModule) {
-    return {
-      allowed: false,
-      reason: 'Badge can only be issued for an on-site module assessment',
-      assessment,
-    };
-  }
+  const normalizedTypeName = String(assessment.TypeName || '').trim().toLowerCase();
+  const isOnsiteModule = normalizedTypeName === 'on-site training modules';
 
   const passedAssessment = await isAssessmentPassed(userId, assessmentId);
   if (!passedAssessment) {
@@ -333,13 +326,15 @@ async function canIssueBadgeForAssessment(userId, assessmentId) {
     };
   }
 
-  const completedModule = await isModuleCompleted(userId, assessment.ModuleID);
-  if (!completedModule) {
-    return {
-      allowed: false,
-      reason: 'On-site module must be marked as completed by admin',
-      assessment,
-    };
+  if (isOnsiteModule) {
+    const completedModule = await isModuleCompleted(userId, assessment.ModuleID);
+    if (!completedModule) {
+      return {
+        allowed: false,
+        reason: 'On-site module must be marked as completed by admin',
+        assessment,
+      };
+    }
   }
 
   return {

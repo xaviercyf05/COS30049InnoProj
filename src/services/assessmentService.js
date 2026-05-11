@@ -169,6 +169,51 @@ async function checkAttemptEligibility(userId, assessmentId) {
 }
 
 /**
+ * Compare string answers with multiple matching conditions
+ * Supports: exact match, case-insensitive, trimmed whitespace, normalized punctuation
+ */
+function compareStringAnswers(userAnswer, correctAnswer) {
+  const user = String(userAnswer || '').trim();
+  const correct = String(correctAnswer || '').trim();
+
+  // Condition 1: Exact match (case-sensitive)
+  if (user === correct) {
+    return true;
+  }
+
+  // Condition 2: Case-insensitive match
+  if (user.toLowerCase() === correct.toLowerCase()) {
+    return true;
+  }
+
+  // Condition 3: Normalize punctuation and compare
+  const normalizePunctuation = (str) => {
+    return str
+      .replace(/[.,!?;:\-—–]/g, '') // Remove common punctuation
+      .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
+      .trim()
+      .toLowerCase();
+  };
+
+  const normalizedUser = normalizePunctuation(user);
+  const normalizedCorrect = normalizePunctuation(correct);
+
+  if (normalizedUser === normalizedCorrect) {
+    return true;
+  }
+
+  // Condition 4: Partial match (user answer contains all words from correct answer)
+  const userWords = new Set(user.toLowerCase().split(/\s+/).filter(Boolean));
+  const correctWords = correct.toLowerCase().split(/\s+/).filter(Boolean);
+
+  if (correctWords.every((word) => userWords.has(word))) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Submit assessment answers and calculate score
  */
 async function submitAssessmentAttempt(userId, assessmentId, answers, timeUsedSeconds = 0) {
@@ -218,9 +263,31 @@ async function submitAssessmentAttempt(userId, assessmentId, answers, timeUsedSe
         }
       } else if (answer.answer !== undefined && answer.answer !== null) {
         // Handle fill-in questions (with answer text)
-        // TODO: Implement proper text matching/comparison
-        console.log(`Fill-in question ${answer.questionId}: "${answer.answer}"`);
-        // For now, skip scoring fill-in questions - they need backend logic to match answers
+        try {
+          // Get the correct answer from the AssessmentOptions table (marked with IsCorrect = 1)
+          const [correctRows] = await query(
+            `SELECT ao.OptionText 
+             FROM AssessmentOptions ao 
+             WHERE ao.QuestionID = ? 
+             AND ao.IsCorrect = 1 
+             LIMIT 1`,
+            [answer.questionId]
+          );
+
+          if (correctRows && correctRows.length > 0) {
+            const correctAnswer = correctRows[0].OptionText;
+            const isMatch = compareStringAnswers(answer.answer, correctAnswer);
+            
+            if (isMatch) {
+              correctCount++;
+            }
+            console.log(`Fill-in question ${answer.questionId}: "${answer.answer}" vs "${correctAnswer}" - ${isMatch ? 'CORRECT' : 'INCORRECT'}`);
+          } else {
+            console.log(`No correct answer found for fill-in question ${answer.questionId}`);
+          }
+        } catch (error) {
+          console.error(`Error processing fill-in answer for question ${answer.questionId}:`, error);
+        }
       }
     }
 

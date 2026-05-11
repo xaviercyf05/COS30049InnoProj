@@ -194,6 +194,37 @@ router.get(
 );
 
 /**
+ * GET /admin/payments - List submitted payment evidence (admin)
+ */
+router.get(
+  "/payments",
+  asyncHandler(adminController.listPayments)
+);
+
+/**
+ * PUT /admin/payments/:paymentId/status - Approve or reject a payment evidence
+ * Body: { status: 'approved'|'rejected', remark?: string }
+ */
+router.put(
+  "/payments/:paymentId/status",
+  [
+    param("paymentId").isInt({ min: 1 }).withMessage("Invalid payment ID."),
+    body("status")
+      .trim()
+      .custom((value) => {
+        const normalized = String(value || "").toLowerCase();
+        if (!["approved", "rejected"].includes(normalized)) {
+          throw new Error("Status must be approved or rejected.");
+        }
+        return true;
+      }),
+    body("remark").optional({ values: "falsy" }).isLength({ max: 255 }).withMessage("Remark must be at most 255 characters."),
+  ],
+  validate,
+  asyncHandler(adminController.updatePaymentStatus)
+);
+
+/**
  * GET /admin/analytics/dashboard - Aggregated analytics dashboard data
  */
 router.get(

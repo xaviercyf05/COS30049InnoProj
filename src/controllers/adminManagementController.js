@@ -713,6 +713,110 @@ async function listEvidenceAlerts(req, res) {
   }
 }
 
+async function listPayments(req, res) {
+  try {
+    const limitValue = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(limitValue) && limitValue > 0 ? Math.min(limitValue, 200) : 50;
+    const statusFilter = req.query.status ? String(req.query.status).toLowerCase() : null;
+
+    let sql = `SELECT p.PaymentID,
+                      p.UserID,
+                      p.ModuleID,
+                      p.Reference,
+                      p.EvidenceFilePath,
+                      p.EvidenceFileName,
+                      p.EvidenceMimeType,
+                      p.Status,
+                      p.ReviewRemark,
+                      p.ReviewedBy,
+                      p.ReviewedAt,
+                      p.CreatedAt,
+                      u.FullName,
+                      u.Username,
+                      m.ModuleTitle
+                 FROM Payments p
+                 LEFT JOIN Users u ON u.UserID = p.UserID
+                 LEFT JOIN Modules m ON m.ModuleID = p.ModuleID
+                `;
+
+    const params = [];
+    if (statusFilter) {
+      sql += ' WHERE LOWER(p.Status) = ? ';
+      params.push(statusFilter);
+    }
+
+    sql += ' ORDER BY p.CreatedAt DESC LIMIT ?';
+    params.push(limit);
+
+    const [rows] = await query(sql, params);
+
+    const data = rows.map((r) => ({
+      paymentId: r.PaymentID,
+      userId: r.UserID,
+      moduleId: r.ModuleID,
+      moduleTitle: r.ModuleTitle,
+      userName: r.FullName || r.Username,
+      reference: r.Reference,
+      evidenceFile: r.EvidenceFilePath,
+      evidenceName: r.EvidenceFileName,
+      evidenceMime: r.EvidenceMimeType,
+      status: String(r.Status || 'pending').toLowerCase(),
+      reviewRemark: r.ReviewRemark || null,
+      reviewedBy: r.ReviewedBy || null,
+      reviewedAt: r.ReviewedAt || null,
+      createdAt: r.CreatedAt,
+    }));
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error('List payments error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch payments.' });
+  }
+}
+
+async function updatePaymentStatus(req, res) {
+  try {
+    const { paymentId } = req.params;
+    const status = String(req.body.status || '').toLowerCase();
+    const remark = req.body.remark || null;
+    const reviewerId = req.user && req.user.userId;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status.' });
+    }
+
+    const [result] = await query(
+      `UPDATE Payments SET Status = ?, ReviewedBy = ?, ReviewedAt = NOW(), ReviewRemark = ? WHERE PaymentID = ?`,
+      [status, reviewerId || null, remark, paymentId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Payment not found.' });
+    }
+
+    // Notify user about decision
+    try {
+      const [rows] = await query('SELECT UserID, ModuleID FROM Payments WHERE PaymentID = ? LIMIT 1', [paymentId]);
+      if (rows && rows[0]) {
+        const userId = rows[0].UserID;
+        const moduleId = rows[0].ModuleID;
+        if (status === 'approved') {
+          await notificationService.createNotification(userId, 'Payment Approved', `Your payment for module ${moduleId} has been approved.`);
+        } else {
+          await notificationService.createNotification(userId, 'Payment Rejected', `Your payment for module ${moduleId} was rejected. ${remark || ''}`);
+        }
+      }
+    } catch (_err) {
+      console.warn('Failed to notify user about payment review', _err);
+    }
+
+    return res.json({ success: true, data: { paymentId: Number(paymentId), status } });
+  } catch (error) {
+    console.error('Update payment status error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update payment status.' });
+  }
+}
+
 async function streamEvidenceVideo(req, res) {
   try {
     const { evidenceId } = req.params;
@@ -1050,5 +1154,7 @@ module.exports = {
   listEvidenceAlerts,
   streamEvidenceVideo,
   updateEvidenceStatus,
+  listPayments,
+  updatePaymentStatus,
   getAnalyticsDashboard,
 };

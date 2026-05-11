@@ -4,6 +4,7 @@ const { authenticateUser } = require("../../middleware/authUser");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const materialController = require("../../controllers/materialController");
+const enrollmentController = require("../../controllers/enrollmentController");
 
 const router = express.Router();
 
@@ -80,6 +81,16 @@ router.post(
   ],
   validate,
   asyncHandler(materialController.saveModuleProgress)
+);
+
+/**
+ * GET /modules/:moduleId/payment-status - Get user's payment/evidence status for module
+ */
+router.get(
+  "/:moduleId/payment-status",
+  [param("moduleId").isInt().withMessage("Invalid module ID.")],
+  validate,
+  asyncHandler(enrollmentController.getModulePaymentStatus)
 );
 
 module.exports = router;

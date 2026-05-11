@@ -332,21 +332,18 @@ function ModuleScreen({
 
       console.log('✅ API Response:', response);
 
-      if (response?.success || response?.ok || response?.status === 200) {
-        Alert.alert('✅ Success', 'Payment evidence submitted successfully!', [
-          { 
-            text: 'OK', 
-            onPress: () => {
-              setPaymentModalVisible(false);
-              setSelectedFile(null);
-              setPaymentStatus('pending');
-              fetchPaymentStatus();
-            } 
-          }
-        ]);
-      } else {
-        throw new Error('Server returned error');
-      }
+      // If requestProfileApi doesn't throw, the response was successful (2xx status)
+      Alert.alert('✅ Success', 'Payment evidence submitted successfully!', [
+        { 
+          text: 'OK', 
+          onPress: () => {
+            setPaymentModalVisible(false);
+            setSelectedFile(null);
+            setPaymentStatus('pending');
+            fetchPaymentStatus();
+          } 
+        }
+      ]);
     } catch (err) {
       console.error('❌ Submit Error:', err);
       Alert.alert(

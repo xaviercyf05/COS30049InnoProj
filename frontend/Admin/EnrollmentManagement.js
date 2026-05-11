@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import {
 	Alert,
 	FlatList,
@@ -9,10 +9,13 @@ import {
 	Text,
 	TouchableOpacity,
 	View,
+	Linking,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import withRoleGuard from '../auth/withRoleGuard.js';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { requestProfileApi, resolveApiAssetUri } from '../Profile/profileApi.js';
 
 const COLORS = {
 	bg: '#F7F5EF',
@@ -28,83 +31,7 @@ const COLORS = {
 	soft: '#EDF2E6',
 };
 
-const DEFAULT_REQUESTS = [
-	{
-		id: 'ENR-101',
-		guideName: 'Aisyah Rahman',
-		guideId: 'G001',
-		park: 'Bako National Park',
-		module: 'Bako Orientation & Safety',
-		fee: 'RM 120',
-		paymentMethod: 'Bank transfer',
-		paymentReference: 'TXN-884201',
-		evidenceLabel: 'receipt_bako_101.pdf',
-		submittedAt: 'Today, 8:20 AM',
-		evidenceVerified: false,
-		status: 'pending',
-		note: 'Uploaded bank receipt and transaction slip.',
-	},
-	{
-		id: 'ENR-102',
-		guideName: 'Daniel Wong',
-		guideId: 'G002',
-		park: 'Gunung Mulu National Park',
-		module: 'Cave Guide Safety',
-		fee: 'RM 150',
-		paymentMethod: 'Online banking',
-		paymentReference: 'TXN-884305',
-		evidenceLabel: 'mulu_payment_102.png',
-		submittedAt: 'Today, 9:10 AM',
-		evidenceVerified: false,
-		status: 'pending',
-		note: 'Payment captured but not yet checked by admin.',
-	},
-	{
-		id: 'ENR-103',
-		guideName: 'Nur Iman',
-		guideId: 'G003',
-		park: 'Kubah National Park',
-		module: 'Wildlife Interpretation',
-		fee: 'RM 100',
-		paymentMethod: 'Bank transfer',
-		paymentReference: 'TXN-884377',
-		evidenceLabel: 'kubah_receipt_103.pdf',
-		submittedAt: 'Yesterday, 4:05 PM',
-		evidenceVerified: true,
-		status: 'approved',
-		note: 'Verified and approved for module access.',
-	},
-	{
-		id: 'ENR-104',
-		guideName: 'Farah Nabila',
-		guideId: 'G005',
-		park: 'Maludam National Park',
-		module: 'Wetland Navigation',
-		fee: 'RM 150',
-		paymentMethod: 'Bank transfer',
-		paymentReference: 'TXN-884415',
-		evidenceLabel: 'maludam_transfer_104.jpg',
-		submittedAt: 'Yesterday, 2:45 PM',
-		evidenceVerified: false,
-		status: 'rejected',
-		note: 'Duplicate receipt submitted. Awaiting corrected evidence.',
-	},
-	{
-		id: 'ENR-105',
-		guideName: 'Siti Hajar',
-		guideId: 'G007',
-		park: 'Similajau National Park',
-		module: 'Coastal Patrol Training',
-		fee: 'RM 120',
-		paymentMethod: 'E-wallet',
-		paymentReference: 'TXN-884482',
-		evidenceLabel: 'similajau_payment_105.pdf',
-		submittedAt: 'Yesterday, 11:18 AM',
-		evidenceVerified: true,
-		status: 'pending',
-		note: 'Payment confirmed, waiting for final approval.',
-	},
-];
+const DEFAULT_REQUESTS = [];
 
 function getStatusStyle(status) {
 	if (status === 'approved') {
@@ -124,6 +51,65 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 	const [selectedRequest, setSelectedRequest] = useState(null);
 	const [modalVisible, setModalVisible] = useState(false);
 	const [notice, setNotice] = useState('');
+
+	const getAuthToken = async () => {
+		const token = await AsyncStorage.getItem('innopapp_auth_token');
+		if (!token) throw new Error('Session expired.');
+		return token;
+	};
+
+	const formatDate = (value) => {
+		if (!value) return '';
+		try {
+			const d = new Date(value);
+			return d.toLocaleString('en-MY', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+		} catch (_e) {
+			return String(value);
+		}
+	};
+
+	const loadRequests = async () => {
+		try {
+			console.log('[EnrollmentManagement] Loading payment requests...');
+			const token = await getAuthToken();
+			console.log('[EnrollmentManagement] Token retrieved:', !!token);
+			const resp = await requestProfileApi('/api/v1/admin/payments', token, { method: 'GET' });
+			console.log('[EnrollmentManagement] API response:', resp);
+			const rows = Array.isArray(resp.data) ? resp.data : [];
+			console.log('[EnrollmentManagement] Rows:', rows);
+			const mapped = rows.map((r) => ({
+				id: `P-${r.paymentId}`,
+				paymentId: r.paymentId,
+				guideName: r.userName || 'Unknown',
+				guideId: r.userId,
+				park: r.moduleTitle || '-',
+				module: r.moduleTitle || '-',
+				fee: '-',
+				paymentMethod: '-',
+				paymentReference: r.reference || '-',
+				evidenceLabel: r.evidenceName || (r.evidenceFile || '').split('/').pop() || '-',
+				evidenceUrl: r.evidenceFile ? resolveApiAssetUri(r.evidenceFile) : null,
+				submittedAt: formatDate(r.createdAt),
+				evidenceVerified: r.status === 'approved',
+				status: r.status || 'pending',
+				note: r.reviewRemark || '',
+				raw: r,
+			}));
+
+			console.log('[EnrollmentManagement] Mapped requests:', mapped);
+			setRequests(mapped);
+		} catch (error) {
+			console.error('[EnrollmentManagement] Error loading payments:', error);
+			setRequests([]);
+			setNotice(`Unable to load payment requests: ${error?.message || error}`);
+		}
+	};
+
+	useEffect(() => {
+		loadRequests();
+		const unsub = navigation.addListener('focus', () => loadRequests());
+		return unsub;
+	}, []);
 
 	const summary = useMemo(() => {
 		const pending = requests.filter((item) => item.status === 'pending').length;
@@ -169,25 +155,39 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 		);
 	};
 
-	const approveRequest = (request) => {
+	const approveRequest = async (request) => {
 		if (!request.evidenceVerified) {
 			Alert.alert('Verification required', 'Verify the payment evidence before approving this enrollment request.');
 			return;
 		}
 
-		updateRequest(
-			request.id,
-			(item) => ({ ...item, status: 'approved', note: 'Enrollment approved after payment verification.' }),
-			'Enrollment request approved.'
-		);
+		try {
+			const token = await getAuthToken();
+			await requestProfileApi(`/api/v1/admin/payments/${request.paymentId}/status`, token, {
+				method: 'PUT',
+				body: { status: 'approved', remark: 'Approved by admin.' },
+			});
+
+			setNotice('Enrollment request approved.');
+			loadRequests();
+		} catch (error) {
+			Alert.alert('Error', error?.message || 'Failed to approve request.');
+		}
 	};
 
-	const rejectRequest = (request) => {
-		updateRequest(
-			request.id,
-			(item) => ({ ...item, status: 'rejected', note: 'Enrollment rejected by admin review.' }),
-			'Enrollment request rejected.'
-		);
+	const rejectRequest = async (request) => {
+		try {
+			const token = await getAuthToken();
+			await requestProfileApi(`/api/v1/admin/payments/${request.paymentId}/status`, token, {
+				method: 'PUT',
+				body: { status: 'rejected', remark: 'Rejected by admin.' },
+			});
+
+			setNotice('Enrollment request rejected.');
+			loadRequests();
+		} catch (error) {
+			Alert.alert('Error', error?.message || 'Failed to reject request.');
+		}
 	};
 
 	const renderSummaryCard = (value, label, tone) => (
@@ -315,6 +315,11 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 								<Text style={styles.modalDetail}>Module: {selectedRequest.module}</Text>
 								<Text style={styles.modalDetail}>Reference: {selectedRequest.paymentReference}</Text>
 								<Text style={styles.modalDetail}>File: {selectedRequest.evidenceLabel}</Text>
+								{selectedRequest.evidenceUrl ? (
+									<TouchableOpacity onPress={() => Linking.openURL(selectedRequest.evidenceUrl)} style={{ marginTop: 8 }}>
+										<Text style={{ color: '#2563EB', fontWeight: '700' }}>Open evidence</Text>
+									</TouchableOpacity>
+								) : null}
 								<Text style={styles.modalDetail}>
 									Status: {selectedRequest.evidenceVerified ? 'Verified' : 'Pending review'}
 								</Text>

@@ -1,8 +1,8 @@
 const express = require("express");
 const multer = require("multer");
-const { authenticateUser } = require("../../../src/middleware/authUser");
-const asyncHandler = require("../../../src/utils/asyncHandler");
-const env = require("../../../src/config/env");
+const { authenticateUser } = require("../../src/middleware/authUser");
+const asyncHandler = require("../../src/utils/asyncHandler");
+const env = require("../../src/config/env");
 const { ensureStorageDir } = require("./storage");
 const controller = require("./controller");
 

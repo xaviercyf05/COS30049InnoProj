@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const env = require("../../../src/config/env");
+const env = require("../../src/config/env");
 
 function resolveStorageDir() {
   if (env.richContentStorageDir) {

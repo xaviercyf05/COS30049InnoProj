@@ -69,6 +69,48 @@ async function checkAttemptEligibility(req, res) {
   }
 }
 
+async function autoIssueAssessmentBadgeIfEligible(userId, assessmentId) {
+  const [assessmentRows] = await query(
+    `SELECT a.AssessmentID, a.ModuleID, a.BadgeID, mt.TypeName
+       FROM Assessments a
+       LEFT JOIN Modules m ON m.ModuleID = a.ModuleID
+       LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+      WHERE a.AssessmentID = ?
+      LIMIT 1`,
+    [assessmentId]
+  );
+
+  if (assessmentRows.length === 0 || !assessmentRows[0].BadgeID) {
+    return { issued: false, reason: "No linked badge" };
+  }
+
+  const assessment = assessmentRows[0];
+  const normalizedTypeName = String(assessment.TypeName || "").trim().toLowerCase();
+  const isOnsiteModule = normalizedTypeName === "on-site training modules";
+
+  if (isOnsiteModule) {
+    const completedModule = await qualificationService.isModuleCompleted(userId, assessment.ModuleID);
+    if (!completedModule) {
+      return {
+        issued: false,
+        reason: "On-site module completion required before badge issue",
+      };
+    }
+  }
+
+  await query(
+    `INSERT INTO UserBadges (UserID, BadgeID, IssuedBy, AssessmentID, ModuleID)
+     VALUES (?, ?, NULL, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       AssessmentID = VALUES(AssessmentID),
+       ModuleID = VALUES(ModuleID),
+       IssuedAt = CURRENT_TIMESTAMP`,
+    [userId, assessment.BadgeID, assessment.AssessmentID, assessment.ModuleID]
+  );
+
+  return { issued: true, badgeId: assessment.BadgeID };
+}
+
 /**
  * Submit assessment attempt with answers
  */
@@ -105,6 +147,16 @@ async function submitAssessmentAttempt(req, res) {
       answers,
       Number(timeUsedSeconds || 0)
     );
+
+    // Auto-award linked badge for passed assessments.
+    // Badge issuance failures should not block assessment submission.
+    if (attempt.passed) {
+      try {
+        await autoIssueAssessmentBadgeIfEligible(userId, assessmentId);
+      } catch (badgeError) {
+        console.error("Auto badge issuance skipped:", badgeError);
+      }
+    }
 
     // If passed, send notification and update module progress
     if (attempt.passed) {

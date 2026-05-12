@@ -6,6 +6,7 @@ DROP TABLE IF EXISTS
   Announcements,
   Schedules,
   Certificates,
+  user_progress,
   MaterialProgress,
   LearningMaterials,
   AssessmentAttempts,
@@ -18,6 +19,7 @@ DROP TABLE IF EXISTS
   RegistrationRequests,
   Users,
   Qualifications,
+  ModuleTypes,
   Roles,
   posts,
   users,
@@ -42,6 +44,17 @@ CREATE TABLE IF NOT EXISTS Qualifications (
   Status VARCHAR(50) NOT NULL DEFAULT 'Active',
   CONSTRAINT chk_qualifications_status CHECK (Status IN ('Active', 'Inactive'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS ModuleTypes (
+  ModuleTypeID TINYINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  TypeName VARCHAR(50) NOT NULL UNIQUE,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT IGNORE INTO ModuleTypes (TypeName) VALUES
+  ('General Modules'),
+  ('Total Protected Area Modules'),
+  ('On-Site Training Modules');
 
 CREATE TABLE IF NOT EXISTS Users (
   UserID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -77,6 +90,13 @@ INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID, Status) VALU
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
 CREATE INDEX idx_users_mfa_enabled ON Users (MFAEnabled);
 
+CREATE INDEX idx_modules_module_type ON Modules (ModuleTypeID);
+CREATE INDEX idx_modules_qualification_type ON Modules (QualificationID, ModuleTypeID);
+CREATE INDEX idx_modules_linked_tpa ON Modules (LinkedTpaModuleID);
+CREATE INDEX idx_modules_linked_onsite ON Modules (LinkedOnsiteModuleID);
+CREATE INDEX idx_modules_type_linked_tpa ON Modules (ModuleTypeID, LinkedTpaModuleID);
+CREATE INDEX idx_modules_type_linked_onsite ON Modules (ModuleTypeID, LinkedOnsiteModuleID);
+
 CREATE TABLE IF NOT EXISTS RegistrationRequests (
   RegistrationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   Username VARCHAR(100) NOT NULL,
@@ -101,9 +121,11 @@ CREATE TABLE IF NOT EXISTS Modules (
   ModuleID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   QualificationID INT UNSIGNED NOT NULL,
   ModuleTitle VARCHAR(160) NOT NULL,
+  ModuleTypeID TINYINT UNSIGNED NULL DEFAULT 1,
   LinkedTpaModuleID INT UNSIGNED NULL,
   LinkedOnsiteModuleID INT UNSIGNED NULL,
   CONSTRAINT fk_modules_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE,
+  CONSTRAINT fk_modules_module_type FOREIGN KEY (ModuleTypeID) REFERENCES ModuleTypes (ModuleTypeID) ON DELETE SET NULL,
   CONSTRAINT fk_modules_linked_tpa_module FOREIGN KEY (LinkedTpaModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL,
   CONSTRAINT fk_modules_linked_onsite_module FOREIGN KEY (LinkedOnsiteModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -190,6 +212,7 @@ CREATE TABLE IF NOT EXISTS Sections (
   SectionID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   ModuleID INT UNSIGNED NOT NULL,
   Title VARCHAR(160) NOT NULL,
+  Description TEXT NULL,
   Ordering DECIMAL(6,2) NOT NULL DEFAULT 0,
   CONSTRAINT fk_sections_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
@@ -212,6 +235,24 @@ CREATE TABLE IF NOT EXISTS MaterialProgress (
   UNIQUE KEY uq_material_progress (SubsectionID, UserID),
   CONSTRAINT fk_material_progress_subsection FOREIGN KEY (SubsectionID) REFERENCES Subsections (SubsectionID) ON DELETE CASCADE,
   CONSTRAINT fk_material_progress_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_progress (
+  id INT AUTO_INCREMENT PRIMARY KEY,
+  userId INT UNSIGNED NOT NULL,
+  moduleId INT UNSIGNED NOT NULL,
+  visitedSectionIds JSON DEFAULT '[]' COMMENT 'Array of visited section/subsection IDs',
+  progressPercent INT DEFAULT 0 COMMENT 'Overall progress percentage (0-100)',
+  lastSectionId VARCHAR(100) NULL COMMENT 'Last read section ID for resume functionality',
+  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY unique_user_module (userId, moduleId),
+  FOREIGN KEY (userId) REFERENCES Users(UserID) ON DELETE CASCADE,
+  FOREIGN KEY (moduleId) REFERENCES Modules(ModuleID) ON DELETE CASCADE,
+  INDEX idx_userId (userId),
+  INDEX idx_moduleId (moduleId),
+  INDEX idx_user_module (userId, moduleId),
+  INDEX idx_updated_at (updatedAt)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Certificates (
@@ -358,6 +399,28 @@ ADD COLUMN IF NOT EXISTS Location VARCHAR(100) NOT NULL AFTER LabelsJson;
 
 CREATE INDEX idx_evidence_event_time ON Evidence (EventTimestamp);
 CREATE INDEX idx_evidence_created_at ON Evidence (CreatedAt);
+
+/* Payments table used to store user-submitted payment evidence for module certification
+   Admins will review and set Status to 'approved' or 'rejected'. */
+CREATE TABLE IF NOT EXISTS Payments (
+  PaymentID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  UserID INT UNSIGNED NOT NULL,
+  ModuleID INT UNSIGNED NOT NULL,
+  Reference VARCHAR(255) NULL,
+  EvidenceFilePath VARCHAR(500) NULL,
+  EvidenceFileName VARCHAR(255) NULL,
+  EvidenceMimeType VARCHAR(120) NULL,
+  Status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  ReviewedBy INT UNSIGNED NULL,
+  ReviewedAt TIMESTAMP NULL,
+  ReviewRemark VARCHAR(255) NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_payments_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
+  CONSTRAINT fk_payments_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_payments_user_module ON Payments (UserID, ModuleID);
+
 
 CREATE TABLE IF NOT EXISTS Park (
 ParkID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

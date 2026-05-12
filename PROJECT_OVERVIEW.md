@@ -309,7 +309,6 @@ database/
 
 scripts/
 ├── seedAdmin.js                     Create initial admin user
-└── seedSampleData.js                Populate test data (qualifications, users, assessments)
 
 Documentation/
 ├── SETUP_GUIDE.md                   Environment setup & troubleshooting
@@ -405,7 +404,7 @@ Documentation/
 ### Pre-Launch Checklist
 
 - [ ] Database connects successfully (`npm run dev` starts without errors)
-- [ ] Test user credentials work (`guide_john`, `guide_sarah`, `guide_mike`)
+- [ ] Test users exist or create appropriate test accounts for validation
 - [ ] Public endpoints accessible (login, browse qualifications)
 - [ ] Auth endpoints return JWT tokens
 - [ ] Protected endpoints reject requests without valid token

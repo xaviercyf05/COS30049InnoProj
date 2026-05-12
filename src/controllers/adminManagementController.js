@@ -713,6 +713,110 @@ async function listEvidenceAlerts(req, res) {
   }
 }
 
+async function listPayments(req, res) {
+  try {
+    const limitValue = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(limitValue) && limitValue > 0 ? Math.min(limitValue, 200) : 50;
+    const statusFilter = req.query.status ? String(req.query.status).toLowerCase() : null;
+
+    let sql = `SELECT p.PaymentID,
+                      p.UserID,
+                      p.ModuleID,
+                      p.Reference,
+                      p.EvidenceFilePath,
+                      p.EvidenceFileName,
+                      p.EvidenceMimeType,
+                      p.Status,
+                      p.ReviewRemark,
+                      p.ReviewedBy,
+                      p.ReviewedAt,
+                      p.CreatedAt,
+                      u.FullName,
+                      u.Username,
+                      m.ModuleTitle
+                 FROM Payments p
+                 LEFT JOIN Users u ON u.UserID = p.UserID
+                 LEFT JOIN Modules m ON m.ModuleID = p.ModuleID
+                `;
+
+    const params = [];
+    if (statusFilter) {
+      sql += ' WHERE LOWER(p.Status) = ? ';
+      params.push(statusFilter);
+    }
+
+    sql += ' ORDER BY p.CreatedAt DESC LIMIT ?';
+    params.push(limit);
+
+    const [rows] = await query(sql, params);
+
+    const data = rows.map((r) => ({
+      paymentId: r.PaymentID,
+      userId: r.UserID,
+      moduleId: r.ModuleID,
+      moduleTitle: r.ModuleTitle,
+      userName: r.FullName || r.Username,
+      reference: r.Reference,
+      evidenceFile: r.EvidenceFilePath,
+      evidenceName: r.EvidenceFileName,
+      evidenceMime: r.EvidenceMimeType,
+      status: String(r.Status || 'pending').toLowerCase(),
+      reviewRemark: r.ReviewRemark || null,
+      reviewedBy: r.ReviewedBy || null,
+      reviewedAt: r.ReviewedAt || null,
+      createdAt: r.CreatedAt,
+    }));
+
+    return res.json({ success: true, data });
+  } catch (error) {
+    console.error('List payments error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to fetch payments.' });
+  }
+}
+
+async function updatePaymentStatus(req, res) {
+  try {
+    const { paymentId } = req.params;
+    const status = String(req.body.status || '').toLowerCase();
+    const remark = req.body.remark || null;
+    const reviewerId = req.user && req.user.userId;
+
+    if (!['approved', 'rejected'].includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status.' });
+    }
+
+    const [result] = await query(
+      `UPDATE Payments SET Status = ?, ReviewedBy = ?, ReviewedAt = NOW(), ReviewRemark = ? WHERE PaymentID = ?`,
+      [status, reviewerId || null, remark, paymentId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'Payment not found.' });
+    }
+
+    // Notify user about decision
+    try {
+      const [rows] = await query('SELECT UserID, ModuleID FROM Payments WHERE PaymentID = ? LIMIT 1', [paymentId]);
+      if (rows && rows[0]) {
+        const userId = rows[0].UserID;
+        const moduleId = rows[0].ModuleID;
+        if (status === 'approved') {
+          await notificationService.createNotification(userId, 'Payment Approved', `Your payment for module ${moduleId} has been approved.`);
+        } else {
+          await notificationService.createNotification(userId, 'Payment Rejected', `Your payment for module ${moduleId} was rejected. ${remark || ''}`);
+        }
+      }
+    } catch (_err) {
+      console.warn('Failed to notify user about payment review', _err);
+    }
+
+    return res.json({ success: true, data: { paymentId: Number(paymentId), status } });
+  } catch (error) {
+    console.error('Update payment status error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update payment status.' });
+  }
+}
+
 async function streamEvidenceVideo(req, res) {
   try {
     const { evidenceId } = req.params;
@@ -785,11 +889,11 @@ async function getAnalyticsDashboard(req, res) {
               u.Email,
               u.Username,
               u.Progress,
+              u.IsActive,
               q.QualificationName AS AssignedPark
          FROM Users u
          INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
          LEFT JOIN Qualifications q ON q.QualificationID = u.QualificationID
-        WHERE u.IsActive = 1
         ORDER BY u.UserID ASC`
     );
 
@@ -848,19 +952,6 @@ async function getAnalyticsDashboard(req, res) {
         ORDER BY AwardedCount DESC, b.BadgeID ASC`
     );
 
-    const [parkRows] = await query(
-      `SELECT p.ParkID,
-              p.ParkName,
-              COUNT(DISTINCT CASE WHEN r.RoleTitle = 'User' THEN u.UserID END) AS GuidesAssigned,
-              COUNT(DISTINCT CASE WHEN r.RoleTitle = 'User' AND COALESCE(u.Progress, 0) >= 90 THEN u.UserID END) AS LeadGuides
-         FROM Park p
-         LEFT JOIN Qualifications q ON LOWER(TRIM(q.QualificationName)) = LOWER(TRIM(p.ParkName))
-         LEFT JOIN Users u ON u.QualificationID = q.QualificationID
-         LEFT JOIN Roles r ON r.RoleID = u.RoleID
-        GROUP BY p.ParkID, p.ParkName
-        ORDER BY GuidesAssigned DESC, p.ParkName ASC`
-    );
-
     const earnedBadgesByUser = userBadgeRows.reduce((accumulator, row) => {
       accumulator[row.UserID] = row.EarnedBadges || '-';
       return accumulator;
@@ -868,24 +959,35 @@ async function getAnalyticsDashboard(req, res) {
 
     const guides = guideRows.map((row) => {
       const progress = toSafeNumber(row.Progress, 0);
+      const isActive = Number(row.IsActive) === 1;
 
       return {
         guideId: row.UserID,
         fullName: row.FullName || row.Username || `Guide ${row.UserID}`,
         assignedPark: row.AssignedPark || 'Unassigned',
         contact: row.Email || '-',
+        isActive,
+        activeStatus: isActive ? 'Active' : 'Inactive',
         progress,
         earnedBadges: earnedBadgesByUser[row.UserID] || '-',
       };
     });
 
+    const guidesSortedByStatus = [...guides].sort((leftGuide, rightGuide) => {
+      if (leftGuide.isActive === rightGuide.isActive) {
+        return leftGuide.guideId - rightGuide.guideId;
+      }
+
+      return leftGuide.isActive ? -1 : 1;
+    });
+
+    const activeGuides = guides.filter((guide) => guide.isActive);
+
     const totalGuides = guides.length;
-    const fullyTrained = guides.filter((guide) => guide.progress >= 100).length;
-    const inTraining = guides.filter((guide) => guide.progress > 0 && guide.progress < 100).length;
-    const leadGuides = guides.filter((guide) => guide.progress >= 90).length;
+    const inactiveGuides = guides.filter((guide) => !guide.isActive).length;
     const averageProgress =
-      totalGuides > 0
-        ? guides.reduce((sum, guide) => sum + guide.progress, 0) / totalGuides
+      activeGuides.length > 0
+        ? activeGuides.reduce((sum, guide) => sum + guide.progress, 0) / activeGuides.length
         : 0;
 
     const enrolledGuides = toSafeNumber(enrollmentRows[0] && enrollmentRows[0].EnrolledUsers, 0);
@@ -921,7 +1023,7 @@ async function getAnalyticsDashboard(req, res) {
     const badgeRowsNormalized = badgeRows.map((row) => {
       const awarded = toSafeNumber(row.AwardedCount, 0);
       const unlockThreshold = toSafeNumber(row.UnlockThreshold, 0);
-      const eligible = guides.filter((guide) => guide.progress >= unlockThreshold).length;
+      const eligible = activeGuides.filter((guide) => guide.progress >= unlockThreshold).length;
 
       return {
         badgeName: row.BadgeName || `Badge ${row.BadgeID}`,
@@ -935,45 +1037,21 @@ async function getAnalyticsDashboard(req, res) {
     const totalEligibleGuides = badgeRowsNormalized.reduce((sum, row) => sum + row.eligible, 0);
     const totalPendingBadges = badgeRowsNormalized.reduce((sum, row) => sum + row.pending, 0);
 
-    const stations = parkRows.map((row) => {
-      const guidesAssigned = toSafeNumber(row.GuidesAssigned, 0);
-      const lead = toSafeNumber(row.LeadGuides, 0);
-      const status = guidesAssigned >= 6 ? 'Optimal' : guidesAssigned >= 4 ? 'Adequate' : 'Understaffed';
-      const notes =
-        status === 'Optimal'
-          ? 'Good coverage'
-          : status === 'Adequate'
-            ? 'Monitor closely'
-            : 'Needs additional trained guides';
-
-      return {
-        parkName: row.ParkName,
-        guidesAssigned,
-        leadGuides: lead,
-        status,
-        notes,
-      };
-    });
-
-    const understaffedCount = stations.filter((station) => station.status === 'Understaffed').length;
-
     return res.json({
       success: true,
       data: {
         parkGuides: {
           title: 'Park guides overview',
-          subtitle: 'Complete overview of all guides with assignments and completed modules.',
+          subtitle: 'Complete overview of active and inactive park guides.',
           kpis: [
-            { label: 'Total park guides', value: String(totalGuides), note: 'Active user accounts' },
-            { label: 'Fully trained', value: String(fullyTrained), note: 'Progress at 100%' },
-            { label: 'In training', value: String(inTraining), note: 'Progress between 1%-99%' },
-            { label: 'Lead guides', value: String(leadGuides), note: 'Progress at 90%+' },
+            { label: 'Total park guides', value: String(totalGuides), note: 'All user accounts with User role' },
+            { label: 'Inactive guides', value: String(inactiveGuides), note: 'Not currently active' },
           ],
-          columns: ['Guide ID', 'Full Name', 'Assigned Park', 'Contact (Email)'],
-          rows: guides.map((guide) => [
+          columns: ['Guide ID', 'Full Name', 'Active Status', 'Contact (Email)'],
+          rows: guidesSortedByStatus.map((guide) => [
             `G${String(guide.guideId).padStart(3, '0')}`,
             guide.fullName,
-            guide.assignedPark,
+            guide.activeStatus,
             guide.contact,
           ]),
         },
@@ -1048,31 +1126,6 @@ async function getAnalyticsDashboard(req, res) {
             String(row.pending),
           ]),
         },
-        station: {
-          title: 'Park guide distribution by station',
-          subtitle: 'Identify understaffed parks and optimize resource allocation.',
-          chartType: 'bar',
-          kpis: [
-            { label: 'Parks covered', value: String(stations.length), note: 'Total known park stations' },
-            { label: 'Total guides', value: String(totalGuides), note: 'Assigned to parks by qualification' },
-            { label: 'Avg. per park', value: stations.length > 0 ? (totalGuides / stations.length).toFixed(1) : '0.0', note: 'Guides per station' },
-            { label: 'Understaffed', value: String(understaffedCount), note: 'Below 4 assigned guides' },
-          ],
-          chartTitle: 'Guide distribution across parks',
-          chartSubtitle: 'Number of guides per park station.',
-          bars: stations.map((station) => ({
-            label: station.parkName.split(' ')[0],
-            value: station.guidesAssigned,
-          })),
-          columns: ['Park / Station', 'Guides Assigned', 'Lead Guides', 'Status', 'Notes'],
-          rows: stations.map((station) => [
-            station.parkName,
-            String(station.guidesAssigned),
-            String(station.leadGuides),
-            station.status,
-            station.notes,
-          ]),
-        },
         generatedAt: new Date().toISOString(),
         certificationSummary: {
           issuedGuides,
@@ -1101,5 +1154,7 @@ module.exports = {
   listEvidenceAlerts,
   streamEvidenceVideo,
   updateEvidenceStatus,
+  listPayments,
+  updatePaymentStatus,
   getAnalyticsDashboard,
 };

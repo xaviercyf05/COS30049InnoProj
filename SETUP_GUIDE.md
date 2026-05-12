@@ -190,76 +190,7 @@ Should show the dependency tree without errors. Key packages:
 
 ---
 
-## Part 4: Seed Sample Data
-
-### Step 1: Run Seed Script
-
-```bash
-node scripts/seedSampleData.js
-```
-
-**Expected Output:**
-```
-========================================
-Starting Sample Data Seeding
-========================================
-
-Seeping roles and users...
-✓ Created user: guide_john (John Park Guide)
-✓ Created user: guide_sarah (Sarah Nature Ranger)
-✓ Created user: guide_mike (Mike Conservation Expert)
-
-Seeding qualifications...
-✓ Created qualification: Sarawak National Park Guide Certification
-✓ Created qualification: Forest Biodiversity Specialist
-✓ Created qualification: Eco-Tourism Management
-
-Seeding modules...
-✓ Created module: Module 1: Conservation Fundamentals
-✓ Created module: Module 2: Biodiversity Deep Dive
-✓ Created module: Module 3: Advanced Park Management
-
-Seeding learning materials...
-✓ Created 15 learning materials (5 per module section)
-
-Seeding assessments...
-✓ Created assessment for Module 1
-✓ Created assessment for Module 2
-✓ Created assessment for Module 3
-
-Seeding sample schedules...
-✓ Created schedule for user 3: Module 1 Theory Session
-✓ Created schedule for user 3: Field Trip - Forest Walk
-...
-
-========================================
-✓ Sample Data Seeding Complete!
-========================================
-
-Test User Credentials:
-  - Username: guide_john | Password: guide_john123
-  - Username: guide_sarah | Password: guide_sarah123
-  - Username: guide_mike | Password: guide_mike123
-
-You can now test the API using these credentials.
-```
-
-### Step 2: If Errors Occur
-
-**Error: "Database not found"**
-- Ensure `digital_park_guide` database exists (see Part 1, Step 5)
-- Check DB credentials in `.env` file
-
-**Error: "Access denied for user 'root'@'localhost'"**
-- .env password doesn't match your actual MySQL password
-- Either update `.env` or reset your MySQL password
-
-**Error: "Table doesn't exist"**
-- Schema wasn't loaded properly
-- Re-run: `mysql -u root -p digital_park_guide < database/schema.sql`
-
----
-
+***
 ## Part 5: Start the Server
 
 ### Step 1: Run in Development Mode
@@ -308,10 +239,7 @@ Press `Ctrl+C` in the terminal where the server is running.
 ```bash
 curl -X POST http://localhost:5000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "username": "guide_john",
-    "password": "guide_john123"
-  }'
+  -d '{"username": "YOUR_USERNAME", "password": "YOUR_PASSWORD"}'
 ```
 
 **Expected Response:**
@@ -322,7 +250,7 @@ curl -X POST http://localhost:5000/api/v1/auth/login \
     "token": "eyJhbGc...",
     "user": {
       "userId": 3,
-      "username": "guide_john",
+      "username": "YOUR_USERNAME",
       "role": "User"
     }
   },
@@ -442,12 +370,11 @@ Make sure there's a space between "Bearer" and the token.
 
 ### Issue 10: "Qualification not found" when enrolling
 
-**Cause:** Seed data wasn't loaded properly
+**Cause:** Required test data isn't present in the database
 
 **Solution:**
-```bash
-node scripts/seedSampleData.js
-```
+- Ensure the qualifications and modules exist in the database, or insert the required records manually.
+- Create or upload the required test data via your admin UI or SQL scripts.
 
 ---
 
@@ -485,11 +412,10 @@ Before starting development, verify:
   cat .env
   ```
 
-- [ ] Sample data is seeded
+  - [ ] Test users exist (create as needed)
   ```bash
   mysql -u root -p digital_park_guide -e "SELECT COUNT(*) as user_count FROM Users;"
   ```
-  Should show 4+ (1 admin + 3 test users)
 
 ---
 
@@ -542,7 +468,6 @@ mysql -u root -p
 DROP DATABASE digital_park_guide;
 exit
 mysql -u root -p digital_park_guide < database/schema.sql
-node scripts/seedSampleData.js
 npm run dev
 ```
 

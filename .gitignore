@@ -4,3 +4,7 @@ npm-debug.log*
 
 # Expo local machine cache
 mobile/.expo/
+
+uploads/
+
+db_backups/

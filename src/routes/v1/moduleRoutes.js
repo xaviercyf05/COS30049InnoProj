@@ -4,6 +4,7 @@ const { authenticateUser } = require("../../middleware/authUser");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const materialController = require("../../controllers/materialController");
+const enrollmentController = require("../../controllers/enrollmentController");
 
 const router = express.Router();
 
@@ -54,6 +55,42 @@ router.post(
   [body("materialId").isInt().withMessage("Valid material ID is required.")],
   validate,
   asyncHandler(materialController.completeMaterial)
+);
+
+/**
+ * GET /modules/:moduleId/progress - Get user's progress for a module
+ * Returns: { visitedSectionIds, progressPercent, lastSectionId }
+ */
+router.get(
+  "/:moduleId/progress",
+  [param("moduleId").isInt().withMessage("Invalid module ID.")],
+  validate,
+  asyncHandler(materialController.getModuleProgress)
+);
+
+/**
+ * POST /modules/:moduleId/progress - Save user's progress for a module
+ * Body: { visitedSectionIds: [], progressPercent: 45, lastSectionId?: "section-id" }
+ */
+router.post(
+  "/:moduleId/progress",
+  [
+    param("moduleId").isInt().withMessage("Invalid module ID."),
+    body("visitedSectionIds").isArray().withMessage("visitedSectionIds must be an array."),
+    body("progressPercent").isInt({ min: 0, max: 100 }).withMessage("progressPercent must be between 0 and 100."),
+  ],
+  validate,
+  asyncHandler(materialController.saveModuleProgress)
+);
+
+/**
+ * GET /modules/:moduleId/payment-status - Get user's payment/evidence status for module
+ */
+router.get(
+  "/:moduleId/payment-status",
+  [param("moduleId").isInt().withMessage("Invalid module ID.")],
+  validate,
+  asyncHandler(enrollmentController.getModulePaymentStatus)
 );
 
 module.exports = router;

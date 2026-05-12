@@ -16,11 +16,10 @@ Your complete backend API is now ready! Here's what was delivered:
 - MySQL schema with 15+ tables, constraints, and indexes
 - Admin user seeder script
 
-**Documentation (4 files)**
+**Documentation (3 files)**
 - PROJECT_OVERVIEW.md → Architecture & features
 - SETUP_GUIDE.md → Installation & troubleshooting
 - TESTING_GUIDE.md → API endpoint testing with examples
-- seedSampleData.js → Sample data population script
 
 ---
 
@@ -50,10 +49,9 @@ JWT_SECRET=change_this_in_production
 REQUEST_BODY_LIMIT=15mb
 ```
 
-### Step 3: Install & Seed
+### Step 3: Install
 ```bash
 npm install
-node scripts/seedSampleData.js
 ```
 
 ### Step 4: Start Server
@@ -67,14 +65,8 @@ Server runs on `http://localhost:5000`
 
 ## 🧪 Test Immediately (1 Minute)
 
-### Login with Test Credentials
-```bash
-curl -X POST http://localhost:5000/api/v1/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"username": "guide_john", "password": "guide_john123"}'
-```
-
-Should return a JWT token. Then use it to:
+### Login
+Use a valid user account in your database to obtain a JWT token, then use it to:
 
 ### Browse Qualifications
 ```bash
@@ -144,26 +136,7 @@ If all three work → API is live! 🎉
 
 ---
 
-## 🎯 Sample Data Included
-
-**3 Test Users:**
-- guide_john / guide_john123
-- guide_sarah / guide_sarah123
-- guide_mike / guide_mike123
-
-**3 Qualifications:**
-- Sarawak National Park Guide Certification
-- Forest Biodiversity Specialist
-- Eco-Tourism Management
-
-**Per Qualification:**
-- 3 sequential modules
-- 5 learning materials per module (5 chapters each)
-- 10-question assessment per module
-- 3 training schedules per user
-
----
-
+ 
 ## 🚀 API Structure
 
 All endpoints under `/api/v1/`:
@@ -216,9 +189,8 @@ GET    /admin/users/:id/enrollments
 # Start server
 npm run dev
 
-# Reset database and reseed
+# Reset database
 mysql -u root -p digital_park_guide < database/schema.sql
-node scripts/seedSampleData.js
 
 # View database tables
 mysql -u root -p digital_park_guide -e "SHOW TABLES;"
@@ -245,7 +217,6 @@ netstat -ano     # Windows
 - Reload schema: `mysql -u root -p digital_park_guide < database/schema.sql`
 
 **Login fails?**
-- Verify seed script ran: `node scripts/seedSampleData.js`
 - Check user exists: `mysql -u root -p digital_park_guide -e "SELECT * FROM Users;"`
 
 **Endpoint returns 404?**

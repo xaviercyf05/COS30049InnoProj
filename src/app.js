@@ -18,9 +18,8 @@ const assessmentRoutes = require("./routes/v1/assessmentRoutes");
 const notificationRoutes = require("./routes/v1/notificationRoutes");
 const badgeRoutes = require("./routes/v1/badgeRoutes");
 const adminRoutes = require("./routes/v1/adminRoutes");
-const richContentModule = require("../feature_modules/rich-content/backend");
-// Sensor routes (ESP32 devices)
-const sensorRoutes = require("./routes/sensorRoutes");
+const enrollmentRoutes = require("./routes/v1/enrollmentRoutes");
+const richContentModule = require("../feature_modules/rich-content");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
@@ -147,6 +146,9 @@ apiV1.use("/badges", badgeRoutes);
 
 // Admin management routes (admin only)
 apiV1.use("/admin", adminRoutes);
+
+// Enrollment / payment evidence routes (protected)
+apiV1.use("/enrollment", enrollmentRoutes);
 
 // Rich content + attachments routes (protected)
 apiV1.use("/rich-content", richContentModule.router);

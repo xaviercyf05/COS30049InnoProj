@@ -74,6 +74,7 @@ function normalizeSectionsInput(sectionsInput) {
   return parsedSections
     .map((section, index) => {
       const title = String(section?.title || `Section ${index + 1}`).trim();
+      const description = String(section?.description || '').trim();
 
       // If subsections provided, normalize them
       if (Array.isArray(section?.subsections)) {
@@ -92,6 +93,7 @@ function normalizeSectionsInput(sectionsInput) {
 
         return {
           title,
+          description,
           ordering: typeof section?.ordering !== 'undefined' ? Number(section.ordering) : null,
           subsections: subs,
         };
@@ -102,6 +104,7 @@ function normalizeSectionsInput(sectionsInput) {
 
       return {
         title,
+        description,
         ordering: typeof section?.ordering !== 'undefined' ? Number(section.ordering) : null,
         subsections: [
           {
@@ -127,6 +130,7 @@ function mapSectionRowsToStructure(rows) {
         id: `section-${sid}`,
         sectionId: sid,
         title: r.SectionTitle,
+        description: r.SectionDescription || '',
         ordering: r.SectionOrdering,
         subsections: [],
       });
@@ -177,6 +181,7 @@ async function readModuleById(moduleId) {
   const [rows] = await query(
     `SELECT s.SectionID,
             s.Title AS SectionTitle,
+            s.Description AS SectionDescription,
             s.Ordering AS SectionOrdering,
             sc.SubsectionID,
             sc.Title AS SubTitle,
@@ -469,8 +474,8 @@ async function createModule(req, res) {
         : sectionOrderCounter;
 
       const [secInsert] = await connection.execute(
-        "INSERT INTO Sections (ModuleID, Title, Ordering) VALUES (?, ?, ?)",
-        [moduleId, section.title, sectionOrdering]
+        "INSERT INTO Sections (ModuleID, Title, Description, Ordering) VALUES (?, ?, ?, ?)",
+        [moduleId, section.title, section.description || null, sectionOrdering]
       );
 
       const sectionId = secInsert.insertId;
@@ -671,8 +676,8 @@ async function updateModule(req, res) {
         : sectionOrderCounter2;
 
       const [secInsert] = await connection.execute(
-        "INSERT INTO Sections (ModuleID, Title, Ordering) VALUES (?, ?, ?)",
-        [moduleId, section.title, sectionOrdering]
+        "INSERT INTO Sections (ModuleID, Title, Description, Ordering) VALUES (?, ?, ?, ?)",
+        [moduleId, section.title, section.description || null, sectionOrdering]
       );
 
       const sectionId = secInsert.insertId;

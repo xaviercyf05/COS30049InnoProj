@@ -17,18 +17,11 @@ This guide explains how to test the Digital Park Guide Training Platform API end
 mysql -u root -p < database/schema.sql
 ```
 
-#### 2. Seed Sample Data
-```bash
-node scripts/seedSampleData.js
-```
+#### 2. Prepare Test Data
+Create the data you need for testing in your database (users, qualifications, modules, materials, assessments). You can:
 
-This creates:
-- 3 test users (guide_john, guide_sarah, guide_mike) with password username123 appended
-- 3 sample qualifications
-- 3 modules per qualification
-- 5 learning materials per module
-- 10 assessment questions per module
-- Sample schedules for test users
+- Insert records manually using SQL
+- Create users via the admin UI or scripts (the `scripts/seedAdmin.js` helper can create an admin account)
 
 #### 3. Start the Server
 ```bash
@@ -44,35 +37,18 @@ Server runs on `http://localhost:5000`
 
 ### Phase 1: Authentication
 
-#### 1.1 Login as a User Guide
+#### 1.1 Login
 
-**Request:**
+Use valid credentials for a user in your database to obtain a JWT token. Example request (replace with your username/password):
+
 ```bash
 curl -X POST http://localhost:5000/api/v1/auth/login \
   -H "Content-Type: application/json" \
-  -d '{
-    "username": "guide_john",
-    "password": "guide_john123"
-  }'
+  -d '{"username": "YOUR_USERNAME", "password": "YOUR_PASSWORD"}'
 ```
 
-**Expected Response (200):**
-```json
-{
-  "success": true,
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-    "user": {
-      "userId": 3,
-      "username": "guide_john",
-      "role": "User"
-    }
-  },
-  "message": "Login successful"
-}
-```
+Save the returned token for subsequent requests:
 
-**Save the token for subsequent requests:**
 ```bash
 TOKEN="your_token_here"
 ```
@@ -693,7 +669,7 @@ curl http://localhost:5000/api/v1/user/profile \
   "success": true,
   "data": {
     "userId": 3,
-    "username": "guide_john",
+    "username": "YOUR_USERNAME",
     "fullName": "John Park Guide",
     "email": "john_guide@sarawakparks.my",
     "role": "User",
@@ -723,7 +699,7 @@ curl -X PUT http://localhost:5000/api/v1/user/profile \
   "success": true,
   "data": {
     "userId": 3,
-    "username": "guide_john",
+    "username": "YOUR_USERNAME",
     "fullName": "John Smith",
     "email": "john.smith@sarawakparks.my"
   },
@@ -739,7 +715,7 @@ curl -X POST http://localhost:5000/api/v1/user/change-password \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $TOKEN" \
   -d '{
-    "currentPassword": "guide_john123",
+    "currentPassword": "YOUR_PASSWORD",
     "newPassword": "newPassword@123"
   }'
 ```
@@ -815,7 +791,7 @@ curl http://localhost:5000/api/v1/admin/users \
   "data": [
     {
       "userId": 3,
-      "username": "guide_john",
+      "username": "YOUR_USERNAME",
       "fullName": "John Park Guide",
       "email": "john_guide@sarawakparks.my",
       "role": "User",
@@ -845,7 +821,7 @@ curl -X PUT http://localhost:5000/api/v1/admin/users/3/status \
   "success": true,
   "data": {
     "userId": 3,
-    "username": "guide_john",
+    "username": "YOUR_USERNAME",
     "status": "Inactive"
   },
   "message": "User status updated successfully"
@@ -929,7 +905,7 @@ curl http://localhost:5000/api/v1/admin/users/3/enrollments \
   "success": true,
   "data": {
     "userId": 3,
-    "username": "guide_john",
+    "username": "YOUR_USERNAME",
     "fullName": "John Park Guide",
     "enrollments": [
       {
@@ -1044,8 +1020,8 @@ Run this bash script to test the complete user workflow:
 #!/bin/bash
 
 BASE_URL="http://localhost:5000/api/v1"
-USERNAME="guide_john"
-PASSWORD="guide_john123"
+USERNAME="YOUR_USERNAME"
+PASSWORD="YOUR_PASSWORD"
 
 echo "=== Login ==="
 LOGIN=$(curl -s -X POST $BASE_URL/auth/login \

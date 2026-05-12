@@ -1,4 +1,4 @@
-const { query } = require("../../../src/config/db");
+const { query } = require("../../src/config/db");
 
 async function createContent({ userId, title, contentHtml, contentPlainText }) {
   const [result] = await query(

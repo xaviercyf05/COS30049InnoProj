@@ -19,6 +19,8 @@ const notificationRoutes = require("./routes/v1/notificationRoutes");
 const badgeRoutes = require("./routes/v1/badgeRoutes");
 const adminRoutes = require("./routes/v1/adminRoutes");
 const richContentModule = require("../feature_modules/rich-content/backend");
+// Sensor routes (ESP32 devices)
+const sensorRoutes = require("./routes/sensorRoutes");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
@@ -148,6 +150,9 @@ apiV1.use("/admin", adminRoutes);
 
 // Rich content + attachments routes (protected)
 apiV1.use("/rich-content", richContentModule.router);
+
+// Sensor data routes (public endpoint for ESP32 devices to POST data)
+apiV1.use("/sensors", sensorRoutes);
 
 // Register v1 routes
 app.use("/api/v1", apiV1);

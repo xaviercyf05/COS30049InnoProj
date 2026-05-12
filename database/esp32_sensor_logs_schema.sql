@@ -1,0 +1,25 @@
+-- ESP32 Sensor Data Logging Table
+CREATE TABLE IF NOT EXISTS ESP32SensorLogs (
+  LogID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  DeviceID VARCHAR(100) NOT NULL,
+  Temperature DECIMAL(6,2) NULL,
+  Humidity DECIMAL(6,2) NULL,
+  Distance DECIMAL(8,3) NULL,
+  Sound INT NULL,
+  Rain INT NULL,
+  Soil DECIMAL(6,2) NULL,
+  SoilRaw INT NULL,
+  DistanceStatus VARCHAR(50) NULL,
+  SoundStatus VARCHAR(50) NULL,
+  TempStatus VARCHAR(50) NULL,
+  HumStatus VARCHAR(50) NULL,
+  RainStatus VARCHAR(50) NULL,
+  RainLevel TINYINT NULL,
+  SoilStatus VARCHAR(50) NULL,
+  Severity VARCHAR(10) NULL DEFAULT 'LOW',
+  Timestamp TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_device (DeviceID),
+  INDEX idx_timestamp (Timestamp),
+  INDEX idx_severity (Severity)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

@@ -8,3 +8,5 @@ mobile/.expo/
 uploads/
 
 db_backups/
+
+database/appdb(1).sql

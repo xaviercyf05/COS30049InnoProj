@@ -726,7 +726,7 @@ async function getAssessmentBadge(assessmentId) {
 
   const [linkedBadgeRows] = await query(
     `SELECT b.BadgeID, b.BadgeName, b.IconUrl, GROUP_CONCAT(DISTINCT bm.ModuleID ORDER BY bm.ModuleID) AS LinkedModuleIDs
-       FROM BadgeModules bm
+       FROM BadgeLinkedModules bm
        INNER JOIN Badges b ON b.BadgeID = bm.BadgeID AND b.IsActive = 1
       WHERE bm.ModuleID = ?
       GROUP BY b.BadgeID, b.BadgeName, b.IconUrl

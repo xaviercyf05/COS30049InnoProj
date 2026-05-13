@@ -1,19 +1,30 @@
 SET FOREIGN_KEY_CHECKS = 0;
 
 DROP TABLE IF EXISTS
+  ESP32SensorLogs,
+  RefreshTokens,
+  MFAAudit,
+  MFARecoveryCodes,
+  Payments,
+  Evidence,
+  EmailVerificationTokens,
   Notifications,
+  UserBadges,
+  BadgeLinkedModules,
   Badges,
   Announcements,
   Schedules,
+  ModuleCompletions,
   Certificates,
   user_progress,
   MaterialProgress,
+  Subsections,
+  Sections,
   LearningMaterials,
   AssessmentAttempts,
   AssessmentOptions,
   AssessmentQuestions,
   Assessments,
-  Subtitles,
   ModuleUiMeta,
   Modules,
   RegistrationRequests,
@@ -36,7 +47,7 @@ CREATE TABLE IF NOT EXISTS Roles (
 
 INSERT INTO Roles (RoleTitle, Description) VALUES
   ('Admin', 'Administrator with full access to the system'),
-  ('User', 'Regular user with limited access');
+  ('User', 'Regular user with limited access to the system');
 
 CREATE TABLE IF NOT EXISTS Qualifications (
   QualificationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -70,7 +81,7 @@ CREATE TABLE IF NOT EXISTS Users (
   MFAEnabled TINYINT(1) NOT NULL DEFAULT 0,
   MFASecret VARCHAR(255) NULL,
   MFAMethod VARCHAR(50) NOT NULL DEFAULT 'TOTP',
-  BackupCodes JSON NULL,
+  BackupCodes LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL CHECK (JSON_VALID(BackupCodes)),
   MFASetupAt TIMESTAMP NULL,
   RoleID TINYINT UNSIGNED NOT NULL,
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -89,13 +100,6 @@ INSERT INTO Users (Username, PasswordHash, FullName, Email, RoleID, Status) VALU
 
 CREATE INDEX idx_users_role_status ON Users (RoleID, Status);
 CREATE INDEX idx_users_mfa_enabled ON Users (MFAEnabled);
-
-CREATE INDEX idx_modules_module_type ON Modules (ModuleTypeID);
-CREATE INDEX idx_modules_qualification_type ON Modules (QualificationID, ModuleTypeID);
-CREATE INDEX idx_modules_linked_tpa ON Modules (LinkedTpaModuleID);
-CREATE INDEX idx_modules_linked_onsite ON Modules (LinkedOnsiteModuleID);
-CREATE INDEX idx_modules_type_linked_tpa ON Modules (ModuleTypeID, LinkedTpaModuleID);
-CREATE INDEX idx_modules_type_linked_onsite ON Modules (ModuleTypeID, LinkedOnsiteModuleID);
 
 CREATE TABLE IF NOT EXISTS RegistrationRequests (
   RegistrationID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -130,20 +134,18 @@ CREATE TABLE IF NOT EXISTS Modules (
   CONSTRAINT fk_modules_linked_onsite_module FOREIGN KEY (LinkedOnsiteModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE INDEX idx_modules_module_type ON Modules (ModuleTypeID);
+CREATE INDEX idx_modules_qualification_type ON Modules (QualificationID, ModuleTypeID);
+CREATE INDEX idx_modules_linked_tpa ON Modules (LinkedTpaModuleID);
+CREATE INDEX idx_modules_linked_onsite ON Modules (LinkedOnsiteModuleID);
+CREATE INDEX idx_modules_type_linked_tpa ON Modules (ModuleTypeID, LinkedTpaModuleID);
+CREATE INDEX idx_modules_type_linked_onsite ON Modules (ModuleTypeID, LinkedOnsiteModuleID);
+
 CREATE TABLE IF NOT EXISTS ModuleUiMeta (
   ModuleID INT UNSIGNED NOT NULL PRIMARY KEY,
   CoverImageUrl VARCHAR(500) NULL,
   UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_module_ui_meta_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS Subtitles (
-  SubTitleID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  ModuleID INT UNSIGNED NOT NULL,
-  QualificationID INT UNSIGNED NOT NULL,
-  ModuleTitle VARCHAR(160) NOT NULL,
-  CONSTRAINT fk_subtitles_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE,
-  CONSTRAINT fk_subtitles_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS Assessments (
@@ -190,7 +192,7 @@ CREATE TABLE IF NOT EXISTS AssessmentAttempts (
   Status VARCHAR(50) NOT NULL DEFAULT 'Pending',
   SubmittedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   TimeUsedSeconds INT UNSIGNED NOT NULL DEFAULT 0,
-  Answers JSON NULL,
+  Answers LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL CHECK (JSON_VALID(Answers)),
   UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   CONSTRAINT fk_assessment_attempts_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
   CONSTRAINT fk_assessment_attempts_assessment FOREIGN KEY (AssessmentID) REFERENCES Assessments (AssessmentID) ON DELETE CASCADE,
@@ -207,7 +209,6 @@ CREATE TABLE IF NOT EXISTS LearningMaterials (
   CONSTRAINT fk_learning_materials_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
--- New structure: Sections and Subsections for module content
 CREATE TABLE IF NOT EXISTS Sections (
   SectionID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   ModuleID INT UNSIGNED NOT NULL,
@@ -241,11 +242,11 @@ CREATE TABLE IF NOT EXISTS user_progress (
   id INT AUTO_INCREMENT PRIMARY KEY,
   userId INT UNSIGNED NOT NULL,
   moduleId INT UNSIGNED NOT NULL,
-  visitedSectionIds JSON DEFAULT '[]' COMMENT 'Array of visited section/subsection IDs',
+  visitedSectionIds LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin DEFAULT '[]' COMMENT 'Array of visited section/subsection IDs' CHECK (JSON_VALID(visitedSectionIds)),
   progressPercent INT DEFAULT 0 COMMENT 'Overall progress percentage (0-100)',
   lastSectionId VARCHAR(100) NULL COMMENT 'Last read section ID for resume functionality',
-  createdAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-  updatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  createdAt TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   UNIQUE KEY unique_user_module (userId, moduleId),
   FOREIGN KEY (userId) REFERENCES Users(UserID) ON DELETE CASCADE,
   FOREIGN KEY (moduleId) REFERENCES Modules(ModuleID) ON DELETE CASCADE,
@@ -316,11 +317,15 @@ CREATE TABLE IF NOT EXISTS Badges (
   IsValid TINYINT(1) NOT NULL DEFAULT 1,
   ValidityMonths INT UNSIGNED NULL,
   ExpiryDate DATETIME NULL,
+  LinkedModuleID INT UNSIGNED NULL,
   CreatedBy INT UNSIGNED NULL,
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_badges_created_by FOREIGN KEY (CreatedBy) REFERENCES Users (UserID) ON DELETE SET NULL
+  CONSTRAINT fk_badges_created_by FOREIGN KEY (CreatedBy) REFERENCES Users (UserID) ON DELETE SET NULL,
+  CONSTRAINT fk_badges_linked_module FOREIGN KEY (LinkedModuleID) REFERENCES Modules (ModuleID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_badges_linked_module ON Badges (LinkedModuleID);
 
 CREATE TABLE IF NOT EXISTS BadgeLinkedModules (
   BadgeID INT UNSIGNED NOT NULL,
@@ -378,30 +383,68 @@ CREATE INDEX idx_email_verification_tokens_token ON EmailVerificationTokens (Tok
 CREATE INDEX idx_email_verification_tokens_user_type ON EmailVerificationTokens (UserID, TokenType);
 CREATE INDEX idx_email_verification_tokens_expires ON EmailVerificationTokens (ExpiresAt);
 
-CREATE TABLE IF NOT EXISTS Evidence (
-EvidenceID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-EventTimestamp DATETIME NOT NULL,
-EventType VARCHAR(100) NOT NULL DEFAULT 'abnormal_interaction_detected',
-LabelsJson LONGTEXT NOT NULL,
-Location VARCHAR(100) NOT NULL,
-VideoFileName VARCHAR(255) NOT NULL,
-VideoMimeType VARCHAR(120) NOT NULL DEFAULT 'video/mp4',
-VideoSizeBytes BIGINT UNSIGNED NULL,
-VideoData LONGBLOB NOT NULL,
-VideoSha256 CHAR(64) NULL,
-CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-Status BOOLEAN NOT NULL DEFAULT 0,
-CONSTRAINT chk_evidence_labels_json CHECK (JSON_VALID(LabelsJson))
+CREATE TABLE IF NOT EXISTS MFARecoveryCodes (
+  RecoveryCodeID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  UserID INT UNSIGNED NOT NULL,
+  RecoveryCode VARCHAR(50) NOT NULL,
+  IsUsed TINYINT(1) NOT NULL DEFAULT 0,
+  UsedAt TIMESTAMP NULL,
+  CreatedAt TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_mfa_recovery_codes_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-ALTER TABLE Evidence
-ADD COLUMN IF NOT EXISTS Location VARCHAR(100) NOT NULL AFTER LabelsJson;
+CREATE INDEX idx_mfa_recovery_codes_user ON MFARecoveryCodes (UserID, IsUsed);
 
-CREATE INDEX idx_evidence_event_time ON Evidence (EventTimestamp);
-CREATE INDEX idx_evidence_created_at ON Evidence (CreatedAt);
+CREATE TABLE IF NOT EXISTS MFAAudit (
+  AuditID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  UserID INT UNSIGNED NOT NULL,
+  Action VARCHAR(100) NOT NULL,
+  Details LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NULL CHECK (JSON_VALID(Details)),
+  IPAddress VARCHAR(45) NULL,
+  UserAgent VARCHAR(500) NULL,
+  CreatedAt TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_mfa_audit_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-/* Payments table used to store user-submitted payment evidence for module certification
-   Admins will review and set Status to 'approved' or 'rejected'. */
+CREATE INDEX idx_mfa_audit_user_date ON MFAAudit (UserID, CreatedAt);
+
+CREATE TABLE IF NOT EXISTS RefreshTokens (
+  TokenID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  UserID INT UNSIGNED NOT NULL,
+  TokenJti VARCHAR(64) NOT NULL UNIQUE,
+  TokenFamily VARCHAR(64) NOT NULL,
+  TokenHash CHAR(64) NOT NULL UNIQUE,
+  IsRemember TINYINT(1) NOT NULL DEFAULT 0,
+  ExpiresAt TIMESTAMP NOT NULL,
+  RevokedAt TIMESTAMP NULL,
+  ReplacedByTokenID INT UNSIGNED NULL,
+  UserAgent VARCHAR(255) NULL,
+  IpAddress VARCHAR(64) NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  LastUsedAt TIMESTAMP NULL DEFAULT NULL,
+  CONSTRAINT fk_refresh_tokens_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
+  CONSTRAINT fk_refresh_tokens_replaced_by FOREIGN KEY (ReplacedByTokenID) REFERENCES RefreshTokens (TokenID) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_refresh_tokens_user_family ON RefreshTokens (UserID, TokenFamily);
+CREATE INDEX idx_refresh_tokens_expires_at ON RefreshTokens (ExpiresAt);
+CREATE INDEX idx_refresh_tokens_revoked_at ON RefreshTokens (RevokedAt);
+
+CREATE TABLE IF NOT EXISTS Evidence (
+  EvidenceID BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  EventTimestamp DATETIME NOT NULL,
+  EventType VARCHAR(100) NOT NULL DEFAULT 'abnormal_interaction_detected',
+  LabelsJson LONGTEXT NOT NULL,
+  Location VARCHAR(100) NOT NULL,
+  VideoFileName VARCHAR(255) NOT NULL,
+  VideoMimeType VARCHAR(120) NOT NULL DEFAULT 'video/mp4',
+  VideoSizeBytes BIGINT UNSIGNED NULL,
+  VideoData LONGBLOB NOT NULL,
+  VideoSha256 CHAR(64) NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  Status BOOLEAN NOT NULL DEFAULT 0
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
 CREATE TABLE IF NOT EXISTS Payments (
   PaymentID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   UserID INT UNSIGNED NOT NULL,
@@ -421,12 +464,11 @@ CREATE TABLE IF NOT EXISTS Payments (
 
 CREATE INDEX idx_payments_user_module ON Payments (UserID, ModuleID);
 
-
 CREATE TABLE IF NOT EXISTS Park (
-ParkID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-ParkName VARCHAR(150) NOT NULL UNIQUE,
-Longitude DECIMAL(10, 7) NOT NULL,
-Latitude DECIMAL(10, 7) NOT NULL
+  ParkID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ParkName VARCHAR(150) NOT NULL UNIQUE,
+  Longitude DECIMAL(10, 7) NOT NULL,
+  Latitude DECIMAL(10, 7) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO Park (ParkName, Longitude, Latitude) VALUES
@@ -435,3 +477,29 @@ INSERT INTO Park (ParkName, Longitude, Latitude) VALUES
   ('Kubah National Park', 110.194, 1.598),
   ('Gunung Mulu National Park', 114.919, 4.132),
   ('Maludam National Park', 111.033, 1.65);
+
+CREATE TABLE IF NOT EXISTS RichContents (
+  ContentID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  CreatedByUserID INT UNSIGNED NOT NULL,
+  Title VARCHAR(200) NOT NULL,
+  ContentHtml LONGTEXT NOT NULL,
+  ContentPlainText LONGTEXT NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_rich_contents_user FOREIGN KEY (CreatedByUserID) REFERENCES Users (UserID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS RichContentAttachments (
+  AttachmentID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  ContentID INT UNSIGNED NOT NULL,
+  OriginalFileName VARCHAR(255) NOT NULL,
+  StoredFileName VARCHAR(255) NOT NULL,
+  MimeType VARCHAR(120) NOT NULL,
+  FileSizeBytes BIGINT UNSIGNED NOT NULL,
+  RelativePath VARCHAR(500) NOT NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_rich_attachments_content FOREIGN KEY (ContentID) REFERENCES RichContents (ContentID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_rich_contents_created_by ON RichContents (CreatedByUserID);
+CREATE INDEX idx_rich_attachments_content ON RichContentAttachments (ContentID);

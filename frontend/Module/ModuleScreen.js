@@ -26,38 +26,7 @@ import {
 } from "./moduleProgressApi.js";
 import withRoleGuard from "../auth/withRoleGuard";
 
-const MODULE_SECTIONS = [
-  {
-    id: "section-1",
-    title: "1.1 Conservation",
-    contentHtml:
-      "<p>Conservation protects natural resources, biodiversity, and ecosystems in Sarawak parks. Guides help visitors understand low-impact behavior and why protection matters for future generations.</p>",
-  },
-  {
-    id: "section-2",
-    title: "1.2 Biodiversity",
-    contentHtml:
-      "<p>Biodiversity is the variety of life across habitats and species. Strong biodiversity improves ecosystem resilience and visitor learning outcomes.</p>",
-  },
-  {
-    id: "section-3",
-    title: "1.3 Eco-tourism",
-    contentHtml:
-      "<p>Eco-tourism balances visitor experience, local community benefit, and conservation outcomes through responsible travel practices.</p>",
-  },
-  {
-    id: "section-4",
-    title: "1.4 Legislation",
-    contentHtml:
-      "<p>Guides should understand major legal frameworks, park rules, and protected-area ordinances relevant to visitor control.</p>",
-  },
-  {
-    id: "section-5",
-    title: "1.5 Safety",
-    contentHtml:
-      "<p>Follow incident response SOPs for lost hikers, injuries, weather shifts, and wildlife encounters.</p>",
-  },
-];
+// Removed sample `MODULE_SECTIONS` constant; sections are loaded from API or left empty.
 
 function readSectionDescription(source) {
   if (!source) {
@@ -199,10 +168,8 @@ function ModuleScreen({
     route?.params?.progressionLockReason ||
     "Complete the required previous assessment to unlock this one.";
 
-  const [sections, setSections] = useState(MODULE_SECTIONS);
-  const [selectedSectionId, setSelectedSectionId] = useState(
-    MODULE_SECTIONS[0].id,
-  );
+  const [sections, setSections] = useState([]);
+  const [selectedSectionId, setSelectedSectionId] = useState(null);
   const [visitedSectionIds, setVisitedSectionIds] = useState(new Set());
   const [expandedSectionIds, setExpandedSectionIds] = useState(new Set());
   const [loading, setLoading] = useState(Boolean(routeModuleId));
@@ -379,19 +346,18 @@ function ModuleScreen({
   }, [sections, selectedSectionId]);
 
   useEffect(() => {
-    if (!routeModuleId) {
-      setPaymentStatus("paid");
-      setPaymentLoading(false);
-      setSections(MODULE_SECTIONS);
-      setSelectedSectionId(MODULE_SECTIONS[0]?.id || null);
-      setVisitedSectionIds(
-        MODULE_SECTIONS[0]?.id ? new Set([MODULE_SECTIONS[0].id]) : new Set(),
-      );
-      setExpandedSectionIds(new Set());
-      setModuleDisplayName(routeModuleName);
-      setLoading(false);
-      return;
-    }
+      if (!routeModuleId) {
+        setPaymentStatus("paid");
+        setPaymentLoading(false);
+        // No sample sections: leave sections empty so UI shows "no content" state.
+        setSections([]);
+        setSelectedSectionId(null);
+        setVisitedSectionIds(new Set());
+        setExpandedSectionIds(new Set());
+        setModuleDisplayName(routeModuleName);
+        setLoading(false);
+        return;
+      }
 
     fetchPaymentStatus();
 

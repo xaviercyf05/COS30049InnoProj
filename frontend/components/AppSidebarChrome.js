@@ -53,29 +53,7 @@ const SESSION_STORAGE_KEYS = [
 const DEFAULT_PROFILE_IMAGE =
   "https://static.vecteezy.com/system/resources/previews/036/280/651/original/default-avatar-profile-icon-social-media-user-image-gray-avatar-icon-blank-profile-silhouette-illustration-vector.jpg";
 
-const DEFAULT_NOTIFICATIONS = [
-  {
-    id: 1,
-    title: "New Announcement",
-    message: "Level 3 Training for Gunung Mulu National Park is now open.",
-    time: "2 min ago",
-    read: false,
-  },
-  {
-    id: 2,
-    title: "Module Updated",
-    message: "New content was added to 1.3 Eco-tourism module.",
-    time: "1 hour ago",
-    read: false,
-  },
-  {
-    id: 3,
-    title: "Assessment Reminder",
-    message: "Remember to complete your General Module assessment this week.",
-    time: "Yesterday",
-    read: true,
-  },
-];
+const DEFAULT_NOTIFICATIONS = [];
 
 const SCREEN_TITLES = {
   Home: "Dashboard",

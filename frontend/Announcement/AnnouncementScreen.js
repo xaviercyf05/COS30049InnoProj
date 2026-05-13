@@ -13,37 +13,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { requestProfileApi } from '../Profile/profileApi.js';
 import withRoleGuard from '../auth/withRoleGuard';
 
-
-const SAMPLE_ANNOUNCEMENTS = [
-  {
-    id: 1,
-    title: 'Level 1 Training - Bako National Park',
-    teaser: 'Complete Level 1 to become a certified Park Guide for Bako National Park.',
-    fullDesc:
-      'To become a certified Park Guide for Bako National Park, complete the full Level 1 path. This includes conservation basics, safety standards, and guide communication practices.',
-    posted: '12 Apr 2026, 20:45',
-    avatarLabel: 'L1',
-  },
-  {
-    id: 2,
-    title: 'Level 2 Training Open - Similajau and Kubah',
-    teaser: 'Level 2 now covers intermediate tracks for Similajau and Kubah parks.',
-    fullDesc:
-      'Level 2 focuses on advanced eco-tourism techniques, route management, and park-specific regulations for Similajau and Kubah National Parks.',
-    posted: '11 Apr 2026, 20:40',
-    avatarLabel: 'L2',
-  },
-  {
-    id: 3,
-    title: 'Level 3 Training Available - Gunung Mulu and Maludam',
-    teaser: 'Final certification tracks are now available for Gunung Mulu and Maludam.',
-    fullDesc:
-      'Level 3 is open for advanced certification. Completion of Level 1 and Level 2 is required before this final track.',
-    posted: '10 Apr 2026, 20:35',
-    avatarLabel: 'L3',
-  },
-];
-
 function AnnouncementCard({ item }) {
   const [expanded, setExpanded] = useState(false);
   const isWeb = Platform.OS === 'web';
@@ -91,7 +60,7 @@ function AnnouncementCard({ item }) {
 
 function AnnouncementScreen({ navigation, useSharedChrome = false }) {
   const insets = useSafeAreaInsets();
-  const [announcements, setAnnouncements] = useState(SAMPLE_ANNOUNCEMENTS);
+  const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -134,7 +103,7 @@ function AnnouncementScreen({ navigation, useSharedChrome = false }) {
         );
       } catch (_error) {
         if (active) {
-          setAnnouncements(SAMPLE_ANNOUNCEMENTS);
+          setAnnouncements([]);
         }
       } finally {
         if (active) {

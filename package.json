@@ -6,9 +6,6 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "seed:admin": "node scripts/seedAdmin.js",
-    "migrate:linked-tpa": "node scripts/runLinkedTpaMigration.js",
-    "migrate:user-progress": "node scripts/runUserProgressMigration.js",
     "mobile:start": "npm --prefix mobile run start",
     "mobile:android": "npm --prefix mobile run android",
     "mobile:ios": "npm --prefix mobile run ios",

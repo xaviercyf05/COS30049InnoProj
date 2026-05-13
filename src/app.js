@@ -27,13 +27,6 @@ const app = express();
 const publicDir = path.join(__dirname, "..", "public");
 const uploadsDir = path.join(__dirname, "..", "uploads");
 const richContentStorageDir = richContentModule.initRichContentStorage();
-const richContentDemoDir = path.join(
-  __dirname,
-  "..",
-  "feature_modules",
-  "rich-content",
-  "frontend"
-);
 
 /**
  * Security and middleware setup
@@ -90,7 +83,6 @@ app.use(
   express.static(uploadsDir)
 );
 app.use("/storage", express.static(richContentStorageDir));
-app.use("/rich-content-demo", express.static(richContentDemoDir));
 
 app.get("/", (req, res) => {
   return res.sendFile(path.join(publicDir, "index.html"));

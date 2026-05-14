@@ -3,7 +3,7 @@ import { API_ORIGIN, getApiBaseUrls } from '../Profile/profileApi.js';
 import { Platform } from 'react-native';
 
 export const AUTH_STORAGE_KEYS = [
-  'innopapp_auth_token',
+  'auth_token',
   'innopapp_auth_refresh_token',
   'innopapp_auth_role',
   'innopapp_auth_username',
@@ -20,7 +20,7 @@ export async function persistAuthSession({
   stayLoggedIn,
 }) {
   const sessionPairs = [
-    ['innopapp_auth_token', accessToken],
+    ['auth_token', accessToken],
     ['innopapp_auth_refresh_token', refreshToken],
     ['innopapp_auth_stayLoggedIn', String(!!stayLoggedIn)],
   ];
@@ -46,7 +46,7 @@ export async function clearAuthSession() {
 
 export async function getStoredAuthSession() {
   const [accessToken, refreshToken, stayLoggedIn, role, username, userId] = await Promise.all([
-    AsyncStorage.getItem('innopapp_auth_token'),
+    AsyncStorage.getItem('auth_token'),
     AsyncStorage.getItem('innopapp_auth_refresh_token'),
     AsyncStorage.getItem('innopapp_auth_stayLoggedIn'),
     AsyncStorage.getItem('innopapp_auth_role'),

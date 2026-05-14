@@ -201,7 +201,7 @@ function ModuleScreen({
     }
 
     try {
-      const token = await AsyncStorage.getItem("innopapp_auth_token");
+      const token = await AsyncStorage.getItem("auth_token");
       const response = await requestProfileApi(
         `/api/v1/modules/${routeModuleId}/payment-status`,
         token,
@@ -266,7 +266,7 @@ function ModuleScreen({
     setIsSubmitting(true);
 
     try {
-      const token = await AsyncStorage.getItem('innopapp_auth_token');
+      const token = await AsyncStorage.getItem('auth_token');
       if (!token) {
         Alert.alert('Error', 'No authentication token found');
         return;
@@ -368,7 +368,7 @@ function ModuleScreen({
       setVisitedSectionIds(new Set());
 
       try {
-        const token = await AsyncStorage.getItem("innopapp_auth_token");
+        const token = await AsyncStorage.getItem("auth_token");
 
         if (!token) {
           throw new Error("No active session.");
@@ -562,7 +562,7 @@ function ModuleScreen({
           setExpandedSectionIds(new Set());
 
           try {
-            const token = await AsyncStorage.getItem("innopapp_auth_token");
+            const token = await AsyncStorage.getItem("auth_token");
             const savedProgress = await fetchModuleProgress(
               routeModuleId,
               token,
@@ -650,7 +650,7 @@ function ModuleScreen({
     let saveTimeout;
     const autoSaveProgress = async () => {
       try {
-        const token = await AsyncStorage.getItem("innopapp_auth_token");
+        const token = await AsyncStorage.getItem("auth_token");
         if (!token) return;
 
         const progressPercent = calculateProgressPercent(
@@ -682,7 +682,7 @@ function ModuleScreen({
       if (routeModuleId && sections.length > 0 && visitedSectionIds.size > 0) {
         (async () => {
           try {
-            const token = await AsyncStorage.getItem("innopapp_auth_token");
+            const token = await AsyncStorage.getItem("auth_token");
             if (!token) return;
 
             const progressPercent = calculateProgressPercent(

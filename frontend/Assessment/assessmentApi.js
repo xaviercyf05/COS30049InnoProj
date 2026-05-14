@@ -78,7 +78,7 @@ function getPayloadData(responseData) {
 }
 
 export async function fetchAssessmentQuestions(moduleId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', questions: [], assessmentId: null };
 	}
@@ -133,7 +133,7 @@ export async function fetchAssessmentDetails(assessmentId) {
 }
 
 export async function checkAttemptEligibility(assessmentId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', eligible: false };
 	}
@@ -156,7 +156,7 @@ export async function checkAttemptEligibility(assessmentId) {
 }
 
 export async function submitAssessmentAttempt(assessmentId, answers, timeUsedSeconds = 0, questions = []) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', score: 0, passed: false };
 	}
@@ -233,7 +233,7 @@ export async function submitAssessmentAttempt(assessmentId, answers, timeUsedSec
 }
 
 export async function fetchAssessmentHistory(moduleId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', history: [] };
 	}
@@ -262,7 +262,7 @@ export async function fetchAssessmentHistory(moduleId) {
 }
 
 export async function fetchAllAssessments(moduleId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', assessments: [] };
 	}
@@ -292,7 +292,7 @@ export async function fetchAllAssessments(moduleId) {
 }
 
 export async function addAssessmentQuestion(assessmentId, questionText, questionType, topic, options, correctAnswer) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', questionId: null };
 	}
@@ -311,7 +311,7 @@ export async function addAssessmentQuestion(assessmentId, questionText, question
 }
 
 export async function updateAssessmentQuestion(questionId, questionText, questionType, topic, options, correctAnswer) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required' };
 	}
@@ -325,7 +325,7 @@ export async function updateAssessmentQuestion(questionId, questionText, questio
 }
 
 export async function deleteAssessmentQuestion(assessmentId, questionId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required' };
 	}
@@ -338,7 +338,7 @@ export async function deleteAssessmentQuestion(assessmentId, questionId) {
 }
 
 export async function fetchAssessmentQuestionsAdmin(assessmentId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', questions: [] };
 	}
@@ -373,7 +373,7 @@ export async function fetchAssessmentQuestionsAdmin(assessmentId) {
 }
 
 export async function createAssessment(moduleId, title, passingScore, durationMinutes, attemptLimit = 3) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', assessmentId: null };
 	}
@@ -392,7 +392,7 @@ export async function createAssessment(moduleId, title, passingScore, durationMi
 }
 
 export async function updateAssessmentSettings(assessmentId, passingScore, durationMinutes, attemptLimit) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required' };
 	}
@@ -406,7 +406,7 @@ export async function updateAssessmentSettings(assessmentId, passingScore, durat
 }
 
 export async function deleteAssessment(assessmentId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required' };
 	}
@@ -419,7 +419,7 @@ export async function deleteAssessment(assessmentId) {
 }
 
 export async function fetchAssessmentAttempts(assessmentId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', attempts: [] };
 	}
@@ -453,7 +453,7 @@ export async function fetchAssessmentAttempts(assessmentId) {
 }
 
 export async function resetUserAttempt(assessmentId, attemptId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required' };
 	}
@@ -466,7 +466,7 @@ export async function resetUserAttempt(assessmentId, attemptId) {
 }
 
 export async function linkBadgeToAssessment(assessmentId, badgeId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required' };
 	}
@@ -481,7 +481,7 @@ export async function linkBadgeToAssessment(assessmentId, badgeId) {
 }
 
 export async function unlinkBadgeFromAssessment(assessmentId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required' };
 	}
@@ -496,7 +496,7 @@ export async function unlinkBadgeFromAssessment(assessmentId) {
 }
 
 export async function getAssessmentBadge(assessmentId) {
-	const token = await AsyncStorage.getItem('innopapp_auth_token');
+	const token = await AsyncStorage.getItem('auth_token');
 	if (!token) {
 		return { error: 'Authentication required', badge: null };
 	}

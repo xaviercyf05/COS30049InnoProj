@@ -36,7 +36,7 @@ export default function withRoleGuard(
         setLoading(true);
 
         try {
-          const token = await AsyncStorage.getItem('innopapp_auth_token');
+          const token = await AsyncStorage.getItem('auth_token');
 
           if (!token) {
             if (!active) {
@@ -78,7 +78,7 @@ export default function withRoleGuard(
           }
 
           if (error?.status === 401) {
-            await AsyncStorage.multiRemove(['innopapp_auth_token', 'innopapp_auth_role']);
+            await AsyncStorage.multiRemove(['auth_token', 'innopapp_auth_role']);
             navigation.reset({
               index: 0,
               routes: [{ name: 'Login' }],

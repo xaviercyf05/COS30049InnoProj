@@ -53,7 +53,7 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 	const [notice, setNotice] = useState('');
 
 	const getAuthToken = async () => {
-		const token = await AsyncStorage.getItem('innopapp_auth_token');
+		const token = await AsyncStorage.getItem('auth_token');
 		if (!token) throw new Error('Session expired.');
 		return token;
 	};

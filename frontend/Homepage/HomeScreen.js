@@ -5,7 +5,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 export default function HomeScreen({ navigation }) {
   const performLogout = async () => {
     try {
-      await AsyncStorage.removeItem('innopapp_auth_token');
+      await AsyncStorage.removeItem('auth_token');
       navigation.reset({
         index: 0,
         routes: [{ name: 'Login' }],

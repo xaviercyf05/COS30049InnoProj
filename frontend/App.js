@@ -61,7 +61,7 @@ import {
 
 const Stack = createNativeStackNavigator();
 const SESSION_STORAGE_KEYS = [
-	'innopapp_auth_token',
+	'auth_token',
 	'innopapp_auth_role',
 	'innopapp_auth_username',
 	'innopapp_auth_user_id',
@@ -411,7 +411,7 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 		setUserModules([]);
 
 		try {
-			const token = await AsyncStorage.getItem('innopapp_auth_token');
+			const token = await AsyncStorage.getItem('auth_token');
 
 			if (!token) {
 				await AsyncStorage.multiRemove(SESSION_STORAGE_KEYS);

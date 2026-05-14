@@ -44,7 +44,7 @@ const formatTimeAgo = (dateString) => {
 };
 
 const SESSION_STORAGE_KEYS = [
-  "innopapp_auth_token",
+  "auth_token",
   "innopapp_auth_role",
   "innopapp_auth_username",
   "innopapp_auth_user_id",
@@ -112,7 +112,7 @@ function AppSidebarChrome({ navigation, route, title, children }) {
         "local_notifications_state",
         JSON.stringify(updatedNotifications),
       );
-      const token = await AsyncStorage.getItem("innopapp_auth_token");
+      const token = await AsyncStorage.getItem("auth_token");
       if (token) {
         await requestProfileApi(`/api/v1/notifications/${id}/read`, token, {
           method: "POST",
@@ -127,7 +127,7 @@ function AppSidebarChrome({ navigation, route, title, children }) {
     setProfileLoading(true);
 
     try {
-      const token = await AsyncStorage.getItem("innopapp_auth_token");
+      const token = await AsyncStorage.getItem("auth_token");
 
       if (!token) {
         setProfile(null);

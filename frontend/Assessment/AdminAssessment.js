@@ -83,7 +83,7 @@ function AdminAssessment({ route, navigation }) {
 
 	const loadModules = useCallback(async () => {
 		try {
-			const token = await AsyncStorage.getItem('innopapp_auth_token');
+			const token = await AsyncStorage.getItem('auth_token');
 			if (!token) {
 				setAvailableModules([]);
 				return;

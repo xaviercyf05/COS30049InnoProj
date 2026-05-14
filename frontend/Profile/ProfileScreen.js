@@ -48,7 +48,7 @@ export default function ProfileScreen({ navigation }) {
       }
 
       try {
-        const token = await AsyncStorage.getItem('innopapp_auth_token');
+        const token = await AsyncStorage.getItem('auth_token');
 
         if (!token) {
           navigation.reset({

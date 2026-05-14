@@ -70,7 +70,7 @@ function AnnouncementScreen({ navigation, useSharedChrome = false }) {
       setLoading(true);
 
       try {
-        const token = await AsyncStorage.getItem('innopapp_auth_token');
+        const token = await AsyncStorage.getItem('auth_token');
 
         if (!token) {
           return;

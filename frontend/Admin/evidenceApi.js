@@ -1,7 +1,7 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { getApiBaseUrls, API_ORIGIN } from '../Profile/profileApi.js';
 
-const AUTH_TOKEN_KEY = 'innopapp_auth_token';
+const AUTH_TOKEN_KEY = 'auth_token';
 
 function normalizeKey(key) {
   return String(key || '')

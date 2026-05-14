@@ -41,7 +41,7 @@ function AlertDetail({ route, navigation }) {
   };
 
   useEffect(() => {
-    AsyncStorage.getItem('innopapp_auth_token').then(setToken);
+    AsyncStorage.getItem('auth_token').then(setToken);
   }, []);
 
   useEffect(() => {
@@ -72,7 +72,7 @@ function AlertDetail({ route, navigation }) {
     setDownloadError('');
 
     try {
-      const token = await AsyncStorage.getItem('innopapp_auth_token');
+      const token = await AsyncStorage.getItem('auth_token');
 
       if (!token) {
         throw new Error('Missing authentication token. Please log in again.');

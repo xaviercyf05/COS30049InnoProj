@@ -52,7 +52,7 @@ export function normalizePieSlices(slices) {
 }
 
 export async function fetchAnalyticsDashboardData() {
-  const token = await AsyncStorage.getItem('innopapp_auth_token');
+  const token = await AsyncStorage.getItem('auth_token');
   if (!token) {
     throw new Error('Authentication required');
   }

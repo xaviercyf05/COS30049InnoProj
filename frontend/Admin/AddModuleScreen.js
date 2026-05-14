@@ -209,7 +209,7 @@ function AddModuleScreen({ navigation }) {
 
     const loadSavedModuleCount = async () => {
       try {
-        const token = await AsyncStorage.getItem('innopapp_auth_token');
+        const token = await AsyncStorage.getItem('auth_token');
 
         if (!token) {
           return;
@@ -448,7 +448,7 @@ function AddModuleScreen({ navigation }) {
       return;
     }
 
-    const token = await AsyncStorage.getItem('innopapp_auth_token');
+    const token = await AsyncStorage.getItem('auth_token');
 
     if (!token) {
       showNotice('Session expired', 'Please log in again to continue.');

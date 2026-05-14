@@ -47,7 +47,7 @@ function AddBadgeScreen({ navigation }) {
       setLoadingModules(true);
 
       try {
-        const token = await AsyncStorage.getItem('innopapp_auth_token');
+        const token = await AsyncStorage.getItem('auth_token');
 
         if (!token) {
           if (active) {
@@ -113,7 +113,7 @@ function AddBadgeScreen({ navigation }) {
     const primaryModuleId = selectedModuleNumbers[0] || null;
 
     try {
-      const token = await AsyncStorage.getItem('innopapp_auth_token');
+      const token = await AsyncStorage.getItem('auth_token');
 
       if (!token) {
         Alert.alert('Session expired', 'Please log in again to continue.');

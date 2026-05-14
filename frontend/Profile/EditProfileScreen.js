@@ -236,7 +236,7 @@ export default function EditProfileScreen({ navigation, route }) {
     setLoading(true);
 
     try {
-      const token = await AsyncStorage.getItem('innopapp_auth_token');
+      const token = await AsyncStorage.getItem('auth_token');
 
       if (!token) {
         navigation.reset({
@@ -379,7 +379,7 @@ export default function EditProfileScreen({ navigation, route }) {
     setSaving(true);
 
     try {
-      const token = await AsyncStorage.getItem('innopapp_auth_token');
+      const token = await AsyncStorage.getItem('auth_token');
 
       if (!token) {
         navigation.reset({

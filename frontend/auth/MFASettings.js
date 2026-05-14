@@ -36,7 +36,7 @@ const MFASettings = ({ token, userId, onMFAStatusChange }) => {
 
     const loadSessionToken = async () => {
       try {
-        const storedToken = await AsyncStorage.getItem('innopapp_auth_token');
+        const storedToken = await AsyncStorage.getItem('auth_token');
 
         if (isMounted) {
           setAuthToken(storedToken || token || '');

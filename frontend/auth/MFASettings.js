@@ -235,19 +235,14 @@ const handleDisableMFA = async () => {
     }
   };
 
-  if (Platform.OS === 'web' && typeof window !== 'undefined') {
-    const confirmed = window.confirm('Are you sure you want to disable two-factor authentication? Your account will be less secure.');
-    if (confirmed) await doDisable();
-  } else {
-    Alert.alert(
-      'Disable MFA?',
-      'Are you sure you want to disable two-factor authentication? Your account will be less secure.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { text: 'Disable', style: 'destructive', onPress: doDisable },
-      ]
-    );
-  }
+  Alert.alert(
+    'Disable MFA?',
+    'Are you sure you want to disable two-factor authentication? Your account will be less secure.',
+    [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Disable', style: 'destructive', onPress: () => { void doDisable(); } },
+    ]
+  );
 };
 
   const handleRegenerateRecoveryCodes = async () => {

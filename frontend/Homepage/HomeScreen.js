@@ -1,5 +1,5 @@
 import React from 'react';
-import { Alert, Platform, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import { Alert, View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function HomeScreen({ navigation }) {
@@ -16,15 +16,6 @@ export default function HomeScreen({ navigation }) {
   };
 
   const handleLogout = () => {
-    if (Platform.OS === 'web') {
-      const confirmed = typeof window !== 'undefined' ? window.confirm('Are you sure you want to log out?') : true;
-      if (!confirmed) {
-        return;
-      }
-      void performLogout();
-      return;
-    }
-
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
       {

@@ -121,13 +121,6 @@ function AdminAnnouncementScreen({ navigation, useSharedChrome = false }) {
   };
 
   const confirmAction = (title, message, onConfirm) => {
-    if (Platform.OS === 'web' && typeof window?.confirm === 'function') {
-      if (window.confirm(`${title}\n\n${message}`)) {
-        onConfirm();
-      }
-      return;
-    }
-
     Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: onConfirm },

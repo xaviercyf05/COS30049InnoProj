@@ -239,20 +239,6 @@ function AppSidebarChrome({ navigation, route, title, children }) {
   };
 
   const handleLogout = () => {
-    if (Platform.OS === "web") {
-      const confirmed =
-        typeof window !== "undefined"
-          ? window.confirm("Are you sure you want to log out?")
-          : true;
-
-      if (!confirmed) {
-        return;
-      }
-
-      void performLogout();
-      return;
-    }
-
     Alert.alert("Log Out", "Are you sure you want to log out?", [
       { text: "Cancel", style: "cancel" },
       {

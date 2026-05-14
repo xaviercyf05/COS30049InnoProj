@@ -172,33 +172,10 @@ function AddModuleScreen({ navigation }) {
   };
 
   const showNotice = (title, message) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
-      window.alert(`${title}\n\n${message}`);
-      return;
-    }
-
     Alert.alert(title, message);
   };
 
   const showSaveSuccessPrompt = (message) => {
-    if (
-      Platform.OS === 'web' &&
-      typeof window !== 'undefined' &&
-      typeof window.confirm === 'function'
-    ) {
-      const goHome = window.confirm(
-        `${message}\n\nPress OK to go to Homepage.\nPress Cancel to go back to previous page.`
-      );
-
-      if (goHome) {
-        navigateToHome();
-      } else {
-        navigateToPreviousScreen();
-      }
-
-      return;
-    }
-
     Alert.alert('Save successful', message, [
       { text: 'Previous Page', onPress: navigateToPreviousScreen },
       { text: 'Homepage', onPress: navigateToHome },

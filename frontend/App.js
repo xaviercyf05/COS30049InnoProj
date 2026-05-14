@@ -5,6 +5,7 @@ import {
 	Animated,
 	Image,
 	ImageBackground,
+	Modal,
 	Platform,
 	ScrollView,
 	StatusBar,
@@ -74,6 +75,142 @@ const MODULE_TYPE_OPTIONS = [
 	{ id: 2, value: 'park-specific', label: 'Total Protected Area (TPA) Modules' },
 	{ id: 3, value: 'on-site', label: 'On Site Training Modules' },
 ];
+
+const WEB_ALERT_CONTROLLER = {
+	listener: null,
+	pending: [],
+	setListener(nextListener) {
+		this.listener = nextListener;
+		if (typeof nextListener === 'function' && this.pending.length > 0) {
+			const queued = [...this.pending];
+			this.pending = [];
+			queued.forEach((item) => nextListener(item));
+		}
+	},
+	publish(payload) {
+		if (typeof this.listener === 'function') {
+			this.listener(payload);
+			return;
+		}
+
+		this.pending.push(payload);
+	},
+};
+
+function WebAlertHost() {
+	const [queue, setQueue] = useState([]);
+
+	useEffect(() => {
+		if (Platform.OS !== 'web') {
+			return undefined;
+		}
+
+		const onAlert = (payload) => {
+			setQueue((previous) => [...previous, payload]);
+		};
+
+		WEB_ALERT_CONTROLLER.setListener(onAlert);
+
+		return () => {
+			WEB_ALERT_CONTROLLER.setListener(null);
+		};
+	}, []);
+
+	const activeAlert = queue[0] || null;
+
+	const resolveAlert = (buttonIndex = 0) => {
+		if (!activeAlert) {
+			return;
+		}
+
+		const selectedButton = activeAlert.buttons[buttonIndex] || activeAlert.buttons[0] || null;
+		setQueue((previous) => previous.slice(1));
+
+		if (typeof selectedButton?.onPress === 'function') {
+			selectedButton.onPress();
+		}
+	};
+
+	if (Platform.OS !== 'web') {
+		return null;
+	}
+
+	return (
+		<Modal
+			transparent
+			animationType="fade"
+			visible={Boolean(activeAlert)}
+			onRequestClose={() => resolveAlert(0)}
+		>
+			<View style={styles.webAlertOverlay}>
+				<View style={styles.webAlertCard}>
+					<Text style={styles.webAlertTitle}>{activeAlert?.title}</Text>
+					{activeAlert?.message ? (
+						<Text style={styles.webAlertMessage}>{activeAlert.message}</Text>
+					) : null}
+
+					<View style={styles.webAlertActions}>
+						{(activeAlert?.buttons || []).map((button, index) => {
+							const isCancel = button?.style === 'cancel';
+							const isDestructive = button?.style === 'destructive';
+
+							return (
+								<TouchableOpacity
+									key={`${String(button?.text || 'OK')}-${index}`}
+									style={[
+										styles.webAlertButton,
+										isCancel && styles.webAlertButtonSecondary,
+										isDestructive && styles.webAlertButtonDestructive,
+									]}
+									onPress={() => resolveAlert(index)}
+								>
+									<Text
+										style={[
+											styles.webAlertButtonText,
+											isCancel && styles.webAlertButtonTextSecondary,
+											isDestructive && styles.webAlertButtonTextDestructive,
+										]}
+									>
+										{button?.text || 'OK'}
+									</Text>
+								</TouchableOpacity>
+							);
+						})}
+					</View>
+				</View>
+			</View>
+		</Modal>
+	);
+}
+
+function initializeWebAlertModals() {
+	if (Platform.OS !== 'web' || typeof window === 'undefined') {
+		return;
+	}
+
+	if (Alert.__webModalPatched) {
+		return;
+	}
+
+	Alert.__webModalPatched = true;
+
+	Alert.alert = (title, message, buttons) => {
+		const normalizedTitle = String(title || '').trim();
+		const normalizedMessage = String(message || '').trim();
+		const normalizedButtons = Array.isArray(buttons) ? buttons.filter(Boolean) : [];
+		const resolvedButtons = normalizedButtons.length
+			? normalizedButtons
+			: [{ text: 'OK' }];
+
+		WEB_ALERT_CONTROLLER.publish({
+			title: normalizedTitle,
+			message: normalizedMessage,
+			buttons: resolvedButtons,
+		});
+	};
+}
+
+initializeWebAlertModals();
 
 function normalizeModuleType(value, fallback = 'general') {
 	if (value === 1 || value === '1') {
@@ -373,36 +510,7 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 	const [modulesLoading, setModulesLoading] = useState(true);
 	const [sidebarMounted, setSidebarMounted] = useState(false);
 	const sidebarTranslateX = React.useRef(new Animated.Value(-320)).current;
-	const [notifications, setNotifications] = useState([
-		{
-			id: 1,
-			title: 'New Announcement',
-			message: 'Level 3 Training for Gunung Mulu National Park is now open.',
-			time: '2 min ago',
-			read: false,
-		},
-		{
-			id: 2,
-			title: 'Module Updated',
-			message: 'New content was added to 1.3 Eco-tourism module.',
-			time: '1 hour ago',
-			read: false,
-		},
-		{
-			id: 3,
-			title: 'Assessment Reminder',
-			message: 'Remember to complete your General Module assessment this week.',
-			time: 'Yesterday',
-			read: true,
-		},
-		{
-			id: 4,
-			title: 'System Notice',
-			message: 'Scheduled maintenance starts tomorrow at 10:00 AM.',
-			time: '2 days ago',
-			read: true,
-		},
-	]);
+	const [notifications, setNotifications] = useState();
 	const [userModules, setUserModules] = useState([]);
 
 	const loadProfile = useCallback(async () => {
@@ -565,19 +673,6 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 	};
 
 	const handleLogout = () => {
-		if (Platform.OS === 'web') {
-			const confirmed = typeof window !== 'undefined'
-				? window.confirm('Are you sure you want to log out?')
-				: true;
-
-			if (!confirmed) {
-				return;
-			}
-
-			void performLogout();
-			return;
-		}
-
 		Alert.alert('Log Out', 'Are you sure you want to log out?', [
 			{ text: 'Cancel', style: 'cancel' },
 			{
@@ -1071,8 +1166,9 @@ function usePeriodicTokenRefresh() {
 
 export default function App() {
 	return (
-		<NavigationContainer>
-			<Stack.Navigator initialRouteName="Loading" screenOptions={{ headerShown: false }}>
+		<>
+			<NavigationContainer>
+				<Stack.Navigator initialRouteName="Loading" screenOptions={{ headerShown: false }}>
 				<Stack.Screen name="Loading" component={LoadingScreen} />
 				<Stack.Screen name="Login" component={LoginPage} />
 				<Stack.Screen
@@ -1193,8 +1289,10 @@ export default function App() {
 						title: route?.params?.title || 'Admin Feature',
 					})}
 				/>
-			</Stack.Navigator>
-		</NavigationContainer>
+				</Stack.Navigator>
+			</NavigationContainer>
+			<WebAlertHost />
+		</>
 	);
 }
 
@@ -1784,5 +1882,66 @@ const styles = StyleSheet.create({
 		color: '#FFFFFF',
 		fontWeight: '700',
 		fontSize: 14,
+	},
+	webAlertOverlay: {
+		flex: 1,
+		backgroundColor: 'rgba(20, 31, 24, 0.5)',
+		justifyContent: 'center',
+		alignItems: 'center',
+		padding: 20,
+	},
+	webAlertCard: {
+		width: '50%',
+		minWidth: 320,
+		maxWidth: 640,
+		backgroundColor: '#FFFFFF',
+		borderRadius: 18,
+		padding: 20,
+		borderWidth: 1,
+		borderColor: '#E3EBDD',
+	},
+	webAlertTitle: {
+		fontSize: 20,
+		fontWeight: '800',
+		color: '#20372A',
+	},
+	webAlertMessage: {
+		marginTop: 10,
+		fontSize: 14,
+		lineHeight: 21,
+		color: '#4E6257',
+	},
+	webAlertActions: {
+		marginTop: 18,
+		flexDirection: 'row',
+		justifyContent: 'flex-end',
+		gap: 10,
+	},
+	webAlertButton: {
+		backgroundColor: '#2E6B4D',
+		paddingVertical: 10,
+		paddingHorizontal: 14,
+		borderRadius: 10,
+		borderWidth: 1,
+		borderColor: '#2E6B4D',
+	},
+	webAlertButtonSecondary: {
+		backgroundColor: '#ECF2E5',
+		borderColor: '#DDE8D6',
+	},
+	webAlertButtonDestructive: {
+		backgroundColor: '#FFECEC',
+		borderColor: '#F5CACA',
+	},
+	webAlertButtonText: {
+		color: '#FFFFFF',
+		fontWeight: '800',
+		fontSize: 13,
+	},
+	webAlertButtonTextSecondary: {
+		color: '#2E6B4D',
+	},
+	webAlertButtonTextDestructive: {
+		color: '#B53A3A',
 	},
 });

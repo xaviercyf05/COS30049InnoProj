@@ -356,11 +356,6 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
   };
 
   const showNotice = (title, message) => {
-    if (Platform.OS === 'web' && typeof window !== 'undefined' && typeof window.alert === 'function') {
-      window.alert(`${title}\n\n${message}`);
-      return;
-    }
-
     Alert.alert(title, message);
   };
 
@@ -368,25 +363,6 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
     const successMessage = isEditFlow
       ? 'Module changes saved successfully.'
       : 'Module created successfully.';
-
-    if (
-      Platform.OS === 'web' &&
-      typeof window !== 'undefined' &&
-      typeof window.confirm === 'function'
-    ) {
-      const goHome = window.confirm(
-        `${successMessage}\n\nPress OK to go to Homepage.\nPress Cancel to go back to previous page.`
-      );
-
-      if (goHome) {
-        navigateToHome();
-      } else {
-        navigateToPreviousScreen();
-      }
-
-      return;
-    }
-
     Alert.alert('Save successful', successMessage, [
       { text: 'Previous Page', onPress: navigateToPreviousScreen },
       { text: 'Homepage', onPress: navigateToHome },
@@ -495,13 +471,6 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
   };
 
   const confirmAction = (title, message, onConfirm) => {
-    if (Platform.OS === 'web' && typeof window?.confirm === 'function') {
-      if (window.confirm(`${title}\n\n${message}`)) {
-        onConfirm();
-      }
-      return;
-    }
-
     Alert.alert(title, message, [
       { text: 'Cancel', style: 'cancel' },
       { text: 'Delete', style: 'destructive', onPress: onConfirm },

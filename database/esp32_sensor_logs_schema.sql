@@ -2,6 +2,7 @@
 CREATE TABLE IF NOT EXISTS ESP32SensorLogs (
   LogID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   DeviceID VARCHAR(100) NOT NULL,
+  Location VARCHAR(100) NULL,
   Temperature DECIMAL(6,2) NULL,
   Humidity DECIMAL(6,2) NULL,
   Distance DECIMAL(8,3) NULL,
@@ -23,3 +24,5 @@ CREATE TABLE IF NOT EXISTS ESP32SensorLogs (
   INDEX idx_timestamp (Timestamp),
   INDEX idx_severity (Severity)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+DROP TABLE IF EXISTS ESP32SensorLogs;

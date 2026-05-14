@@ -2,6 +2,7 @@ const express = require('express');
 const { body, param, query } = require('express-validator');
 const sensorController = require('../controllers/sensorController');
 const { validateDeviceKey } = require('../middleware/sensorAuth');
+const validate = require('../middleware/validate');
 
 const router = express.Router();
 
@@ -10,8 +11,10 @@ router.post('/log',
   [
     body('temp').exists().isFloat({ min: -50, max: 100 }),
     body('hum').exists().isFloat({ min: 0, max: 100 }),
-    body('distance').exists().isFloat({ min: 0 })
+    body('distance').exists().isFloat({ min: 0 }),
+    body('location').optional().isIn(['Bako', 'Kubah', 'Similajau', 'Gunung Mulu', 'Maludam'])
   ],
+  validate,
   sensorController.logSensorData
 );
 

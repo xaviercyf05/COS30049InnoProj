@@ -1,10 +1,14 @@
 const { query } = require('../config/db');
 
+const ALLOWED_LOCATIONS = ['Bako', 'Kubah', 'Similajau', 'Gunung Mulu', 'Maludam'];
+
 // POST /api/v1/sensors/log
 async function logSensorData(req, res) {
   try {
     const payload = req.body || {};
     const deviceID = req.deviceID || payload.deviceID || 'device001';
+    const location = (payload.location || '').toString().trim();
+    const resolvedLocation = ALLOWED_LOCATIONS.includes(location) ? location : 'Unknown';
 
     // basic required fields check
     if (payload.temp === undefined || payload.hum === undefined || payload.distance === undefined) {
@@ -13,13 +17,14 @@ async function logSensorData(req, res) {
 
     const insertQuery = `
       INSERT INTO ESP32SensorLogs (
-        DeviceID, Temperature, Humidity, Distance, Sound, Rain, Soil, SoilRaw,
+        DeviceID, Location, Temperature, Humidity, Distance, Sound, Rain, Soil, SoilRaw,
         DistanceStatus, SoundStatus, TempStatus, HumStatus, RainStatus, RainLevel, SoilStatus, Severity
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `;
 
     const values = [
       deviceID,
+      resolvedLocation,
       payload.temp !== undefined ? parseFloat(payload.temp) : null,
       payload.hum !== undefined ? parseFloat(payload.hum) : null,
       payload.distance !== undefined ? parseFloat(payload.distance) : null,

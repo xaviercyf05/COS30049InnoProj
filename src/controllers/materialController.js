@@ -83,6 +83,7 @@ async function getDashboardModules(req, res) {
                 m.ModuleTypeID,
                 mt.TypeName,
                  meta.CoverImageUrl,
+                 meta.Summary,
                  m.LinkedTpaModuleID,
                  m.LinkedOnsiteModuleID
            FROM Modules m
@@ -104,6 +105,7 @@ async function getDashboardModules(req, res) {
                 m.ModuleTypeID,
                 mt.TypeName,
                  meta.CoverImageUrl,
+                 meta.Summary,
                  m.LinkedTpaModuleID,
                  m.LinkedOnsiteModuleID
            FROM Certificates c
@@ -134,6 +136,7 @@ async function getDashboardModules(req, res) {
                 m.ModuleTypeID,
                 mt.TypeName,
                  meta.CoverImageUrl,
+                 meta.Summary,
                  m.LinkedTpaModuleID,
                  m.LinkedOnsiteModuleID
            FROM Modules m
@@ -222,6 +225,7 @@ async function getDashboardModules(req, res) {
         moduleTypeId: row.ModuleTypeID,
         moduleType: row.TypeName || "Unassigned",
         image: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
+          summary: row.Summary || '',
           linkedTpaModuleId: row.LinkedTpaModuleID || null,
           linkedOnsiteModuleId: row.LinkedOnsiteModuleID || null,
         };

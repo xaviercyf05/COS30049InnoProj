@@ -183,6 +183,7 @@ function ModuleScreen({
 
   const isPaid = paymentStatus === "paid";
   const isPaymentPending = paymentStatus === "pending";
+  const isAccessCheckComplete = !loading && !paymentLoading;
 
   const fetchPaymentStatus = async () => {
     if (!routeModuleId || isAdmin) {
@@ -961,50 +962,51 @@ function ModuleScreen({
           </View>
         </ImageBackground>
 
-        {loading || paymentLoading ? (
+        {!isAccessCheckComplete ? (
           <View style={styles.loadingPanel}>
             <ActivityIndicator size="large" color="#2E6B4D" />
-            <Text style={styles.loadingText}>Loading module content...</Text>
+            <Text style={styles.loadingText}>Checking access and loading module details...</Text>
           </View>
-        ) : (
-          !isAdmin &&
-          !isOnSite &&
-          paymentStatus &&
-          paymentStatus !== "paid" && (
-            <View style={styles.paymentStatusBanner}>
-              {paymentStatus === "pending" && (
-                <Text style={styles.pendingText}>
-                  ⏳ Payment Pending Review
-                </Text>
-              )}
-              {paymentStatus === "rejected" && (
-                <Text style={styles.rejectedText}>
-                  ❌ Payment Rejected - Please submit again
-                </Text>
-              )}
-              {paymentStatus === "unpaid" && (
-                <Text style={styles.unpaidText}>
-                  🔒 Payment Required to Access This Module
-                </Text>
-              )}
-            </View>
-          )
-        )}
-
-        {!isPaid && !isAdmin && !isOnSite ? (
+        ) : !isAdmin && !isOnSite && paymentStatus && paymentStatus !== "paid" ? (
           <View style={styles.lockedOverlay}>
             <Text style={styles.lockIcon}>🔒</Text>
-            <Text style={styles.lockTitle}>Payment Required</Text>
-            <Text style={styles.lockSubtitle}>
-              Complete payment to access this module content and assessment.
+            <Text style={styles.lockTitle}>
+              {paymentStatus === 'pending'
+                ? 'Payment Pending'
+                : paymentStatus === 'rejected'
+                ? 'Payment Rejected'
+                : 'Payment Required'}
             </Text>
 
-            <TouchableOpacity
-              style={styles.paymentButton}
-              onPress={() => setPaymentModalVisible(true)}
-            >
-              <Text style={styles.paymentButtonText}>💰 Make Payment Now</Text>
-            </TouchableOpacity>
+            <Text style={styles.lockSubtitle}>
+              {paymentStatus === 'pending'
+                ? 'Your payment is being reviewed. We will notify you once it is confirmed.'
+                : paymentStatus === 'rejected'
+                ? 'Your payment evidence was rejected. Please resubmit proof of payment.'
+                : 'Complete payment to access this module content and assessment.'}
+            </Text>
+
+            {paymentStatus === 'pending' ? (
+              <TouchableOpacity
+                style={styles.paymentButton}
+                onPress={() => setPaymentModalVisible(true)}
+              >
+                <Text style={styles.paymentButtonText}>📄 View Submission</Text>
+              </TouchableOpacity>
+            ) : (
+              <TouchableOpacity
+                style={styles.paymentButton}
+                onPress={() => setPaymentModalVisible(true)}
+              >
+                <Text style={styles.paymentButtonText}>
+                  {paymentStatus === 'rejected' ? 'Resubmit Payment' : '💰 Make Payment Now'}
+                </Text>
+              </TouchableOpacity>
+            )}
+
+            {paymentStatus === 'rejected' ? (
+              <Text style={[styles.rejectedText, { marginTop: 12, textAlign: 'center' }]}>If you need help, contact support.</Text>
+            ) : null}
           </View>
         ) : (
           <View style={[styles.mainArea, !isWeb && styles.mainAreaMobile]}>

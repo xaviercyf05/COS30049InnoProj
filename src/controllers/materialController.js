@@ -321,8 +321,10 @@ async function getModuleDetails(req, res) {
               m.QualificationID,
               m.ModuleTitle,
               m.ModuleTypeID,
-              mt.TypeName
+            mt.TypeName,
+            meta.Summary
          FROM Modules m
+          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
          LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
         WHERE m.ModuleID = ?
         LIMIT 1`,
@@ -352,6 +354,7 @@ async function getModuleDetails(req, res) {
         title: module.ModuleTitle,
         moduleTypeId: module.ModuleTypeID,
         moduleType: module.TypeName || "Unassigned",
+        summary: module.Summary || "",
         sections: chapters,
         chapters,
         materials,

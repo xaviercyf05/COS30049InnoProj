@@ -267,6 +267,7 @@ function createEmptyDraft() {
   return {
     id: null,
     title: '',
+    summary: '',
     moduleType: 'general',
     moduleTypeId: 1,
     linkedTpaModuleId: null,
@@ -295,6 +296,7 @@ function toDraft(moduleEntry) {
   return {
     id: moduleEntry.id || (moduleEntry.moduleId ? `module-${moduleEntry.moduleId}` : null),
     title: moduleEntry.title || '',
+    summary: moduleEntry.summary || moduleEntry.Summary || '',
     moduleType: normalizedModuleType,
     moduleTypeId: Number(moduleEntry.moduleTypeId || moduleEntry.module_type_id || moduleEntry.typeId || 0) || 1,
     linkedTpaModuleId: Number(
@@ -307,6 +309,7 @@ function toDraft(moduleEntry) {
       0
     ) || null,
     moduleImageUrl: moduleEntry.moduleImageUrl || moduleEntry.image || '',
+    summary: moduleEntry.summary || moduleEntry.Summary || '',
     moduleLocalImageUri: '',
     moduleLocalImageAsset: null,
     sections: moduleEntry.sections?.length
@@ -817,6 +820,7 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
     
       const modulePayload = {
         title: draft.title.trim(),
+        summary: draft.summary ? String(draft.summary).trim() : '',
         moduleType: normalizedType,
         moduleTypeId: moduleTypeId,
         type: normalizedType,
@@ -988,6 +992,19 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
               }));
             }}
             style={styles.moduleInput}
+          />
+
+          <TextInput
+            placeholder="Module Summary (short description)"
+            placeholderTextColor={PLACEHOLDER_COLOR}
+            value={draft.summary}
+            onChangeText={(value) => {
+              setDraft((previous) => ({
+                ...previous,
+                summary: value,
+              }));
+            }}
+            style={[styles.moduleInput, { marginBottom: 12 }]}
           />
 
           <View style={styles.typeSection}>

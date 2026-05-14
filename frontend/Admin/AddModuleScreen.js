@@ -110,6 +110,7 @@ function AddModuleScreen({ navigation }) {
   const [moduleTitle, setModuleTitle] = useState('');
   const [moduleType, setModuleType] = useState('general');
   const [moduleTypeId, setModuleTypeId] = useState(1);
+  const [moduleSummary, setModuleSummary] = useState('');
   const [linkedTpaModuleId, setLinkedTpaModuleId] = useState(null);
   const [moduleImageUrl, setModuleImageUrl] = useState('');
   const [moduleLocalImageUri, setModuleLocalImageUri] = useState('');
@@ -522,6 +523,7 @@ function AddModuleScreen({ navigation }) {
           typeId: normalizedTypeId,
           module_type: normalizedType,
           module_type_id: normalizedTypeId,
+          summary: moduleSummary.trim(),
           linkedTpaModuleId: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
           linked_tpa_module_id: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
           prerequisiteModuleId: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
@@ -601,6 +603,14 @@ function AddModuleScreen({ navigation }) {
           value={moduleTitle}
           onChangeText={setModuleTitle}
           style={styles.moduleInput}
+        />
+
+        <TextInput
+          placeholder="Module Summary (short description)"
+          placeholderTextColor={PLACEHOLDER_COLOR}
+          value={moduleSummary}
+          onChangeText={setModuleSummary}
+          style={[styles.moduleInput, { marginBottom: 12 }]}
         />
 
         <View style={styles.typeSection}>

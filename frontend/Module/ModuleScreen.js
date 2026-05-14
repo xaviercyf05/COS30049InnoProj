@@ -43,14 +43,6 @@ function readSectionDescription(source) {
   ).trim();
 }
 
-const TRACK_SUMMARY = {
-  General: "Conservation • Biodiversity • Eco-tourism • Legislation • Safety",
-  "Park 1": "Park 1 Training Track",
-  "Park 2": "Park 2 Training Track",
-  "Park 3": "Park 3 Training Track",
-  "Park 4": "Park 4 Training Track",
-  "Park 5": "Park 5 Training Track",
-};
 
 function stripHtmlContent(value) {
   if (!value) {
@@ -160,8 +152,7 @@ function ModuleScreen({
     currentProfile?.fullName || currentProfile?.username || "Guide";
 
   const [moduleDisplayName, setModuleDisplayName] = useState(routeModuleName);
-  const moduleSummary =
-    TRACK_SUMMARY[moduleDisplayName] || TRACK_SUMMARY.General;
+  const [moduleSummary, setModuleSummary] = useState(route?.params?.moduleSummary || '');
   const progressionUnlocked =
     isAdmin || route?.params?.progressionUnlocked !== false;
   const progressionLockReason =
@@ -435,6 +426,13 @@ function ModuleScreen({
 
         if (active && resolvedTitle) {
           setModuleDisplayName(resolvedTitle);
+        }
+
+        // Module summary (short description) provided by API when available
+        const resolvedSummary =
+          String(response?.data?.summary || response?.data?.Summary || '') || '';
+        if (active) {
+          setModuleSummary(resolvedSummary);
         }
 
         if (!materials.length && !apiSections?.length) {

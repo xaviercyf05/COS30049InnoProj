@@ -163,7 +163,8 @@ async function readModuleById(moduleId) {
             m.LinkedTpaModuleID,
             m.LinkedOnsiteModuleID,
             mt.TypeName,
-            meta.CoverImageUrl
+            meta.CoverImageUrl,
+            meta.Summary
        FROM Modules m
        LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
        LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
@@ -207,6 +208,7 @@ async function readModuleById(moduleId) {
     linkedTpaModuleId: moduleRow.LinkedTpaModuleID || null,
     linkedOnsiteModuleId: moduleRow.LinkedOnsiteModuleID || null,
     moduleImageUrl: resolveModuleCoverImage(moduleRow.ModuleID, moduleRow.CoverImageUrl),
+    summary: moduleRow.Summary || '',
     sections,
     sectionCount: sections.length,
   };
@@ -220,7 +222,7 @@ async function listModules(req, res) {
     await ensureModuleUiSchema();
 
     const [rows] = await query(
-      `SELECT m.ModuleID,
+            `SELECT m.ModuleID,
               m.QualificationID,
               m.ModuleTitle,
               m.ModuleTypeID,
@@ -228,6 +230,7 @@ async function listModules(req, res) {
               m.LinkedOnsiteModuleID,
               mt.TypeName,
               meta.CoverImageUrl,
+              meta.Summary,
               COUNT(sc.SubsectionID) AS SectionCount
          FROM Modules m
          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
@@ -235,7 +238,7 @@ async function listModules(req, res) {
          LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
          LEFT JOIN LearningMaterials lm ON lm.ModuleID = m.ModuleID
          LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, m.LinkedTpaModuleID, m.LinkedOnsiteModuleID, mt.TypeName, meta.CoverImageUrl
+        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, m.LinkedTpaModuleID, m.LinkedOnsiteModuleID, mt.TypeName, meta.CoverImageUrl, meta.Summary
         ORDER BY m.ModuleID DESC`
     );
 
@@ -249,6 +252,7 @@ async function listModules(req, res) {
       linkedTpaModuleId: row.LinkedTpaModuleID || null,
       linkedOnsiteModuleId: row.LinkedOnsiteModuleID || null,
       moduleImageUrl: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
+      summary: row.Summary || '',
       sectionCount: Number(row.SectionCount || 0),
     }));
 
@@ -461,8 +465,8 @@ async function createModule(req, res) {
     const moduleId = moduleInsert.insertId;
 
     await connection.execute(
-      "INSERT INTO ModuleUiMeta (ModuleID, CoverImageUrl) VALUES (?, ?)",
-      [moduleId, moduleImageUrl || null]
+      "INSERT INTO ModuleUiMeta (ModuleID, CoverImageUrl, Summary) VALUES (?, ?, ?)",
+      [moduleId, moduleImageUrl || null, req.body.summary ? String(req.body.summary).trim() : null]
     );
 
     // Insert sections and subsections
@@ -663,6 +667,14 @@ async function updateModule(req, res) {
        VALUES (?, ?)
        ON DUPLICATE KEY UPDATE CoverImageUrl = VALUES(CoverImageUrl)`,
       [moduleId, moduleImageUrl || null]
+    );
+
+    // Persist summary in UI meta as well
+    await connection.execute(
+      `INSERT INTO ModuleUiMeta (ModuleID, CoverImageUrl, Summary)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE CoverImageUrl = VALUES(CoverImageUrl), Summary = VALUES(Summary)`,
+      [moduleId, moduleImageUrl || null, req.body.summary ? String(req.body.summary).trim() : null]
     );
 
     // Remove existing sections/subsections for module and recreate

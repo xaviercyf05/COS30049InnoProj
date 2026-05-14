@@ -18,6 +18,7 @@ async function ensureModuleUiSchema() {
         `CREATE TABLE IF NOT EXISTS ModuleUiMeta (
           ModuleID INT UNSIGNED NOT NULL PRIMARY KEY,
           CoverImageUrl VARCHAR(500) NULL,
+          Summary TEXT NULL,
           UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           CONSTRAINT fk_module_ui_meta_module
             FOREIGN KEY (ModuleID)
@@ -25,6 +26,21 @@ async function ensureModuleUiSchema() {
             ON DELETE CASCADE
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
       );
+
+      const [summaryColumnRows] = await query(
+        `SELECT COUNT(*) AS columnCount
+           FROM INFORMATION_SCHEMA.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE()
+            AND TABLE_NAME = 'ModuleUiMeta'
+            AND COLUMN_NAME = 'Summary'`
+      );
+
+      if (!summaryColumnRows.length || Number(summaryColumnRows[0].columnCount || 0) === 0) {
+        await query(
+          `ALTER TABLE ModuleUiMeta
+             ADD COLUMN Summary TEXT NULL AFTER CoverImageUrl`
+        );
+      }
 
       await query(
         `UPDATE ModuleUiMeta

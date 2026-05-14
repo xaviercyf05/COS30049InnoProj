@@ -83,6 +83,7 @@ async function getDashboardModules(req, res) {
                 m.ModuleTypeID,
                 mt.TypeName,
                  meta.CoverImageUrl,
+                 meta.Summary,
                  m.LinkedTpaModuleID,
                  m.LinkedOnsiteModuleID
            FROM Modules m
@@ -104,6 +105,7 @@ async function getDashboardModules(req, res) {
                 m.ModuleTypeID,
                 mt.TypeName,
                  meta.CoverImageUrl,
+                 meta.Summary,
                  m.LinkedTpaModuleID,
                  m.LinkedOnsiteModuleID
            FROM Certificates c
@@ -134,6 +136,7 @@ async function getDashboardModules(req, res) {
                 m.ModuleTypeID,
                 mt.TypeName,
                  meta.CoverImageUrl,
+                 meta.Summary,
                  m.LinkedTpaModuleID,
                  m.LinkedOnsiteModuleID
            FROM Modules m
@@ -222,6 +225,7 @@ async function getDashboardModules(req, res) {
         moduleTypeId: row.ModuleTypeID,
         moduleType: row.TypeName || "Unassigned",
         image: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
+          summary: row.Summary || '',
           linkedTpaModuleId: row.LinkedTpaModuleID || null,
           linkedOnsiteModuleId: row.LinkedOnsiteModuleID || null,
         };
@@ -317,8 +321,10 @@ async function getModuleDetails(req, res) {
               m.QualificationID,
               m.ModuleTitle,
               m.ModuleTypeID,
-              mt.TypeName
+            mt.TypeName,
+            meta.Summary
          FROM Modules m
+          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
          LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
         WHERE m.ModuleID = ?
         LIMIT 1`,
@@ -348,6 +354,7 @@ async function getModuleDetails(req, res) {
         title: module.ModuleTitle,
         moduleTypeId: module.ModuleTypeID,
         moduleType: module.TypeName || "Unassigned",
+        summary: module.Summary || "",
         sections: chapters,
         chapters,
         materials,

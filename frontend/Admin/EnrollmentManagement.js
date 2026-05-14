@@ -587,12 +587,15 @@ const styles = StyleSheet.create({
 		flex: 1,
 		backgroundColor: 'rgba(18, 29, 21, 0.54)',
 		justifyContent: 'center',
+		alignItems: 'center',
 		padding: 20,
 	},
 	modalCard: {
 		backgroundColor: COLORS.card,
 		borderRadius: 22,
 		padding: 18,
+		width: Platform.OS === 'web' ? '50%' : '100%',
+		alignSelf: 'center',
 	},
 	modalTitle: {
 		fontSize: 20,

@@ -168,8 +168,10 @@ function ModuleScreen({
 
   const [paymentStatus, setPaymentStatus] = useState(null);
   const [paymentLoading, setPaymentLoading] = useState(true);
+  const [submissionDetails, setSubmissionDetails] = useState(null);
 
   const [paymentModalVisible, setPaymentModalVisible] = useState(false);
+  const [submissionDetailModalVisible, setSubmissionDetailModalVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const fileInputRef = useRef(null); 
@@ -185,9 +187,31 @@ function ModuleScreen({
   const isPaymentPending = paymentStatus === "pending";
   const isAccessCheckComplete = !loading && !paymentLoading;
 
+  const formatDateTime = (value) => {
+    if (!value) {
+      return "-";
+    }
+
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return "-";
+    }
+
+    return date.toLocaleString();
+  };
+
+  const openSubmissionDetails = () => {
+    if (!submissionDetails) {
+      Alert.alert("No Submission Found", "We could not find your latest payment submission details.");
+      return;
+    }
+    setSubmissionDetailModalVisible(true);
+  };
+
   const fetchPaymentStatus = async () => {
     if (!routeModuleId || isAdmin) {
       setPaymentStatus("paid");
+      setSubmissionDetails(null);
       setPaymentLoading(false);
       return;
     }
@@ -201,9 +225,11 @@ function ModuleScreen({
       );
 
       setPaymentStatus(response?.data?.status || "unpaid");
+      setSubmissionDetails(response?.data?.submission || null);
     } catch (error) {
       console.warn("Failed to fetch payment status:", error);
       setPaymentStatus("unpaid");
+      setSubmissionDetails(null);
     } finally {
       setPaymentLoading(false);
     }
@@ -989,7 +1015,7 @@ function ModuleScreen({
             {paymentStatus === 'pending' ? (
               <TouchableOpacity
                 style={styles.paymentButton}
-                onPress={() => setPaymentModalVisible(true)}
+                onPress={openSubmissionDetails}
               >
                 <Text style={styles.paymentButtonText}>📄 View Submission</Text>
               </TouchableOpacity>
@@ -1286,6 +1312,51 @@ function ModuleScreen({
                 </Text>
               </TouchableOpacity>
             </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal
+        animationType="fade"
+        transparent={true}
+        visible={submissionDetailModalVisible}
+        onRequestClose={() => setSubmissionDetailModalVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.paymentModalCard}>
+            <Text style={styles.modalTitle}>Latest Payment Submission</Text>
+
+            <View style={styles.submissionDetailCard}>
+              <Text style={styles.submissionDetailRow}>
+                <Text style={styles.submissionDetailLabel}>Status: </Text>
+                <Text style={styles.submissionDetailValue}>{(paymentStatus || "pending").toUpperCase()}</Text>
+              </Text>
+              <Text style={styles.submissionDetailRow}>
+                <Text style={styles.submissionDetailLabel}>Reference: </Text>
+                <Text style={styles.submissionDetailValue}>{submissionDetails?.reference || "-"}</Text>
+              </Text>
+              <Text style={styles.submissionDetailRow}>
+                <Text style={styles.submissionDetailLabel}>Receipt File: </Text>
+                <Text style={styles.submissionDetailValue}>{submissionDetails?.evidenceFileName || "-"}</Text>
+              </Text>
+              <Text style={styles.submissionDetailRow}>
+                <Text style={styles.submissionDetailLabel}>Submitted At: </Text>
+                <Text style={styles.submissionDetailValue}>{formatDateTime(submissionDetails?.submittedAt)}</Text>
+              </Text>
+              {submissionDetails?.reviewRemark ? (
+                <Text style={styles.submissionDetailRow}>
+                  <Text style={styles.submissionDetailLabel}>Admin Remark: </Text>
+                  <Text style={styles.submissionDetailValue}>{submissionDetails.reviewRemark}</Text>
+                </Text>
+              ) : null}
+            </View>
+
+            <TouchableOpacity
+              style={styles.submitButton}
+              onPress={() => setSubmissionDetailModalVisible(false)}
+            >
+              <Text style={styles.submitButtonText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </Modal>
@@ -1646,6 +1717,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: "rgba(0,0,0,0.65)",
     justifyContent: "center",
+    alignItems: "center",
     padding: 20,
     paddingTop: Platform.OS === 'android' ? 30 : 0,
   },
@@ -1653,6 +1725,8 @@ const styles = StyleSheet.create({
     backgroundColor: '#FFFFFF',
     borderRadius: 20,
     padding: 24,
+    width: Platform.OS === 'web' ? '50%' : '100%',
+    alignSelf: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
@@ -1713,6 +1787,27 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     gap: 12,
     marginTop: 8,
+  },
+  submissionDetailCard: {
+    backgroundColor: "#F7FAF3",
+    borderWidth: 1,
+    borderColor: "#E3EBDD",
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 16,
+  },
+  submissionDetailRow: {
+    color: "#35513F",
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 6,
+  },
+  submissionDetailLabel: {
+    fontWeight: "700",
+    color: "#2E6B4D",
+  },
+  submissionDetailValue: {
+    color: "#35513F",
   },
   cancelButton: {
     flex: 1,

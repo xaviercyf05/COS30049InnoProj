@@ -510,7 +510,7 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 	const [modulesLoading, setModulesLoading] = useState(true);
 	const [sidebarMounted, setSidebarMounted] = useState(false);
 	const sidebarTranslateX = React.useRef(new Animated.Value(-320)).current;
-	const [notifications, setNotifications] = useState();
+	const [notifications, setNotifications] = useState([]);
 	const [userModules, setUserModules] = useState([]);
 
 	const loadProfile = useCallback(async () => {

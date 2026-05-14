@@ -75,7 +75,18 @@ async function getModulePaymentStatus(req, res) {
     }
 
     const [rows] = await query(
-      `SELECT Status FROM Payments WHERE UserID = ? AND ModuleID = ? ORDER BY CreatedAt DESC LIMIT 1`,
+      `SELECT
+         Status,
+         Reference,
+         EvidenceFileName,
+         EvidenceFilePath,
+         ReviewRemark,
+         CreatedAt,
+         ReviewedAt
+       FROM Payments
+       WHERE UserID = ? AND ModuleID = ?
+       ORDER BY CreatedAt DESC
+       LIMIT 1`,
       [userId, moduleId]
     );
 
@@ -84,12 +95,20 @@ async function getModulePaymentStatus(req, res) {
     }
 
     const statusRow = rows[0];
-    const status = (statusRow.Status || 'pending') .toString().toLowerCase();
+    const status = (statusRow.Status || 'pending').toString().toLowerCase();
+    const submission = {
+      reference: statusRow.Reference || null,
+      evidenceFileName: statusRow.EvidenceFileName || null,
+      evidenceFilePath: statusRow.EvidenceFilePath || null,
+      reviewRemark: statusRow.ReviewRemark || null,
+      submittedAt: statusRow.CreatedAt || null,
+      reviewedAt: statusRow.ReviewedAt || null,
+    };
 
     // Map DB status to frontend-friendly values
-    if (status === 'approved') return res.json({ success: true, data: { status: 'paid' } });
-    if (status === 'rejected') return res.json({ success: true, data: { status: 'rejected' } });
-    return res.json({ success: true, data: { status: 'pending' } });
+    if (status === 'approved') return res.json({ success: true, data: { status: 'paid', submission } });
+    if (status === 'rejected') return res.json({ success: true, data: { status: 'rejected', submission } });
+    return res.json({ success: true, data: { status: 'pending', submission } });
   } catch (error) {
     console.error('Get payment status error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch payment status.' });

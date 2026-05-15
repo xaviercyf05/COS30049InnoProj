@@ -22,7 +22,8 @@ CREATE TABLE IF NOT EXISTS ESP32SensorLogs (
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_device (DeviceID),
   INDEX idx_timestamp (Timestamp),
-  INDEX idx_severity (Severity)
+  INDEX idx_severity (Severity),
+  Status BOOLEAN NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 DROP TABLE IF EXISTS ESP32SensorLogs;

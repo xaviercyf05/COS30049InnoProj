@@ -20,6 +20,8 @@ const badgeRoutes = require("./routes/v1/badgeRoutes");
 const adminRoutes = require("./routes/v1/adminRoutes");
 // Sensor routes (ESP32 devices)
 const sensorRoutes = require("./routes/sensorRoutes");
+// Evidence upload routes (device uploads)
+const evidenceRoutes = require("./routes/evidenceRoutes");
 const enrollmentRoutes = require("./routes/v1/enrollmentRoutes");
 const richContentModule = require("../feature_modules/rich-content");
 
@@ -149,6 +151,9 @@ apiV1.use("/rich-content", richContentModule.router);
 
 // Sensor data routes (public endpoint for ESP32 devices to POST data)
 apiV1.use("/sensors", sensorRoutes);
+
+// Evidence upload routes (public endpoint for camera devices to POST clips)
+apiV1.use("/evidence", evidenceRoutes);
 
 // Register v1 routes
 app.use("/api/v1", apiV1);

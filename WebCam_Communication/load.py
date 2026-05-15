@@ -3,19 +3,14 @@ import os
 import random
 import time
 import json
-import hashlib
+import urllib.error
+import urllib.request
+import urllib.parse
 import ssl
-import socket
-import subprocess
 import threading
 from datetime import datetime
 import paho.mqtt.client as mqtt  # type: ignore
 from ultralytics import YOLO  # type: ignore
-
-try:
-    import mariadb  # type: ignore
-except ImportError:
-    mariadb = None
 
 try:
     import winsound  # Windows-only beep support
@@ -64,36 +59,25 @@ MQTT_USE_TLS = True
 MQTT_TLS_INSECURE = False  # Set True only for testing with self-signed certs
 MQTT_TRANSPORT = "websockets"
 MQTT_WS_PATH = "/"
-CLOUDFLARED_COMMAND = [
-    "cloudflared",
-    "access",
-    "tcp",
-    "--hostname",
-    "projdb.innopappserver.xyz",
-    "--url",
-    "localhost:13306",
-]
 OFFLINE_QUEUE_FILE = os.path.join(SAVE_FOLDER, "pending_evidence.json")
 SYNC_RETRY_SECONDS = 10
 SYNC_SHUTDOWN_RETRY_SECONDS = 8
-cloudflared_process = None
 DELETE_LOCAL_EVIDENCE_AFTER_SYNC = True
 
-# Cached tunnel status (non-blocking check)
-tunnel_available = False
-tunnel_check_timestamp = 0
-TUNNEL_CHECK_CACHE_TTL = 2  # seconds; re-check every 2s to avoid constant socket timeouts
+# Evidence API settings
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.innopappserver.xyz").rstrip("/")
+EVIDENCE_API_URL = os.getenv("EVIDENCE_API_URL", f"{API_BASE_URL}/api/v1/evidence/log")
+EVIDENCE_DEVICE_ID = os.getenv("EVIDENCE_DEVICE_ID", "device001")
+EVIDENCE_DEVICE_KEY = os.getenv("EVIDENCE_DEVICE_KEY", "cos30049fr")
+EVIDENCE_API_TIMEOUT_SECONDS = 30
+EVIDENCE_USER_AGENT = os.getenv(
+    "EVIDENCE_USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+)
+
+# Background worker stop event
 tunnel_manager_stop_event = threading.Event()
 pending_queue_lock = threading.Lock()
-
-# MariaDB settings (same values as your app .env by default)
-ENABLE_DB_INSERT = True
-DB_HOST = "127.0.0.1"
-DB_PORT = 13306
-DB_USER = "innogroup"
-DB_PASSWORD = "cos30049fr"
-DB_NAME = "appdb"
-DB_TABLE = "Evidence"
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
@@ -105,14 +89,6 @@ def on_connect(client, userdata, flags, reason_code, properties):
 
 def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
     print(f"[MQTT] Disconnected. Return code: {reason_code}")
-
-
-def is_local_db_tunnel_available():
-    try:
-        with socket.create_connection((DB_HOST, DB_PORT), timeout=1):
-            return True
-    except OSError:
-        return False
 
 
 def play_beep_alert():
@@ -157,6 +133,91 @@ def publish_alert(client, labels, video_path, location, event_epoch=None):
         return False
 
 
+def build_multipart_form_data(fields, file_field_name, file_name, file_content_type, file_bytes):
+    boundary = f"----InnoEvidenceBoundary{int(time.time() * 1000)}{random.randint(0, 10**9)}"
+    body = bytearray()
+
+    for field_name, field_value in fields.items():
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(
+            f'Content-Disposition: form-data; name="{field_name}"\r\n\r\n'.encode("utf-8")
+        )
+        body.extend(str(field_value).encode("utf-8"))
+        body.extend(b"\r\n")
+
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(
+        f'Content-Disposition: form-data; name="{file_field_name}"; filename="{file_name}"\r\n'.encode("utf-8")
+    )
+    body.extend(f"Content-Type: {file_content_type}\r\n\r\n".encode("utf-8"))
+    body.extend(file_bytes)
+    body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+
+    return bytes(body), boundary
+
+
+def submit_evidence_via_api(labels, location, video_path, event_epoch):
+    if not os.path.exists(video_path):
+        print(f"[SYNC] Skipped API upload: file not found: {video_path}")
+        return False
+
+    try:
+        with open(video_path, "rb") as f:
+            video_bytes = f.read()
+
+        video_file_name = os.path.basename(video_path)
+        labels_json = json.dumps(labels)
+        event_timestamp = datetime.fromtimestamp(event_epoch).isoformat()
+
+        fields = {
+            "labels": labels_json,
+            "location": location,
+            "eventType": "abnormal_interaction_detected",
+            "eventEpoch": str(event_epoch),
+            "timestamp": event_timestamp,
+        }
+        payload, boundary = build_multipart_form_data(
+            fields,
+            "video",
+            video_file_name,
+            "video/mp4",
+            video_bytes,
+        )
+
+        request = urllib.request.Request(
+            EVIDENCE_API_URL,
+            data=payload,
+            method="POST",
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Accept": "application/json",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": API_BASE_URL,
+                "Referer": API_BASE_URL + "/",
+                "User-Agent": EVIDENCE_USER_AGENT,
+                "x-device-id": EVIDENCE_DEVICE_ID,
+                "x-device-key": EVIDENCE_DEVICE_KEY,
+            },
+        )
+
+        with urllib.request.urlopen(request, timeout=EVIDENCE_API_TIMEOUT_SECONDS) as response:
+            response_body = response.read().decode("utf-8", errors="replace")
+            print(f"[SYNC] Evidence uploaded via API: {video_file_name}")
+            if response_body:
+                print(f"[SYNC] API response: {response_body[:300]}")
+            return True
+    except urllib.error.HTTPError as ex:
+        error_body = ex.read().decode("utf-8", errors="replace") if ex.fp else ""
+        print(f"[SYNC] Evidence API upload failed: HTTP {ex.code} {ex.reason}")
+        if error_body:
+            print(f"[SYNC] API error response: {error_body[:300]}")
+        return False
+    except Exception as ex:
+        print(f"[SYNC] Evidence API upload failed: {ex}")
+        return False
+
+
 def load_pending_queue():
     if not os.path.exists(OFFLINE_QUEUE_FILE):
         return []
@@ -170,6 +231,8 @@ def load_pending_queue():
                 video_path = item.get("video_path", "")
                 if video_path and not os.path.isabs(video_path):
                     item["video_path"] = os.path.abspath(video_path)
+                if "api_synced" not in item and "db_synced" in item:
+                    item["api_synced"] = bool(item.get("db_synced", False))
                 normalized_items.append(item)
             return normalized_items
     except Exception as ex:
@@ -191,7 +254,7 @@ def enqueue_pending_evidence(
     location,
     video_path,
     event_epoch,
-    db_synced=False,
+    api_synced=False,
     mqtt_synced=False,
 ):
     absolute_video_path = os.path.abspath(video_path)
@@ -199,7 +262,7 @@ def enqueue_pending_evidence(
     for item in queue_items:
         if os.path.abspath(item.get("video_path", "")) == absolute_video_path:
             # Update flags if necessary and return
-            item["db_synced"] = item.get("db_synced", False) or db_synced
+            item["api_synced"] = item.get("api_synced", item.get("db_synced", False)) or api_synced
             item["mqtt_synced"] = item.get("mqtt_synced", False) or mqtt_synced
             save_pending_queue(queue_items)
             print(f"[SYNC] Pending item already queued, updated flags: {absolute_video_path}")
@@ -211,7 +274,7 @@ def enqueue_pending_evidence(
             "location": location,
             "video_path": absolute_video_path,
             "event_epoch": event_epoch,
-            "db_synced": db_synced,
+            "api_synced": api_synced,
             "mqtt_synced": mqtt_synced,
         }
     )
@@ -249,7 +312,8 @@ def delete_synced_evidence_files(queue_items):
     remaining_items = []
 
     for item in queue_items:
-        if item.get("db_synced", False) and item.get("mqtt_synced", False):
+        api_synced = item.get("api_synced", item.get("db_synced", False))
+        if api_synced and item.get("mqtt_synced", False):
             video_path = item.get("video_path", "")
             if video_path and os.path.exists(video_path):
                 try:
@@ -266,47 +330,14 @@ def delete_synced_evidence_files(queue_items):
     return remaining_items
 
 
-def start_cloudflared_tunnel():
-    if is_local_db_tunnel_available_cached():
-        return True
-
-    global cloudflared_process
-    if cloudflared_process is not None and cloudflared_process.poll() is None:
-        return True
-
-    try:
-        cloudflared_process = subprocess.Popen(
-            CLOUDFLARED_COMMAND,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-        print("[DB] Started cloudflared tunnel command for local DB access.")
-        return True
-    except FileNotFoundError:
-        print("[DB] cloudflared is not installed or not on PATH.")
-    except Exception as ex:
-        print(f"[DB] Failed to start cloudflared: {ex}")
-
-    return False
-
-
-def sync_pending_evidence(queue_items, db_connection):
+def sync_pending_evidence(queue_items):
     if not queue_items:
-        return db_connection, False
+        return False
 
     queue_items = prune_missing_pending_evidence(queue_items)
     if not queue_items:
         save_pending_queue([])
-        return db_connection, False
-
-    if not is_local_db_tunnel_available_cached():
-        start_cloudflared_tunnel()
-        return db_connection, False
-
-    if db_connection is None:
-        db_connection = connect_database()
-        if db_connection is None:
-            return None, False
+        return False
 
     remaining_items = []
     changed = False
@@ -316,12 +347,11 @@ def sync_pending_evidence(queue_items, db_connection):
         location = item.get("location", "Unknown")
         video_path = item.get("video_path", "")
         event_epoch = item.get("event_epoch", time.time())
-        db_synced = bool(item.get("db_synced", False))
+        api_synced = bool(item.get("api_synced", item.get("db_synced", False)))
         mqtt_synced = bool(item.get("mqtt_synced", False))
 
-        if not db_synced:
-            db_synced = save_evidence_to_database(
-                db_connection,
+        if not api_synced:
+            api_synced = submit_evidence_via_api(
                 labels,
                 location,
                 video_path,
@@ -339,7 +369,7 @@ def sync_pending_evidence(queue_items, db_connection):
             )
             changed = True
 
-        if db_synced and mqtt_synced:
+        if api_synced and mqtt_synced:
             print(f"[SYNC] Offline evidence sent successfully: {video_path}")
             changed = True
             continue
@@ -350,7 +380,7 @@ def sync_pending_evidence(queue_items, db_connection):
                 "location": location,
                 "video_path": video_path,
                 "event_epoch": event_epoch,
-                "db_synced": db_synced,
+                "api_synced": api_synced,
                 "mqtt_synced": mqtt_synced,
             }
         )
@@ -359,18 +389,18 @@ def sync_pending_evidence(queue_items, db_connection):
         remaining_items = delete_synced_evidence_files(remaining_items)
         save_pending_queue(remaining_items)
 
-    return db_connection, changed
+    return changed
 
 
-def flush_pending_evidence(queue_items, db_connection, timeout_seconds=SYNC_SHUTDOWN_RETRY_SECONDS):
+def flush_pending_evidence(queue_items, timeout_seconds=SYNC_SHUTDOWN_RETRY_SECONDS):
     if not queue_items:
-        return db_connection
+        return
 
     deadline = time.time() + timeout_seconds
     attempted = False
 
     while time.time() < deadline and queue_items:
-        db_connection, synced = sync_pending_evidence(queue_items, db_connection)
+        synced = sync_pending_evidence(queue_items)
         queue_items[:] = load_pending_queue()
         attempted = True
 
@@ -383,195 +413,10 @@ def flush_pending_evidence(queue_items, db_connection, timeout_seconds=SYNC_SHUT
     if attempted and queue_items:
         print(f"[SYNC] Pending evidence remains queued for next run: {len(queue_items)} item(s)")
 
-    return db_connection
-
-
-def connect_database():
-    if not ENABLE_DB_INSERT:
-        return None
-
-    if mariadb is None:
-        print("[DB] mariadb package is not installed. DB insert disabled.")
-        print("[DB] Install with: pip install mariadb")
-        return None
-
-    try:
-        conn = mariadb.connect(
-            host=DB_HOST,
-            port=DB_PORT,
-            user=DB_USER,
-            password=DB_PASSWORD,
-            database=DB_NAME,
-            autocommit=True,
-        )
-        print(f"[DB] Connected to MariaDB {DB_HOST}:{DB_PORT}/{DB_NAME}")
-        return conn
-    except Exception as ex:
-        print(f"[DB] Connection failed: {ex}")
-        print("[DB] Continuing without database insert.")
-        return None
-
-
-def save_evidence_to_database(conn, labels, location, video_path, event_epoch):
-    global db_connection
-
-    # prefer provided conn, fallback to global db_connection
-    active_conn = conn or db_connection
-    if active_conn is None:
-        return False
-
-    if not os.path.exists(video_path):
-        print(f"[DB] Skipped insert: file not found: {video_path}")
-        return False
-
-    try:
-        with open(video_path, "rb") as f:
-            video_data = f.read()
-
-        video_size = len(video_data)
-        video_sha256 = hashlib.sha256(video_data).hexdigest()
-        labels_json = json.dumps(labels)
-        event_timestamp = datetime.fromtimestamp(event_epoch)
-        video_file_name = os.path.basename(video_path)
-
-        print(
-            f"[DB] Inserting into {DB_NAME}.{DB_TABLE} at {DB_HOST}:{DB_PORT}"
-            f" | file={video_file_name} | bytes={video_size} | location={location}"
-        )
-
-        cursor = active_conn.cursor()
-        cursor.execute(
-            f"""
-            INSERT INTO {DB_TABLE} (
-                EventTimestamp,
-                EventType,
-                LabelsJson,
-                Location,
-                VideoFileName,
-                VideoMimeType,
-                VideoSizeBytes,
-                VideoData,
-                VideoSha256
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                event_timestamp,
-                "abnormal_interaction_detected",
-                labels_json,
-                location,
-                video_file_name,
-                "video/mp4",
-                video_size,
-                video_data,
-                video_sha256,
-            ),
-        )
-        cursor.close()
-        print(f"[DB] Evidence inserted: {video_file_name}")
-        # if we used a different conn than the global, keep global as-is
-        if active_conn is not db_connection:
-            db_connection = active_conn
-        return True
-    except Exception as ex:
-        err_text = str(ex).lower()
-        print(f"[DB] Insert failed: {ex}")
-
-        # Try to recover from lost server connection
-        if "server has gone away" in err_text or "gone away" in err_text or "server closed the connection" in err_text:
-            print("[DB] Connection appears lost — attempting reconnect and one retry...")
-            try:
-                new_conn = connect_database()
-                if new_conn is None:
-                    return False
-
-                cursor = new_conn.cursor()
-                cursor.execute(
-                    f"""
-                    INSERT INTO {DB_TABLE} (
-                        EventTimestamp,
-                        EventType,
-                        LabelsJson,
-                        Location,
-                        VideoFileName,
-                        VideoMimeType,
-                        VideoSizeBytes,
-                        VideoData,
-                        VideoSha256
-                    )
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-                    """,
-                    (
-                        event_timestamp,
-                        "abnormal_interaction_detected",
-                        labels_json,
-                        location,
-                        video_file_name,
-                        "video/mp4",
-                        video_size,
-                        video_data,
-                        video_sha256,
-                    ),
-                )
-                cursor.close()
-                print(f"[DB] Evidence inserted after reconnect: {video_file_name}")
-                # replace global connection with the revived one
-                db_connection = new_conn
-                return True
-            except Exception as ex2:
-                print(f"[DB] Retry after reconnect failed: {ex2}")
-                return False
-
-        return False
-
-# =========================
-# TUNNEL MANAGER THREAD
-# =========================
-def tunnel_manager_thread():
-    """Background thread that manages cloudflared tunnel without blocking main UI."""
-    global tunnel_available, tunnel_check_timestamp
-    
-    while not tunnel_manager_stop_event.is_set():
-        try:
-            # Non-blocking tunnel check in background
-            try:
-                with socket.create_connection((DB_HOST, DB_PORT), timeout=1):
-                    tunnel_available = True
-            except OSError:
-                tunnel_available = False
-                start_cloudflared_tunnel()
-            
-            tunnel_check_timestamp = time.time()
-            time.sleep(2)  # Check every 2 seconds
-        except Exception as ex:
-            print(f"[TUNNEL] Manager error: {ex}")
-            time.sleep(2)
-
-
-def is_local_db_tunnel_available_cached():
-    """Fast non-blocking tunnel check using cached status."""
-    global tunnel_available, tunnel_check_timestamp
-    
-    # Return cached value if fresh enough
-    if time.time() - tunnel_check_timestamp < TUNNEL_CHECK_CACHE_TTL:
-        return tunnel_available
-    
-    # Cache expired, do a quick non-blocking check (don't block if tunnel down)
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(0.5)  # Very short timeout for main thread
-        result = sock.connect_ex((DB_HOST, DB_PORT)) == 0
-        sock.close()
-        tunnel_available = result
-        tunnel_check_timestamp = time.time()
-        return result
-    except Exception:
-        return tunnel_available
-
 
 def pending_sync_worker():
     """Background worker that processes the pending queue without blocking main thread."""
-    global db_connection, pending_queue
+    global pending_queue
     while not tunnel_manager_stop_event.is_set():
         try:
             # Work on a snapshot to minimize lock hold time
@@ -579,7 +424,7 @@ def pending_sync_worker():
                 queue_snapshot = list(pending_queue)
 
             if queue_snapshot:
-                db_connection, changed = sync_pending_evidence(queue_snapshot, db_connection)
+                changed = sync_pending_evidence(queue_snapshot)
                 if changed:
                     with pending_queue_lock:
                         pending_queue = load_pending_queue()
@@ -594,14 +439,6 @@ def pending_sync_worker():
 # =========================
 if not os.path.exists(SAVE_FOLDER):
     os.makedirs(SAVE_FOLDER)
-
-# Start background tunnel manager thread
-tunnel_manager = threading.Thread(target=tunnel_manager_thread, daemon=True)
-tunnel_manager.start()
-print("[TUNNEL] Background tunnel manager started.")
-
-# Give tunnel time to establish (cloudflared needs ~1-2 seconds to start)
-time.sleep(2)
 
 print("[INFO] Connecting to MQTT broker...")
 mqtt_client = mqtt.Client(
@@ -633,13 +470,11 @@ except Exception as ex:
     print(f"[MQTT] Could not connect to broker: {ex}")
     print("[MQTT] Continuing without MQTT alerts.")
 
-db_connection = connect_database()
 pending_queue = load_pending_queue()
 # Start background pending sync worker
 pending_sync_thread = threading.Thread(target=pending_sync_worker, daemon=True)
 pending_sync_thread.start()
 print("[SYNC] Background sync worker started.")
-last_sync_attempt_time = 0
 
 print("[INFO] Loading YOLOv8 model...")
 model = YOLO(MODEL_PATH)
@@ -664,7 +499,7 @@ record_start_time = 0
 record_labels = []
 record_location = ""
 record_file_path = ""
-record_saved_to_db = False
+record_saved_to_api = False
 record_mqtt_sent = False
 quit_requested = False
 
@@ -716,7 +551,7 @@ while True:
         record_labels = list(detected_labels)
         record_location = random.choice(LOCATION_OPTIONS)
         record_file_path = filename
-        record_saved_to_db = False
+        record_saved_to_api = False
         last_save_time = current_time
 
         print("[ALERT] Recording started!")
@@ -761,7 +596,7 @@ while True:
                     record_location,
                     record_file_path,
                     record_start_time,
-                    db_synced=False,
+                    api_synced=False,
                     mqtt_synced=bool(record_mqtt_sent),
                 )
 
@@ -809,11 +644,10 @@ if video_writer is not None:
     video_writer.release()
     video_writer = None
 
-    # If app exits during an active recording, still try to persist clip to DB.
-    if not quit_requested and not record_saved_to_db and record_file_path:
-        print("[INFO] Attempting DB insert for interrupted recording...")
-        record_saved_to_db = save_evidence_to_database(
-            db_connection,
+    # If app exits during an active recording, still queue the clip for API upload.
+    if not quit_requested and not record_saved_to_api and record_file_path:
+        print("[INFO] Queueing interrupted recording for API upload...")
+        record_saved_to_api = submit_evidence_via_api(
             record_labels,
             record_location,
             record_file_path,
@@ -821,19 +655,11 @@ if video_writer is not None:
         )
 
 if pending_queue:
-    db_connection = flush_pending_evidence(pending_queue, db_connection)
+    flush_pending_evidence(pending_queue)
     pending_queue = load_pending_queue()
 
 mqtt_client.loop_stop()
 mqtt_client.disconnect()
-
-if db_connection is not None:
-    db_connection.close()
-    print("[DB] Connection closed.")
-
-if cloudflared_process is not None and cloudflared_process.poll() is None:
-    cloudflared_process.terminate()
-    print("[DB] cloudflared tunnel stopped.")
 
 cap.release()
 cv2.destroyAllWindows()

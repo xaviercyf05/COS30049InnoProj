@@ -43,21 +43,6 @@ function readSectionDescription(source) {
   ).trim();
 }
 
-
-function stripHtmlContent(value) {
-  if (!value) {
-    return "";
-  }
-
-  return String(value)
-    .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, " ")
-    .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, " ")
-    .replace(/<[^>]+>/g, " ")
-    .replace(/&nbsp;/gi, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
 function sanitizeRichHtml(value) {
   return String(value || "")
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
@@ -213,7 +198,7 @@ function ModuleScreen({
       setPaymentStatus("paid");
       setSubmissionDetails(null);
       setPaymentLoading(false);
-      return;
+      return "paid";
     }
 
     try {
@@ -224,12 +209,15 @@ function ModuleScreen({
         { method: "GET" },
       );
 
-      setPaymentStatus(response?.data?.status || "unpaid");
+      const status = response?.data?.status || "unpaid";
+      setPaymentStatus(status);
       setSubmissionDetails(response?.data?.submission || null);
+      return status;
     } catch (error) {
       console.warn("Failed to fetch payment status:", error);
       setPaymentStatus("unpaid");
       setSubmissionDetails(null);
+      return "unpaid";
     } finally {
       setPaymentLoading(false);
     }
@@ -377,8 +365,6 @@ function ModuleScreen({
         return;
       }
 
-    fetchPaymentStatus();
-
     let active = true;
 
     const loadModuleContent = async () => {
@@ -491,9 +477,6 @@ function ModuleScreen({
                   contentHtml: String(
                     sub.content || sub.contentHtml || "",
                   ).trim(),
-                  contentText: stripHtmlContent(
-                    sub.content || sub.contentHtml || "",
-                  ),
                   parentId: secId,
                 }))
               : [];
@@ -503,7 +486,6 @@ function ModuleScreen({
               title,
               description,
               contentHtml: "",
-              contentText: description || "",
               subsections,
             });
           });
@@ -531,7 +513,6 @@ function ModuleScreen({
                 title: fallbackSectionTitle,
                 contentHtml,
                 description,
-                contentText: stripHtmlContent(contentHtml),
                 subsections: [],
               });
               return;
@@ -548,7 +529,6 @@ function ModuleScreen({
                 title: sectionTitle,
                 contentHtml: "",
                 description: "",
-                contentText: "",
                 subsections: [],
               });
             }
@@ -566,7 +546,6 @@ function ModuleScreen({
                 id: `subsection-${materialId}`,
                 title: itemTitle,
                 contentHtml,
-                contentText: stripHtmlContent(contentHtml),
                 parentId: section.id,
               });
               return;
@@ -574,7 +553,6 @@ function ModuleScreen({
 
             if (!section.contentHtml) {
               section.contentHtml = contentHtml;
-              section.contentText = stripHtmlContent(contentHtml);
             }
           });
         }
@@ -585,13 +563,15 @@ function ModuleScreen({
           setSections(formattedSections);
           setSelectedSectionId(formattedSections[0]?.id || null);
           setExpandedSectionIds(new Set());
+          setVisitedSectionIds(
+            formattedSections[0]?.id
+              ? new Set([formattedSections[0].id])
+              : new Set(),
+          );
+          setLoading(false);
 
           try {
-            const token = await AsyncStorage.getItem("auth_token");
-            const savedProgress = await fetchModuleProgress(
-              routeModuleId,
-              token,
-            );
+            const savedProgress = await fetchModuleProgress(routeModuleId, token);
 
             if (
               active &&
@@ -617,11 +597,6 @@ function ModuleScreen({
               "Could not restore progress, starting fresh:",
               progressError,
             );
-            setVisitedSectionIds(
-              formattedSections[0]?.id
-                ? new Set([formattedSections[0].id])
-                : new Set(),
-            );
           }
         }
       } catch (_error) {
@@ -639,7 +614,55 @@ function ModuleScreen({
       }
     };
 
-    loadModuleContent();
+    const start = async () => {
+      // Determine if module is an on-site type from route params (if provided)
+      const paramCandidate =
+        route?.params?.moduleType ||
+        route?.params?.module_type ||
+        route?.params?.type ||
+        route?.params?.moduleTypeId ||
+        route?.params?.module_type_id ||
+        null;
+
+      const isOnSiteValueFromParam = (candidate) => {
+        if (candidate === null || candidate === undefined || candidate === "")
+          return false;
+        const asNum = Number(candidate);
+        const asStr = String(candidate).trim().toLowerCase();
+        if (!Number.isNaN(asNum) && asNum === 3) return true;
+        if (
+          asStr === "3" ||
+          asStr === "on-site" ||
+          asStr === "onsite" ||
+          asStr === "on site" ||
+          asStr.includes("on-site") ||
+          asStr.includes("onsite") ||
+          asStr.includes("on site")
+        )
+          return true;
+        return false;
+      };
+
+      try {
+        const status = await fetchPaymentStatus();
+
+        // If payment not done, and user isn't admin, and module isn't clearly on-site from params,
+        // skip fetching module details and show the payment UI instead.
+        const onSiteFromParams = isOnSiteValueFromParam(paramCandidate);
+        if (!isAdmin && !onSiteFromParams && status !== "paid") {
+          setLoading(false);
+          return;
+        }
+
+        // Payment OK or admin or on-site inferred -> proceed to load content
+        await loadModuleContent();
+      } catch (err) {
+        // If fetchPaymentStatus or other steps fail, fall back to attempting content load
+        await loadModuleContent();
+      }
+    };
+
+    start();
 
     return () => {
       active = false;

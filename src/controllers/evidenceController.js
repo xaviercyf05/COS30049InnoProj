@@ -4,6 +4,47 @@ const { query } = require('../config/db');
 
 const ALLOWED_LOCATIONS = ['Bako', 'Kubah', 'Similajau', 'Gunung Mulu', 'Maludam'];
 
+async function resolveParkByLocationName(locationInput) {
+  const location = String(locationInput || '').trim();
+
+  if (!location) {
+    return { parkName: null, latitude: null, longitude: null };
+  }
+
+  const [rows] = await query(
+    `SELECT ParkName,
+            Latitude,
+            Longitude
+       FROM Park
+      WHERE LOWER(TRIM(ParkName)) = LOWER(TRIM(?))
+         OR LOWER(TRIM(ParkName)) LIKE CONCAT('%', LOWER(TRIM(?)), '%')
+         OR LOWER(TRIM(?)) LIKE CONCAT('%', LOWER(TRIM(ParkName)), '%')
+      ORDER BY CASE
+                 WHEN LOWER(TRIM(ParkName)) = LOWER(TRIM(?)) THEN 0
+                 WHEN LOWER(TRIM(ParkName)) LIKE CONCAT(LOWER(TRIM(?)), '%') THEN 1
+                 ELSE 2
+               END,
+               LENGTH(ParkName)
+      LIMIT 1`,
+    [location, location, location, location, location]
+  );
+
+  const parkRow = rows[0] || null;
+
+  if (!parkRow) {
+    return { parkName: null, latitude: null, longitude: null };
+  }
+
+  const latitude = Number(parkRow.Latitude);
+  const longitude = Number(parkRow.Longitude);
+
+  return {
+    parkName: parkRow.ParkName || null,
+    latitude: Number.isFinite(latitude) ? latitude : null,
+    longitude: Number.isFinite(longitude) ? longitude : null,
+  };
+}
+
 function parseLabels(input) {
   if (Array.isArray(input)) {
     return input.map((item) => String(item).trim()).filter(Boolean);
@@ -60,7 +101,9 @@ async function submitEvidenceClip(req, res) {
   try {
     const deviceID = req.deviceID || req.headers['x-device-id'] || 'device001';
     const locationInput = String(req.body.location || '').trim();
-    const location = ALLOWED_LOCATIONS.includes(locationInput) ? locationInput : (locationInput || 'Unknown');
+    const fallbackLocation = ALLOWED_LOCATIONS.includes(locationInput) ? locationInput : (locationInput || 'Unknown');
+    const parkLocation = await resolveParkByLocationName(locationInput);
+    const location = parkLocation.parkName || fallbackLocation;
     const labels = parseLabels(req.body.labels || req.body.label || req.body.labelsJson);
     const eventTimestamp = parseEventTimestamp(req.body);
     const eventType = String(req.body.eventType || 'abnormal_interaction_detected').trim() || 'abnormal_interaction_detected';
@@ -107,6 +150,9 @@ async function submitEvidenceClip(req, res) {
         evidenceId: result.insertId,
         deviceID,
         location,
+        parkName: parkLocation.parkName,
+        latitude: parkLocation.latitude,
+        longitude: parkLocation.longitude,
         labels,
         videoFileName,
         videoSizeBytes,

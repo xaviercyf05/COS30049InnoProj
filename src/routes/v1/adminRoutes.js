@@ -2,6 +2,7 @@ const express = require("express");
 const { body, param } = require("express-validator");
 const { authenticateAdminOnly } = require("../../middleware/authUser");
 const moduleCoverUpload = require("../../middleware/moduleCoverUpload");
+const sensorLogUpload = require("../../middleware/sensorLogUpload");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const adminController = require("../../controllers/adminManagementController");
@@ -209,6 +210,28 @@ router.get(
 router.get(
   "/sensor-logs",
   asyncHandler(adminController.listEsp32SensorAlerts)
+);
+
+/**
+ * POST /admin/esp32sensorlogs/upload - Upload ESP32 sensor logs CSV manually
+ * Body: multipart/form-data with file field file
+ */
+router.post(
+  "/esp32sensorlogs/upload",
+  sensorLogUpload.single("file"),
+  asyncHandler(adminController.uploadEsp32SensorLogsCsv)
+);
+
+router.post(
+  "/esp32-sensor-logs/upload",
+  sensorLogUpload.single("file"),
+  asyncHandler(adminController.uploadEsp32SensorLogsCsv)
+);
+
+router.post(
+  "/sensor-logs/upload",
+  sensorLogUpload.single("file"),
+  asyncHandler(adminController.uploadEsp32SensorLogsCsv)
 );
 
 /**

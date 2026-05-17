@@ -169,6 +169,265 @@ function formatPercentage(value) {
   return `${Math.round(toSafeNumber(value, 0))}%`;
 }
 
+function parseCsvLine(line) {
+  const values = [];
+  let current = "";
+  let insideQuotes = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const character = line[index];
+
+    if (character === '"') {
+      if (insideQuotes && line[index + 1] === '"') {
+        current += '"';
+        index += 1;
+      } else {
+        insideQuotes = !insideQuotes;
+      }
+      continue;
+    }
+
+    if (character === "," && !insideQuotes) {
+      values.push(current.trim());
+      current = "";
+      continue;
+    }
+
+    current += character;
+  }
+
+  values.push(current.trim());
+  return values;
+}
+
+function normalizeCsvHeaderName(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function findRowValueByHeader(rowValues, headerMap, headerCandidates) {
+  for (const candidate of headerCandidates) {
+    const normalizedCandidate = normalizeCsvHeaderName(candidate);
+    if (Object.prototype.hasOwnProperty.call(headerMap, normalizedCandidate)) {
+      const rowIndex = headerMap[normalizedCandidate];
+      const rawValue = rowValues[rowIndex];
+      if (rawValue !== undefined && rawValue !== null && String(rawValue).trim() !== "") {
+        return String(rawValue).trim();
+      }
+    }
+  }
+
+  return null;
+}
+
+function toNullableFloat(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const parsed = Number.parseFloat(String(value));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function toNullableInteger(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function parseSensorTimestamp(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const normalizedValue = String(value).trim();
+  const directDate = new Date(normalizedValue);
+  if (!Number.isNaN(directDate.getTime())) {
+    return directDate;
+  }
+
+  const match = normalizedValue.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})\s+(\d{1,2}:\d{2}:\d{2})\s*(AM|PM)$/i);
+  if (!match) {
+    return null;
+  }
+
+  const [, day, monthName, year, timeValue, amPm] = match;
+  const fallbackDate = new Date(`${monthName} ${day}, ${year} ${timeValue} ${amPm.toUpperCase()}`);
+  if (Number.isNaN(fallbackDate.getTime())) {
+    return null;
+  }
+
+  return fallbackDate;
+}
+
+function parseEsp32CsvRows(csvContent) {
+  const lines = String(csvContent || "")
+    .replace(/^\uFEFF/, "")
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter((line) => line.length > 0);
+
+  if (lines.length < 2) {
+    return { rows: [], errors: [{ row: 0, message: "CSV must include a header row and at least one data row." }] };
+  }
+
+  const headers = parseCsvLine(lines[0]);
+  const headerMap = headers.reduce((accumulator, header, index) => {
+    const normalizedHeader = normalizeCsvHeaderName(header);
+    if (normalizedHeader) {
+      accumulator[normalizedHeader] = index;
+    }
+    return accumulator;
+  }, {});
+
+  const rows = [];
+  const errors = [];
+
+  for (let rowIndex = 1; rowIndex < lines.length; rowIndex += 1) {
+    const rawLine = lines[rowIndex];
+    const rowValues = parseCsvLine(rawLine);
+
+    const row = {
+      timestampRaw: findRowValueByHeader(rowValues, headerMap, ["timestamp", "eventTimestamp", "time", "datetime"]),
+      deviceID: findRowValueByHeader(rowValues, headerMap, ["deviceID", "deviceId", "device"]),
+      location: findRowValueByHeader(rowValues, headerMap, ["location", "park", "parkName", "site"]),
+      temp: findRowValueByHeader(rowValues, headerMap, ["temp", "temperature"]),
+      hum: findRowValueByHeader(rowValues, headerMap, ["hum", "humidity"]),
+      distance: findRowValueByHeader(rowValues, headerMap, ["distance"]),
+      sound: findRowValueByHeader(rowValues, headerMap, ["sound"]),
+      rain: findRowValueByHeader(rowValues, headerMap, ["rain"]),
+      soil: findRowValueByHeader(rowValues, headerMap, ["soilPercent", "soil", "soilpercentage"]),
+      soilRaw: findRowValueByHeader(rowValues, headerMap, ["soilRaw", "soilraw"]),
+      distanceStatus: findRowValueByHeader(rowValues, headerMap, ["distanceStatus"]),
+      soundStatus: findRowValueByHeader(rowValues, headerMap, ["soundStatus"]),
+      tempStatus: findRowValueByHeader(rowValues, headerMap, ["tempStatus", "temperatureStatus"]),
+      humStatus: findRowValueByHeader(rowValues, headerMap, ["humStatus", "humidityStatus"]),
+      rainStatus: findRowValueByHeader(rowValues, headerMap, ["rainStatus"]),
+      rainLevel: findRowValueByHeader(rowValues, headerMap, ["rainLevel"]),
+      soilStatus: findRowValueByHeader(rowValues, headerMap, ["soilStatus"]),
+      severity: findRowValueByHeader(rowValues, headerMap, ["severity"]),
+    };
+
+    const timestamp = parseSensorTimestamp(row.timestampRaw);
+    if (!timestamp) {
+      errors.push({ row: rowIndex + 1, message: `Invalid timestamp: ${row.timestampRaw || "(empty)"}` });
+      continue;
+    }
+
+    const normalizedSeverity = String(row.severity || "LOW").trim().toUpperCase();
+    const severity = ["LOW", "MEDIUM", "HIGH"].includes(normalizedSeverity) ? normalizedSeverity : "LOW";
+
+    rows.push({
+      timestamp,
+      deviceID: String(row.deviceID || "").trim() || null,
+      location: String(row.location || "").trim() || null,
+      temperature: toNullableFloat(row.temp),
+      humidity: toNullableFloat(row.hum),
+      distance: toNullableFloat(row.distance),
+      sound: toNullableInteger(row.sound),
+      rain: toNullableInteger(row.rain),
+      soil: toNullableFloat(row.soil),
+      soilRaw: toNullableInteger(row.soilRaw),
+      distanceStatus: row.distanceStatus || null,
+      soundStatus: row.soundStatus || null,
+      tempStatus: row.tempStatus || null,
+      humStatus: row.humStatus || null,
+      rainStatus: row.rainStatus || null,
+      rainLevel: toNullableInteger(row.rainLevel),
+      soilStatus: row.soilStatus || null,
+      severity,
+    });
+  }
+
+  return { rows, errors };
+}
+
+async function uploadEsp32SensorLogsCsv(req, res) {
+  try {
+    const file = req.file;
+
+    if (!file || !file.buffer) {
+      return res.status(400).json({ success: false, message: "CSV file is required. Use form-data file field 'file'." });
+    }
+
+    const csvContent = file.buffer.toString("utf8");
+    const parsed = parseEsp32CsvRows(csvContent);
+
+    if (parsed.rows.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "No valid rows found in CSV.",
+        errors: parsed.errors.slice(0, 20),
+      });
+    }
+
+    const fallbackDeviceId = String(req.body.deviceID || req.query.deviceID || "manual-upload").trim() || "manual-upload";
+    const maxRows = 5000;
+    const rowsToInsert = parsed.rows.slice(0, maxRows);
+
+    const insertSql = `
+      INSERT INTO ESP32SensorLogs (
+        DeviceID, Location, Temperature, Humidity, Distance, Sound, Rain, Soil, SoilRaw,
+        DistanceStatus, SoundStatus, TempStatus, HumStatus, RainStatus, RainLevel, SoilStatus,
+        Severity, Timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `;
+
+    let insertedCount = 0;
+
+    for (const row of rowsToInsert) {
+      await query(insertSql, [
+        row.deviceID || fallbackDeviceId,
+        row.location,
+        row.temperature,
+        row.humidity,
+        row.distance,
+        row.sound,
+        row.rain,
+        row.soil,
+        row.soilRaw,
+        row.distanceStatus,
+        row.soundStatus,
+        row.tempStatus,
+        row.humStatus,
+        row.rainStatus,
+        row.rainLevel,
+        row.soilStatus,
+        row.severity,
+        row.timestamp,
+      ]);
+      insertedCount += 1;
+    }
+
+    const skippedCount = parsed.errors.length + Math.max(parsed.rows.length - maxRows, 0);
+
+    return res.status(201).json({
+      success: true,
+      message: "ESP32 sensor logs uploaded successfully.",
+      data: {
+        insertedCount,
+        skippedCount,
+        totalDataRows: parsed.rows.length + parsed.errors.length,
+        fallbackDeviceID: fallbackDeviceId,
+        rowLimitApplied: parsed.rows.length > maxRows,
+        sampleErrors: parsed.errors.slice(0, 20),
+      },
+    });
+  } catch (error) {
+    console.error("Upload ESP32 sensor logs CSV error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to upload ESP32 sensor logs CSV.",
+      error: error.message,
+    });
+  }
+}
+
 let announcementSchemaPromise;
 
 async function ensureAnnouncementSchema() {
@@ -1300,6 +1559,7 @@ module.exports = {
   getUserEnrollmentDetails,
   listEvidenceAlerts,
   listEsp32SensorAlerts,
+  uploadEsp32SensorLogsCsv,
   streamEvidenceVideo,
   updateEvidenceStatus,
   listPayments,

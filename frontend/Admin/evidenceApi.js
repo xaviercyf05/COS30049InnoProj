@@ -62,6 +62,24 @@ function parseLabels(rawLabels) {
   }
 }
 
+function resolveParkDisplayName(record, labels, location) {
+  const candidates = [
+    getFieldValue(labels, ['parkName', 'ParkName', 'siteName', 'SiteName', 'locationName', 'LocationName'], ''),
+    getFieldValue(record, ['parkName', 'ParkName'], ''),
+    getFieldValue(labels, ['name', 'Name', 'title', 'Title'], ''),
+    location,
+  ];
+
+  for (const candidate of candidates) {
+    const text = String(candidate || '').trim();
+    if (text) {
+      return text;
+    }
+  }
+
+  return '';
+}
+
 function toNumberOrNull(value) {
   if (value === undefined || value === null || value === '') {
     return null;
@@ -197,6 +215,7 @@ function normaliseEvidenceRecord(record) {
   const eventType = String(getFieldValue(record, ['eventType', 'EventType'], 'abnormal_interaction_detected') || 'abnormal_interaction_detected');
   const location = String(getFieldValue(record, ['location', 'Location'], '') || '').trim();
   const parkName = String(getFieldValue(record, ['parkName', 'ParkName'], '') || '').trim();
+  const displayParkName = resolveParkDisplayName(record, labels, location || parkName);
   const resolved = Boolean(getFieldValue(record, ['resolved', 'Resolved'], false));
   const name = String(
     getFieldValue(labels, ['parkName', 'park', 'siteName', 'name', 'locationName'], '') ||
@@ -226,7 +245,7 @@ function normaliseEvidenceRecord(record) {
     resolved,
     eventType,
     labels,
-    parkName: parkName || location || null,
+    parkName: displayParkName || parkName || location || null,
     sourceType: 'body-worn-camera',
     sourceLabel: 'Body-worn camera',
     canUpdateStatus: true,
@@ -276,6 +295,7 @@ function normaliseEsp32SensorLogRecord(record) {
   const timestampValue = getTimestampValue(timestampSource);
   const latitude = toNumberOrNull(getFieldValue(record, ['latitude', 'Latitude', 'lat', 'Lat'], null));
   const longitude = toNumberOrNull(getFieldValue(record, ['longitude', 'Longitude', 'lng', 'Lng', 'lon', 'Lon'], null));
+  const displayParkName = resolveParkDisplayName(record, labels, location);
   const resolved = parseBoolean(getFieldValue(record, ['resolved', 'Resolved', 'isResolved', 'IsResolved', 'status', 'Status'], false));
   const alertId = sensorLogId !== null ? String(sensorLogId) : `esp32-${timestampValue || rawName || location || 'alert'}`;
 
@@ -289,7 +309,7 @@ function normaliseEsp32SensorLogRecord(record) {
     resolved,
     eventType: String(getFieldValue(record, ['eventType', 'EventType', 'alertType', 'AlertType'], 'esp32_sensor_alert') || 'esp32_sensor_alert'),
     labels,
-    parkName: location || String(getFieldValue(labels, ['parkName', 'siteName', 'name'], '') || '').trim() || null,
+    parkName: displayParkName || location || String(getFieldValue(labels, ['parkName', 'siteName', 'name'], '') || '').trim() || null,
     sourceType: 'esp32-sensor-log',
     sourceLabel: 'ESP32 sensor log',
     canUpdateStatus: false,

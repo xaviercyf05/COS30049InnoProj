@@ -126,8 +126,7 @@ function AlertDetail({ route, navigation }) {
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.header}>
-          <Text style={styles.title}>{alert.name || 'Evidence Detail'}</Text>
-          <Text style={styles.meta}>{alert.location || 'Location unavailable'}</Text>
+          <Text style={styles.title}>{alert.name || 'Alert Detail'}</Text>
           <Text style={styles.source}>{alert.sourceLabel || 'Alert source unavailable'}</Text>
         </View>
 
@@ -184,9 +183,6 @@ function AlertDetail({ route, navigation }) {
                   </TouchableOpacity>
                 ) : null}
               </View>
-              {!videoUrl && !canUpdateStatus ? (
-                <Text style={styles.sectionText}>This alert came from ESP32SensorLogs and is read-only in-app.</Text>
-              ) : null}
             </>
           ) : videoUrl && token && player ? (
             <>
@@ -236,7 +232,6 @@ const styles = StyleSheet.create({
   content: { padding: 20, paddingBottom: 32 },
   header: { marginBottom: 12 },
   title: { fontSize: 20, fontWeight: '800', color: '#243424' },
-  meta: { marginTop: 6, color: '#6C7566' },
   source: { marginTop: 4, color: '#445244', fontSize: 12, fontWeight: '700' },
   card: { marginTop: 10, backgroundColor: '#FFFFFF', padding: 16, borderRadius: 12 },
   sectionTitle: { fontWeight: '800', color: '#233322' },

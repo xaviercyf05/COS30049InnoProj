@@ -14,7 +14,16 @@ export default function SensorAlertScreen({ navigation }) {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const unsolvedAlerts = useMemo(() => alerts.filter((alert) => !alert?.resolved), [alerts]);
+  const unsolvedAlerts = useMemo(() => {
+    const unsolved = alerts.filter((alert) => !alert?.resolved);
+    return [...unsolved]
+      .sort((a, b) => {
+        const ta = new Date(a?.timestamp).getTime() || 0;
+        const tb = new Date(b?.timestamp).getTime() || 0;
+        return tb - ta;
+      })
+      .slice(0, 5);
+  }, [alerts]);
 
   useEffect(() => {
     let active = true;
@@ -97,6 +106,42 @@ export default function SensorAlertScreen({ navigation }) {
         iconAnchor: [15, 15]
       });
 
+      const cleanLabel = (value) => String(value || '').trim();
+      const normalizeParkKey = (value, latitude, longitude) => {
+        const cleaned = cleanLabel(value).toLowerCase();
+        if (!cleaned) {
+          return String(latitude) + ',' + String(longitude);
+        }
+
+        return cleaned
+          .replace(/\b(national\s+parks?)\b/gi, '')
+          .replace(/\b(nature\s+reserves?)\b/gi, '')
+          .replace(/[^a-z0-9]+/g, '');
+      };
+
+      const pickDisplayName = (alert) => {
+        const candidates = [alert?.parkName, alert?.location, alert?.name].map(cleanLabel).filter(Boolean);
+
+        if (!candidates.length) {
+          return 'Unknown location';
+        }
+
+        return candidates.reduce((best, candidate) => {
+          const bestHasParkSuffix = /national\s+park/i.test(best);
+          const candidateHasParkSuffix = /national\s+park/i.test(candidate);
+
+          if (candidateHasParkSuffix && !bestHasParkSuffix) {
+            return candidate;
+          }
+
+          if (candidateHasParkSuffix === bestHasParkSuffix && candidate.length > best.length) {
+            return candidate;
+          }
+
+          return best;
+        }, candidates[0]);
+      };
+
       const points = [];
 
       const parkMarkers = new Map();
@@ -111,13 +156,13 @@ export default function SensorAlertScreen({ navigation }) {
           return;
         }
 
-        const key = String(alert.parkName || alert.location || (String(alert.latitude) + ',' + String(alert.longitude)))
-          .trim()
-          .toLowerCase();
+        const key = normalizeParkKey(alert.parkName || alert.location || alert.name, alert.latitude, alert.longitude);
+        const displayName = pickDisplayName(alert);
 
         if (!parkMarkers.has(key)) {
           parkMarkers.set(key, {
             alert,
+            displayName,
             count: 0,
             latitude: alert.latitude,
             longitude: alert.longitude,
@@ -126,12 +171,23 @@ export default function SensorAlertScreen({ navigation }) {
 
         const current = parkMarkers.get(key);
         current.count += 1;
+
+        if (
+          displayName &&
+          (
+            displayName.length > String(current.displayName || '').length ||
+            (/national\s+park/i.test(displayName) && !/national\s+park/i.test(String(current.displayName || '')))
+          )
+        ) {
+          current.displayName = displayName;
+          current.alert = alert;
+        }
       });
 
       parkMarkers.forEach((markerData) => {
         const marker = L.marker([markerData.latitude, markerData.longitude], { icon }).addTo(map);
         marker.bindPopup(
-          '<strong>' + (markerData.alert.parkName || markerData.alert.location || markerData.alert.name || 'Unknown location') + '</strong><br/>' +
+          '<strong>' + (markerData.displayName || markerData.alert.parkName || markerData.alert.location || markerData.alert.name || 'Unknown location') + '</strong><br/>' +
           markerData.count + ' unsolved alert' + (markerData.count === 1 ? '' : 's')
         );
         points.push([markerData.latitude, markerData.longitude]);
@@ -150,19 +206,19 @@ export default function SensorAlertScreen({ navigation }) {
       <View style={styles.hero}>
         <Text style={styles.kicker}>Sensor monitoring</Text>
         <Text style={styles.title}>Live alert map</Text>
-        <Text style={styles.subtitle}>Real evidence entries from the admin database and ESP32 sensor logs</Text>
+        <Text style={styles.subtitle}>Real-time alerts from the body-worn camera and ESP32 sensor</Text>
       </View>
 
       {loading ? (
         <View style={styles.loadingCard}>
-          <Text style={styles.loadingTitle}>Loading evidence alerts</Text>
+          <Text style={styles.loadingTitle}>Loading alerts</Text>
           <Text style={styles.loadingText}>Fetching the latest database records for review.</Text>
         </View>
       ) : null}
 
       {error ? (
         <View style={styles.errorCard}>
-          <Text style={styles.errorTitle}>Unable to load evidence</Text>
+          <Text style={styles.errorTitle}>Unable to load alerts</Text>
           <Text style={styles.errorText}>{error}</Text>
         </View>
       ) : null}
@@ -170,7 +226,7 @@ export default function SensorAlertScreen({ navigation }) {
       <View style={styles.mapCard}>
         <View style={styles.mapHeader}>
           <View>
-            <Text style={styles.mapTitle}>Evidence locations</Text>
+            <Text style={styles.mapTitle}>Alert Locations</Text>
             <Text style={styles.mapLabel}>Markers show unresolved alerts from the camera and sensor-log feeds.</Text>
           </View>
         </View>
@@ -206,7 +262,7 @@ export default function SensorAlertScreen({ navigation }) {
 
       <View style={styles.section}>
         <View style={styles.sectionRow}>
-          <Text style={styles.sectionTitle}>Recent evidence</Text>
+          <Text style={styles.sectionTitle}>Recent Alerts</Text>
           <TouchableOpacity style={styles.historyButton} onPress={() => navigation?.navigate('AlertOverview')}>
             <Text style={styles.historyButtonText}>Alert Overview</Text>
           </TouchableOpacity>
@@ -231,7 +287,7 @@ export default function SensorAlertScreen({ navigation }) {
         ))}
 
         {!loading && unsolvedAlerts.length === 0 ? (
-          <Text style={styles.emptyText}>No unsolved evidence alerts were returned from the server.</Text>
+          <Text style={styles.emptyText}>No unsolved alerts were returned from the server.</Text>
         ) : null}
       </View>
     </ScrollView>

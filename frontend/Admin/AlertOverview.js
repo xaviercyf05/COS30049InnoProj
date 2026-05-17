@@ -71,7 +71,7 @@ export default function AlertHistory({ navigation }) {
           style={[styles.summaryCard, filter === 'all' && styles.summaryCardActive]}
           onPress={() => setFilter('all')}
         >
-          <Text style={styles.summaryLabel}>Total Evidence</Text>
+          <Text style={styles.summaryLabel}>Total Alerts</Text>
           <Text style={[styles.summaryValue, filter === 'all' && styles.summaryValueActive]}>{alerts.length}</Text>
         </TouchableOpacity>
 

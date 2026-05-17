@@ -473,11 +473,11 @@ CREATE TABLE IF NOT EXISTS Park (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 INSERT INTO Park (ParkName, Longitude, Latitude) VALUES
-  ('Bako National Park', 110.467, 1.716),
-  ('Similajau National Park', 113.155, 3.346),
+  ('Bako National Park', 110.467, 1.717),
+  ('Similajau National Park', 113.233, 3.424),
   ('Kubah National Park', 110.194, 1.598),
-  ('Gunung Mulu National Park', 114.919, 4.132),
-  ('Maludam National Park', 111.033, 1.65);
+  ('Gunung Mulu National Park', 114.813, 4.043),
+  ('Maludam National Park', 111.092, 1.549);
 
 CREATE TABLE IF NOT EXISTS RichContents (
   ContentID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,

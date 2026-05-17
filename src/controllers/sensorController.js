@@ -2,6 +2,30 @@ const { query } = require('../config/db');
 
 const ALLOWED_LOCATIONS = ['Bako', 'Kubah', 'Similajau', 'Gunung Mulu', 'Maludam'];
 
+const SENSOR_LOG_FIELDS = `
+  LogID,
+  DeviceID,
+  Location,
+  Temperature,
+  Humidity,
+  Distance,
+  Sound,
+  Rain,
+  Soil,
+  SoilRaw,
+  DistanceStatus,
+  SoundStatus,
+  TempStatus,
+  HumStatus,
+  RainStatus,
+  RainLevel,
+  SoilStatus,
+  Severity,
+  DATE_FORMAT(Timestamp, '%Y-%m-%d %H:%i:%s') AS Timestamp,
+  CreatedAt,
+  Status
+`;
+
 // POST /api/v1/sensors/log
 async function logSensorData(req, res) {
   try {
@@ -57,7 +81,7 @@ async function getLatestSensorData(req, res) {
   try {
     const deviceID = req.params.deviceID;
     const limit = parseInt(req.query.limit) || 10;
-    const selectQuery = `SELECT * FROM ESP32SensorLogs WHERE DeviceID = ? ORDER BY Timestamp DESC LIMIT ?`;
+    const selectQuery = `SELECT ${SENSOR_LOG_FIELDS} FROM ESP32SensorLogs WHERE DeviceID = ? ORDER BY Timestamp DESC LIMIT ?`;
     const [rows] = await query(selectQuery, [deviceID, limit]);
     return res.json({ success: true, data: rows, count: rows.length });
   } catch (err) {
@@ -101,7 +125,7 @@ async function getAlerts(req, res) {
   try {
     const deviceID = req.params.deviceID;
     const limit = parseInt(req.query.limit) || 50;
-    const selectQuery = `SELECT * FROM ESP32SensorLogs WHERE DeviceID = ? AND Severity = 'HIGH' ORDER BY Timestamp DESC LIMIT ?`;
+    const selectQuery = `SELECT ${SENSOR_LOG_FIELDS} FROM ESP32SensorLogs WHERE DeviceID = ? AND Severity = 'HIGH' ORDER BY Timestamp DESC LIMIT ?`;
     const [rows] = await query(selectQuery, [deviceID, limit]);
     return res.json({ success: true, data: rows, alertCount: rows.length });
   } catch (err) {

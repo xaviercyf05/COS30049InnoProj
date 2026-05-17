@@ -44,13 +44,28 @@ function formatEvidenceTimestamp(value) {
     return "";
   }
 
-  const parsedDate = new Date(value);
+  if (typeof value === "string") {
+    const normalizedValue = value.trim().replace("T", " ");
+    const mysqlDateTimeMatch = normalizedValue.match(/^(\d{4}-\d{2}-\d{2})\s+(\d{2}:\d{2})/);
+
+    if (mysqlDateTimeMatch) {
+      return `${mysqlDateTimeMatch[1]} ${mysqlDateTimeMatch[2]}`;
+    }
+  }
+
+  const parsedDate = value instanceof Date ? value : new Date(value);
 
   if (Number.isNaN(parsedDate.getTime())) {
     return String(value);
   }
 
-  return parsedDate.toISOString().replace("T", " ").slice(0, 16);
+  const year = parsedDate.getFullYear();
+  const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+  const day = String(parsedDate.getDate()).padStart(2, "0");
+  const hours = String(parsedDate.getHours()).padStart(2, "0");
+  const minutes = String(parsedDate.getMinutes()).padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
 function normaliseEvidenceRow(row) {
@@ -976,7 +991,7 @@ async function listEvidenceAlerts(req, res) {
 
     const [rows] = await query(
       `SELECT e.EvidenceID,
-              e.EventTimestamp,
+              DATE_FORMAT(e.EventTimestamp, '%Y-%m-%d %H:%i:%s') AS EventTimestamp,
               e.EventType,
               e.LabelsJson,
               e.Location,
@@ -1055,7 +1070,7 @@ async function listEsp32SensorAlerts(req, res) {
               RainLevel,
               SoilStatus,
               Severity,
-              Timestamp,
+              DATE_FORMAT(Timestamp, '%Y-%m-%d %H:%i:%s') AS Timestamp,
               CreatedAt,
               Status,
               p.ParkName AS ParkName,

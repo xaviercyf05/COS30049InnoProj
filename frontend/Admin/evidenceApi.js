@@ -89,9 +89,52 @@ function toNumberOrNull(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function extractDateTimeParts(value) {
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) {
+      return null;
+    }
+
+    const pad = (n) => String(n).padStart(2, '0');
+    return {
+      year: value.getFullYear(),
+      month: pad(value.getMonth() + 1),
+      day: pad(value.getDate()),
+      hours: pad(value.getHours()),
+      minutes: pad(value.getMinutes()),
+      seconds: pad(value.getSeconds()),
+    };
+  }
+
+  const text = String(value || '').trim();
+  const match = text.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})(?:[T\s]+(\d{1,2}):(\d{1,2})(?::(\d{1,2}(?:\.\d+)?))?)?/);
+
+  if (!match) {
+    return null;
+  }
+
+  const pad = (n) => String(n).padStart(2, '0');
+
+  return {
+    year: match[1],
+    month: pad(match[2]),
+    day: pad(match[3]),
+    hours: pad(match[4] || '00'),
+    minutes: pad(match[5] || '00'),
+    seconds: pad(String(match[6] || '00').split('.')[0]),
+  };
+}
+
 function formatTimestamp(value) {
   if (!value) {
     return '';
+  }
+
+  const dateTimeParts = extractDateTimeParts(value);
+
+  if (dateTimeParts) {
+    const { year, month, day, hours, minutes } = dateTimeParts;
+    return `${year}-${month}-${day} ${hours}:${minutes}`;
   }
 
   const parsedDate = new Date(value);
@@ -100,7 +143,14 @@ function formatTimestamp(value) {
     return String(value);
   }
 
-  return parsedDate.toISOString().replace('T', ' ').slice(0, 16);
+  const pad = (n) => String(n).padStart(2, '0');
+  const year = parsedDate.getFullYear();
+  const month = pad(parsedDate.getMonth() + 1);
+  const day = pad(parsedDate.getDate());
+  const hours = pad(parsedDate.getHours());
+  const minutes = pad(parsedDate.getMinutes());
+
+  return `${year}-${month}-${day} ${hours}:${minutes}`;
 }
 
 function parseBoolean(value, defaultValue = false) {
@@ -132,9 +182,27 @@ function getTimestampValue(value) {
     return 0;
   }
 
+  const dateTimeParts = extractDateTimeParts(value);
+
+  if (dateTimeParts) {
+    const { year, month, day, hours, minutes, seconds } = dateTimeParts;
+    return Number(`${year}${month}${day}${hours}${minutes}${seconds}`);
+  }
+
   const parsedDate = new Date(value);
   const parsedTime = parsedDate.getTime();
   return Number.isNaN(parsedTime) ? 0 : parsedTime;
+}
+
+function getCombinedDateTimeSource(record, dateKeys, timeKeys) {
+  const dateValue = getFieldValue(record, dateKeys, '');
+
+  if (!dateValue) {
+    return '';
+  }
+
+  const timeValue = getFieldValue(record, timeKeys, '');
+  return timeValue ? `${dateValue} ${timeValue}` : dateValue;
 }
 
 function getApiBaseUrl() {
@@ -286,11 +354,17 @@ function normaliseEsp32SensorLogRecord(record) {
     getFieldValue(record, ['status', 'Status', 'message', 'Message', 'description', 'Description', 'reading', 'Reading', 'eventType', 'EventType', 'alertType', 'AlertType'], '') ||
     'ESP32 sensor event'
   ).trim();
-  const timestampSource = getFieldValue(
-    record,
-    ['timestamp', 'Timestamp', 'eventTimestamp', 'EventTimestamp', 'createdAt', 'CreatedAt', 'loggedAt', 'LoggedAt', 'recordedAt', 'RecordedAt'],
-    ''
-  );
+  const timestampSource =
+    getCombinedDateTimeSource(
+      record,
+      ['date', 'Date', 'logDate', 'LogDate', 'readingDate', 'ReadingDate', 'eventDate', 'EventDate'],
+      ['time', 'Time', 'logTime', 'LogTime', 'readingTime', 'ReadingTime', 'eventTime', 'EventTime']
+    ) ||
+    getFieldValue(
+      record,
+      ['loggedAt', 'LoggedAt', 'recordedAt', 'RecordedAt', 'timestamp', 'Timestamp', 'eventTimestamp', 'EventTimestamp'],
+      ''
+    );
   const timestamp = formatTimestamp(timestampSource);
   const timestampValue = getTimestampValue(timestampSource);
   const latitude = toNumberOrNull(getFieldValue(record, ['latitude', 'Latitude', 'lat', 'Lat'], null));
@@ -421,6 +495,99 @@ export async function updateEvidenceStatus(evidenceId, resolved) {
     body: { resolved: !!resolved },
   });
 
+  return response.data;
+}
+
+function buildSensorCsvFormData(fileAsset, fallbackDeviceID = 'manual-upload') {
+  const formData = new FormData();
+
+  if (fileAsset && typeof fileAsset === 'object' && fileAsset.uri) {
+    formData.append('file', {
+      uri: fileAsset.uri,
+      name: fileAsset.name || 'sensor-log.csv',
+      type: fileAsset.mimeType || fileAsset.type || 'text/csv',
+    });
+  } else {
+    formData.append('file', fileAsset);
+  }
+
+  if (fallbackDeviceID) {
+    formData.append('deviceID', String(fallbackDeviceID));
+  }
+
+  return formData;
+}
+
+async function postSensorCsvToAdmin(fileAsset, token, fallbackDeviceID = 'manual-upload') {
+  const endpoints = [
+    '/api/v1/admin/esp32sensorlogs/upload',
+    '/api/v1/admin/esp32-sensor-logs/upload',
+    '/api/v1/admin/sensor-logs/upload',
+  ];
+  const baseUrls = getApiBaseUrls();
+  const attemptedUrls = [];
+  let lastNetworkError = null;
+
+  for (const endpoint of endpoints) {
+    for (const baseUrl of baseUrls) {
+      const url = `${baseUrl}${endpoint}`;
+      attemptedUrls.push(url);
+
+      try {
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+          body: buildSensorCsvFormData(fileAsset, fallbackDeviceID),
+        });
+
+        const contentType = response.headers.get('content-type') || '';
+        const isJson = contentType.toLowerCase().includes('application/json');
+        const payload = isJson ? await response.json() : { message: await response.text() };
+
+        if (!response.ok) {
+          const error = new Error(payload?.message || `Upload failed with status ${response.status}.`);
+          error.status = response.status;
+          error.payload = payload;
+          error.attemptedUrls = attemptedUrls;
+
+          if (response.status === 404) {
+            continue;
+          }
+
+          throw error;
+        }
+
+        return { data: payload, attemptedUrls };
+      } catch (error) {
+        if (typeof error?.status === 'number') {
+          throw error;
+        }
+
+        lastNetworkError = error;
+      }
+    }
+  }
+
+  const fallbackError = new Error(`Unable to reach CSV upload endpoint. Tried: ${attemptedUrls.join(', ')}`);
+  fallbackError.cause = lastNetworkError;
+  fallbackError.attemptedUrls = attemptedUrls;
+  throw fallbackError;
+}
+
+export async function uploadEsp32SensorLogsCsv(fileAsset, fallbackDeviceID = 'manual-upload') {
+  const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
+
+  if (!token) {
+    throw new Error('Authentication required');
+  }
+
+  if (!fileAsset) {
+    throw new Error('CSV file is required.');
+  }
+
+  const response = await postSensorCsvToAdmin(fileAsset, token, fallbackDeviceID);
   return response.data;
 }
 

@@ -6,47 +6,90 @@ import {
   ScrollView,
   TouchableOpacity
 } from 'react-native';
+import * as DocumentPicker from 'expo-document-picker';
 import { WebView } from 'react-native-webview';
-import { fetchAdminEvidenceAlerts } from './evidenceApi.js';
+import { fetchAdminEvidenceAlerts, uploadEsp32SensorLogsCsv } from './evidenceApi.js';
 
 export default function SensorAlertScreen({ navigation }) {
   const webRef = useRef(null);
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const [uploadMessage, setUploadMessage] = useState('');
   const unsolvedAlerts = useMemo(() => {
     const unsolved = alerts.filter((alert) => !alert?.resolved);
     return [...unsolved]
       .sort((a, b) => {
-        const ta = new Date(a?.timestamp).getTime() || 0;
-        const tb = new Date(b?.timestamp).getTime() || 0;
+        const ta = Number(a?.timestampValue || 0);
+        const tb = Number(b?.timestampValue || 0);
         return tb - ta;
       })
       .slice(0, 5);
   }, [alerts]);
 
+  const loadAlerts = useCallback(async () => {
+    const response = await fetchAdminEvidenceAlerts();
+    setAlerts(response.alerts || []);
+    setError(response.error || '');
+    setLoading(false);
+  }, []);
+
   useEffect(() => {
     let active = true;
 
-    const load = async () => {
+    const guardedLoad = async () => {
       const response = await fetchAdminEvidenceAlerts();
       if (!active) return;
-      setAlerts(response.alerts);
+      setAlerts(response.alerts || []);
       setError(response.error || '');
       setLoading(false);
     };
 
-    load();
+    guardedLoad();
 
     const unsub = navigation.addListener('focus', () => {
-      load();
+      guardedLoad();
     });
 
     return () => {
       active = false;
       unsub();
     };
-  }, []);
+  }, [navigation]);
+
+  const handleUploadCsv = useCallback(async () => {
+    try {
+      setUploadMessage('');
+
+      const picked = await DocumentPicker.getDocumentAsync({
+        type: ['text/csv', 'text/plain', 'application/csv', 'application/vnd.ms-excel'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (picked.canceled) {
+        return;
+      }
+
+      const fileAsset = picked.assets && picked.assets[0] ? picked.assets[0] : null;
+      if (!fileAsset) {
+        setUploadMessage('No file selected.');
+        return;
+      }
+
+      setUploading(true);
+      const result = await uploadEsp32SensorLogsCsv(fileAsset);
+      const insertedCount = Number(result?.data?.insertedCount || 0);
+      const skippedCount = Number(result?.data?.skippedCount || 0);
+      setUploadMessage(`CSV uploaded. Inserted ${insertedCount} row(s), skipped ${skippedCount} row(s).`);
+      await loadAlerts();
+    } catch (uploadError) {
+      setUploadMessage(uploadError?.message || 'Failed to upload CSV file.');
+    } finally {
+      setUploading(false);
+    }
+  }, [loadAlerts]);
 
   const mapHtml = useMemo(() => {
     const mapAlerts = JSON.stringify(alerts);
@@ -207,6 +250,12 @@ export default function SensorAlertScreen({ navigation }) {
         <Text style={styles.kicker}>Sensor monitoring</Text>
         <Text style={styles.title}>Live alert map</Text>
         <Text style={styles.subtitle}>Real-time alerts from the body-worn camera and ESP32 sensor</Text>
+        <View style={styles.heroActions}>
+          <TouchableOpacity style={styles.uploadButton} onPress={handleUploadCsv} disabled={uploading}>
+            <Text style={styles.uploadButtonText}>{uploading ? 'Uploading...' : 'Upload Sensor CSV'}</Text>
+          </TouchableOpacity>
+        </View>
+        {uploadMessage ? <Text style={styles.uploadMessage}>{uploadMessage}</Text> : null}
       </View>
 
       {loading ? (
@@ -298,9 +347,13 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#F6F4EE' },
   content: { padding: 20, paddingBottom: 32 },
   hero: { marginBottom: 18 },
+  heroActions: { marginTop: 12, flexDirection: 'row' },
   kicker: { color: '#7A846A', fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
   title: { fontSize: 30, fontWeight: '800', color: '#243424', marginTop: 6, letterSpacing: -0.6 },
   subtitle: { marginTop: 8, color: '#6C7566', fontSize: 14 },
+  uploadButton: { backgroundColor: '#2C5E2E', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
+  uploadButtonText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
+  uploadMessage: { marginTop: 8, color: '#445244', fontSize: 12 },
   loadingCard: { backgroundColor: '#FFFFFF', borderRadius: 18, padding: 14, marginBottom: 14, borderWidth: 1, borderColor: '#E8EBE1' },
   loadingTitle: { fontSize: 15, fontWeight: '800', color: '#243424' },
   loadingText: { marginTop: 4, color: '#6C7566', fontSize: 13 },

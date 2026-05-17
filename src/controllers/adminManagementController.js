@@ -96,6 +96,61 @@ function normaliseEvidenceRow(row) {
   };
 }
 
+function normaliseEsp32SensorLogRow(row) {
+  const logId = getFirstMatchingValue(row, ["LogID", "logId", "id"], null);
+  const deviceId = String(getFirstMatchingValue(row, ["DeviceID", "deviceID", "DeviceId", "deviceId"], "") || "").trim();
+  const location = String(getFirstMatchingValue(row, ["Location", "location"], "") || "").trim();
+  const severity = String(getFirstMatchingValue(row, ["Severity", "severity"], "ESP32 sensor alert") || "ESP32 sensor alert").trim();
+  const timestampValueSource = getFirstMatchingValue(row, ["Timestamp", "timestamp", "CreatedAt", "createdAt"], "");
+  const labels = {
+    deviceId: deviceId || null,
+    location: location || null,
+    severity: severity || null,
+    temperature: getFirstMatchingValue(row, ["Temperature", "temperature"], null),
+    humidity: getFirstMatchingValue(row, ["Humidity", "humidity"], null),
+    distance: getFirstMatchingValue(row, ["Distance", "distance"], null),
+    sound: getFirstMatchingValue(row, ["Sound", "sound"], null),
+    rain: getFirstMatchingValue(row, ["Rain", "rain"], null),
+    soil: getFirstMatchingValue(row, ["Soil", "soil"], null),
+    soilRaw: getFirstMatchingValue(row, ["SoilRaw", "soilRaw"], null),
+    distanceStatus: getFirstMatchingValue(row, ["DistanceStatus", "distanceStatus"], null),
+    soundStatus: getFirstMatchingValue(row, ["SoundStatus", "soundStatus"], null),
+    tempStatus: getFirstMatchingValue(row, ["TempStatus", "tempStatus"], null),
+    humStatus: getFirstMatchingValue(row, ["HumStatus", "humStatus"], null),
+    rainStatus: getFirstMatchingValue(row, ["RainStatus", "rainStatus"], null),
+    rainLevel: getFirstMatchingValue(row, ["RainLevel", "rainLevel"], null),
+    soilStatus: getFirstMatchingValue(row, ["SoilStatus", "soilStatus"], null),
+  };
+
+  return {
+    evidenceId: null,
+    id: logId !== null ? Number(logId) : null,
+    alertKey: `esp32-${logId !== null ? Number(logId) : timestampValueSource || deviceId || location || "alert"}`,
+    name: location || deviceId || "ESP32 sensor alert",
+    location: location || deviceId || "ESP32 sensor",
+    status: severity,
+    resolved: Boolean(Number(getFirstMatchingValue(row, ["Status", "status"], 0))),
+    eventType: String(getFirstMatchingValue(row, ["EventType", "eventType"], "esp32_sensor_alert") || "esp32_sensor_alert"),
+    labels,
+    parkName: location || null,
+    latitude: null,
+    longitude: null,
+    unsolvedCountAtLocation: 0,
+    showOnMap: false,
+    timestamp: formatEvidenceTimestamp(timestampValueSource),
+    createdAt: getFirstMatchingValue(row, ["CreatedAt", "createdAt"], null),
+    videoFileName: null,
+    videoMimeType: null,
+    videoSizeBytes: null,
+    videoSha256: null,
+    videoPath: null,
+    hasVideo: false,
+    sourceType: "esp32-sensor-log",
+    sourceLabel: "ESP32 sensor log",
+    canUpdateStatus: false,
+  };
+}
+
 function toSafeNumber(value, fallback = 0) {
   const parsed = Number(value);
   return Number.isFinite(parsed) ? parsed : fallback;
@@ -713,6 +768,53 @@ async function listEvidenceAlerts(req, res) {
   }
 }
 
+async function listEsp32SensorAlerts(req, res) {
+  try {
+    const limitValue = Number.parseInt(req.query.limit, 10);
+    const limit = Number.isInteger(limitValue) && limitValue > 0 ? Math.min(limitValue, 100) : 20;
+
+    const [rows] = await query(
+      `SELECT LogID,
+              DeviceID,
+              Location,
+              Temperature,
+              Humidity,
+              Distance,
+              Sound,
+              Rain,
+              Soil,
+              SoilRaw,
+              DistanceStatus,
+              SoundStatus,
+              TempStatus,
+              HumStatus,
+              RainStatus,
+              RainLevel,
+              SoilStatus,
+              Severity,
+              Timestamp,
+              CreatedAt,
+              Status
+         FROM ESP32SensorLogs
+        WHERE Severity = 'HIGH' OR Severity = 'CRITICAL'
+        ORDER BY Timestamp DESC, LogID DESC
+        LIMIT ?`,
+      [limit]
+    );
+
+    return res.json({
+      success: true,
+      data: rows.map((row) => normaliseEsp32SensorLogRow(row)),
+    });
+  } catch (error) {
+    console.error("List ESP32 sensor alerts error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch ESP32 sensor alerts.",
+    });
+  }
+}
+
 async function listPayments(req, res) {
   try {
     const limitValue = Number.parseInt(req.query.limit, 10);
@@ -1152,6 +1254,7 @@ module.exports = {
   updateUserStatus,
   getUserEnrollmentDetails,
   listEvidenceAlerts,
+  listEsp32SensorAlerts,
   streamEvidenceVideo,
   updateEvidenceStatus,
   listPayments,

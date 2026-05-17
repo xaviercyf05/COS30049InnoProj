@@ -194,6 +194,24 @@ router.get(
 );
 
 /**
+ * GET /admin/esp32sensorlogs - List ESP32 sensor alerts for the admin dashboard
+ */
+router.get(
+  "/esp32sensorlogs",
+  asyncHandler(adminController.listEsp32SensorAlerts)
+);
+
+router.get(
+  "/esp32-sensor-logs",
+  asyncHandler(adminController.listEsp32SensorAlerts)
+);
+
+router.get(
+  "/sensor-logs",
+  asyncHandler(adminController.listEsp32SensorAlerts)
+);
+
+/**
  * GET /admin/payments - List submitted payment evidence (admin)
  */
 router.get(

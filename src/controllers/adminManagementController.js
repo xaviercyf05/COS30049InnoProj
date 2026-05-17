@@ -796,7 +796,6 @@ async function listEsp32SensorAlerts(req, res) {
               CreatedAt,
               Status
          FROM ESP32SensorLogs
-        WHERE Severity = 'HIGH' OR Severity = 'CRITICAL'
         ORDER BY Timestamp DESC, LogID DESC
         LIMIT ?`,
       [limit]

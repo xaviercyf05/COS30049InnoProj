@@ -102,6 +102,10 @@ function normaliseEsp32SensorLogRow(row) {
   const location = String(getFirstMatchingValue(row, ["Location", "location"], "") || "").trim();
   const severity = String(getFirstMatchingValue(row, ["Severity", "severity"], "ESP32 sensor alert") || "ESP32 sensor alert").trim();
   const timestampValueSource = getFirstMatchingValue(row, ["Timestamp", "timestamp", "CreatedAt", "createdAt"], "");
+  const parkLatitude = Number(getFirstMatchingValue(row, ["ParkLatitude", "parkLatitude"], null));
+  const parkLongitude = Number(getFirstMatchingValue(row, ["ParkLongitude", "parkLongitude"], null));
+  const latitude = Number.isFinite(parkLatitude) ? parkLatitude : null;
+  const longitude = Number.isFinite(parkLongitude) ? parkLongitude : null;
   const labels = {
     deviceId: deviceId || null,
     location: location || null,
@@ -132,11 +136,11 @@ function normaliseEsp32SensorLogRow(row) {
     resolved: Boolean(Number(getFirstMatchingValue(row, ["Status", "status"], 0))),
     eventType: String(getFirstMatchingValue(row, ["EventType", "eventType"], "esp32_sensor_alert") || "esp32_sensor_alert"),
     labels,
-    parkName: location || null,
-    latitude: null,
-    longitude: null,
+    parkName: getFirstMatchingValue(row, ["ParkName", "parkName"], null) || location || null,
+    latitude,
+    longitude,
     unsolvedCountAtLocation: 0,
-    showOnMap: false,
+    showOnMap: Number.isFinite(latitude) && Number.isFinite(longitude),
     timestamp: formatEvidenceTimestamp(timestampValueSource),
     createdAt: getFirstMatchingValue(row, ["CreatedAt", "createdAt"], null),
     videoFileName: null,
@@ -794,8 +798,50 @@ async function listEsp32SensorAlerts(req, res) {
               Severity,
               Timestamp,
               CreatedAt,
-              Status
-         FROM ESP32SensorLogs
+              Status,
+              p.ParkName AS ParkName,
+              p.Latitude AS ParkLatitude,
+              p.Longitude AS ParkLongitude
+         FROM (
+           SELECT s.LogID,
+                  s.DeviceID,
+                  s.Location,
+                  s.Temperature,
+                  s.Humidity,
+                  s.Distance,
+                  s.Sound,
+                  s.Rain,
+                  s.Soil,
+                  s.SoilRaw,
+                  s.DistanceStatus,
+                  s.SoundStatus,
+                  s.TempStatus,
+                  s.HumStatus,
+                  s.RainStatus,
+                  s.RainLevel,
+                  s.SoilStatus,
+                  s.Severity,
+                  s.Timestamp,
+                  s.CreatedAt,
+                  s.Status,
+                  (
+                    SELECT p2.ParkName
+                      FROM Park p2
+                     WHERE LOWER(TRIM(p2.ParkName)) = LOWER(TRIM(s.Location))
+                        OR LOWER(TRIM(p2.ParkName)) LIKE CONCAT('%', LOWER(TRIM(s.Location)), '%')
+                        OR LOWER(TRIM(s.Location)) LIKE CONCAT('%', LOWER(TRIM(p2.ParkName)), '%')
+                     ORDER BY CASE
+                                WHEN LOWER(TRIM(p2.ParkName)) = LOWER(TRIM(s.Location)) THEN 0
+                                WHEN LOWER(TRIM(p2.ParkName)) LIKE CONCAT(LOWER(TRIM(s.Location)), '%') THEN 1
+                                ELSE 2
+                              END,
+                              LENGTH(p2.ParkName)
+                     LIMIT 1
+                  ) AS MatchedParkName
+             FROM ESP32SensorLogs s
+         ) sensor_logs
+         LEFT JOIN Park p
+           ON p.ParkName = sensor_logs.MatchedParkName
         ORDER BY Timestamp DESC, LogID DESC
         LIMIT ?`,
       [limit]

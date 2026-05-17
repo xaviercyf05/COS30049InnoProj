@@ -85,6 +85,40 @@ function formatTimestamp(value) {
   return parsedDate.toISOString().replace('T', ' ').slice(0, 16);
 }
 
+function parseBoolean(value, defaultValue = false) {
+  if (value === undefined || value === null || value === '') {
+    return defaultValue;
+  }
+
+  if (typeof value === 'boolean') {
+    return value;
+  }
+
+  if (typeof value === 'number') {
+    return value !== 0;
+  }
+
+  const normalised = String(value).trim().toLowerCase();
+  if (['true', '1', 'yes', 'y'].includes(normalised)) {
+    return true;
+  }
+  if (['false', '0', 'no', 'n'].includes(normalised)) {
+    return false;
+  }
+
+  return defaultValue;
+}
+
+function getTimestampValue(value) {
+  if (!value) {
+    return 0;
+  }
+
+  const parsedDate = new Date(value);
+  const parsedTime = parsedDate.getTime();
+  return Number.isNaN(parsedTime) ? 0 : parsedTime;
+}
+
 function getApiBaseUrl() {
   const [preferredBaseUrl] = getApiBaseUrls();
   return String(preferredBaseUrl || API_ORIGIN).replace(/\/+$/, '');
@@ -178,10 +212,14 @@ function normaliseEvidenceRecord(record) {
   const timestamp = formatTimestamp(
     getFieldValue(record, ['timestamp', 'EventTimestamp', 'eventTimestamp', 'createdAt', 'CreatedAt'], '')
   );
+  const timestampValue = getTimestampValue(
+    getFieldValue(record, ['timestamp', 'EventTimestamp', 'eventTimestamp', 'createdAt', 'CreatedAt'], '')
+  );
 
   return {
     evidenceId: evidenceId !== null ? Number(evidenceId) : null,
     id: evidenceId !== null ? Number(evidenceId) : null,
+    alertKey: evidenceId !== null ? `evidence-${Number(evidenceId)}` : `evidence-${timestampValue}-${name}`,
     name,
     location: location || String(getFieldValue(labels, ['location', 'address', 'area'], '') || '').trim(),
     status,
@@ -189,11 +227,15 @@ function normaliseEvidenceRecord(record) {
     eventType,
     labels,
     parkName: parkName || location || null,
+    sourceType: 'body-worn-camera',
+    sourceLabel: 'Body-worn camera',
+    canUpdateStatus: true,
     latitude: toNumberOrNull(getFieldValue(record, ['latitude', 'Latitude', 'parkLatitude', 'ParkLatitude'], null)),
     longitude: toNumberOrNull(getFieldValue(record, ['longitude', 'Longitude', 'parkLongitude', 'ParkLongitude'], null)),
     showOnMap: Boolean(getFieldValue(record, ['showOnMap'], false)),
     unsolvedCountAtLocation: toNumberOrNull(getFieldValue(record, ['unsolvedCountAtLocation', 'UnsolvedCount'], 0)) || 0,
     timestamp,
+    timestampValue,
     videoFileName: getFieldValue(record, ['videoFileName', 'VideoFileName'], ''),
     videoMimeType: getFieldValue(record, ['videoMimeType', 'VideoMimeType'], 'video/mp4'),
     videoSizeBytes: toNumberOrNull(getFieldValue(record, ['videoSizeBytes', 'VideoSizeBytes'], null)),
@@ -205,6 +247,109 @@ function normaliseEvidenceRecord(record) {
   };
 }
 
+function normaliseEsp32SensorLogRecord(record) {
+  const labels = parseLabels(getFieldValue(record, ['labels', 'LabelsJson', 'labelsJson', 'metadata', 'Metadata'], {}));
+  const sensorLogId = getFieldValue(record, ['sensorLogId', 'SensorLogId', 'logId', 'LogId', 'id'], null);
+  const location = String(
+    getFieldValue(record, ['location', 'Location', 'site', 'Site', 'area', 'Area', 'parkName', 'ParkName'], '') || ''
+  ).trim();
+  const deviceName = String(
+    getFieldValue(record, ['deviceName', 'DeviceName', 'sensorName', 'SensorName', 'deviceId', 'DeviceId', 'sensorId', 'SensorId'], '') || ''
+  ).trim();
+  const rawName = String(
+    getFieldValue(labels, ['name', 'title', 'alertName', 'deviceName'], '') ||
+    getFieldValue(record, ['name', 'Name', 'eventType', 'EventType', 'alertType', 'AlertType'], '') ||
+    deviceName ||
+    'ESP32 sensor alert'
+  ).trim();
+  const rawStatus = String(
+    getFieldValue(labels, ['status', 'summary', 'message', 'description', 'note', 'reading'], '') ||
+    getFieldValue(record, ['status', 'Status', 'message', 'Message', 'description', 'Description', 'reading', 'Reading', 'eventType', 'EventType', 'alertType', 'AlertType'], '') ||
+    'ESP32 sensor event'
+  ).trim();
+  const timestampSource = getFieldValue(
+    record,
+    ['timestamp', 'Timestamp', 'eventTimestamp', 'EventTimestamp', 'createdAt', 'CreatedAt', 'loggedAt', 'LoggedAt', 'recordedAt', 'RecordedAt'],
+    ''
+  );
+  const timestamp = formatTimestamp(timestampSource);
+  const timestampValue = getTimestampValue(timestampSource);
+  const latitude = toNumberOrNull(getFieldValue(record, ['latitude', 'Latitude', 'lat', 'Lat'], null));
+  const longitude = toNumberOrNull(getFieldValue(record, ['longitude', 'Longitude', 'lng', 'Lng', 'lon', 'Lon'], null));
+  const resolved = parseBoolean(getFieldValue(record, ['resolved', 'Resolved', 'isResolved', 'IsResolved', 'status', 'Status'], false));
+  const alertId = sensorLogId !== null ? String(sensorLogId) : `esp32-${timestampValue || rawName || location || 'alert'}`;
+
+  return {
+    evidenceId: null,
+    id: alertId,
+    alertKey: `esp32-${alertId}`,
+    name: rawName,
+    location: location || String(getFieldValue(labels, ['location', 'address', 'area'], '') || '').trim() || 'ESP32 sensor',
+    status: rawStatus,
+    resolved,
+    eventType: String(getFieldValue(record, ['eventType', 'EventType', 'alertType', 'AlertType'], 'esp32_sensor_alert') || 'esp32_sensor_alert'),
+    labels,
+    parkName: location || String(getFieldValue(labels, ['parkName', 'siteName', 'name'], '') || '').trim() || null,
+    sourceType: 'esp32-sensor-log',
+    sourceLabel: 'ESP32 sensor log',
+    canUpdateStatus: false,
+    latitude,
+    longitude,
+    showOnMap: Boolean(latitude !== null && longitude !== null),
+    unsolvedCountAtLocation: 0,
+    timestamp,
+    timestampValue,
+    videoFileName: '',
+    videoMimeType: 'video/mp4',
+    videoSizeBytes: null,
+    videoSha256: null,
+    videoPath: '',
+    videoUrl: '',
+    hasVideo: false,
+    createdAt: getFieldValue(record, ['createdAt', 'CreatedAt'], null),
+  };
+}
+
+function sortAlertsByTimestampDescending(alerts) {
+  return [...alerts].sort((left, right) => {
+    const rightTime = Number(right?.timestampValue || 0);
+    const leftTime = Number(left?.timestampValue || 0);
+
+    if (rightTime !== leftTime) {
+      return rightTime - leftTime;
+    }
+
+    return String(right?.alertKey || right?.id || '').localeCompare(String(left?.alertKey || left?.id || ''));
+  });
+}
+
+async function fetchAlertRecords(endpoint, token, normaliseRecord) {
+  try {
+    const response = await requestAdminEvidenceApi(endpoint, token);
+    const payload = response.data?.data ?? response.data ?? [];
+    const records = Array.isArray(payload) ? payload.map(normaliseRecord) : [];
+    return { records, error: null };
+  } catch (error) {
+    return { records: [], error };
+  }
+}
+
+async function fetchFirstAvailableAlertRecords(endpoints, token, normaliseRecord) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    const result = await fetchAlertRecords(endpoint, token, normaliseRecord);
+
+    if (!result.error) {
+      return result;
+    }
+
+    lastError = result.error;
+  }
+
+  return { records: [], error: lastError };
+}
+
 export async function fetchAdminEvidenceAlerts() {
   const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
 
@@ -213,11 +358,32 @@ export async function fetchAdminEvidenceAlerts() {
   }
 
   try {
-    const response = await requestAdminEvidenceApi('/api/v1/admin/evidence?limit=25', token);
-    const payload = response.data?.data ?? response.data ?? [];
-    const alerts = Array.isArray(payload) ? payload.map(normaliseEvidenceRecord) : [];
+    const [evidenceResult, sensorLogResult] = await Promise.all([
+      fetchAlertRecords('/api/v1/admin/evidence?limit=25', token, normaliseEvidenceRecord),
+      fetchFirstAvailableAlertRecords(
+        [
+          '/api/v1/admin/esp32sensorlogs?limit=25',
+          '/api/v1/admin/esp32-sensor-logs?limit=25',
+          '/api/v1/admin/sensor-logs?limit=25',
+          '/api/v1/admin/ESP32SensorLogs?limit=25',
+        ],
+        token,
+        normaliseEsp32SensorLogRecord
+      ),
+    ]);
 
-    return { alerts, error: null };
+    const alerts = sortAlertsByTimestampDescending([
+      ...evidenceResult.records,
+      ...sensorLogResult.records,
+    ]);
+
+    const errorMessages = [evidenceResult.error?.message, sensorLogResult.error?.message].filter(Boolean);
+    const hasAnyAlerts = alerts.length > 0;
+
+    return {
+      alerts,
+      error: hasAnyAlerts ? null : errorMessages.join(' | ') || null,
+    };
   } catch (error) {
     return { alerts: [], error: error.message || 'Failed to load evidence alerts.' };
   }

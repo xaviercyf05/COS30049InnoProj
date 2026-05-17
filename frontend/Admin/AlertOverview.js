@@ -49,7 +49,7 @@ export default function AlertHistory({ navigation }) {
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text style={styles.title}>Alert Overview</Text>
-        <Text style={styles.subtitle}>Live evidence records pulled from the database</Text>
+        <Text style={styles.subtitle}>Live evidence records pulled from the database and ESP32 sensor logs</Text>
       </View>
 
       {loading ? (
@@ -93,10 +93,11 @@ export default function AlertHistory({ navigation }) {
       </View>
 
       {filteredAlerts.map((item) => (
-        <View key={item.id} style={styles.row}>
+        <View key={item.alertKey || item.id} style={styles.row}>
           <View style={styles.body}>
             <Text style={styles.name}>{item.name}</Text>
             <Text style={styles.meta}>{item.timestamp} · {item.location || 'Location unavailable'}</Text>
+            <Text style={styles.source}>{item.sourceLabel || 'Alert source unavailable'}</Text>
             <Text style={styles.status}>{item.status}</Text>
 
             <View style={styles.actionRow}>
@@ -119,8 +120,8 @@ export default function AlertHistory({ navigation }) {
 
       {!loading && filteredAlerts.length === 0 ? (
         <View style={styles.emptyCard}>
-          <Text style={styles.emptyTitle}>No evidence records found</Text>
-          <Text style={styles.emptyText}>The backend returned an empty evidence list.</Text>
+          <Text style={styles.emptyTitle}>No alert records found</Text>
+          <Text style={styles.emptyText}>The backend returned an empty alert list.</Text>
         </View>
       ) : null}
     </ScrollView>
@@ -184,6 +185,7 @@ const styles = StyleSheet.create({
   body: { flex: 1 },
   name: { fontSize: 15, fontWeight: '800', color: '#223322' },
   meta: { marginTop: 2, color: '#687263', fontSize: 13 },
+  source: { marginTop: 4, color: '#445244', fontSize: 12, fontWeight: '700' },
   status: { marginTop: 6, color: '#445244', fontSize: 13 },
   actionRow: {
     marginTop: 10,

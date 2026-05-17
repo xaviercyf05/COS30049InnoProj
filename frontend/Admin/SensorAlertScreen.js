@@ -150,7 +150,7 @@ export default function SensorAlertScreen({ navigation }) {
       <View style={styles.hero}>
         <Text style={styles.kicker}>Sensor monitoring</Text>
         <Text style={styles.title}>Live alert map</Text>
-        <Text style={styles.subtitle}>Real evidence entries from the admin database</Text>
+        <Text style={styles.subtitle}>Real evidence entries from the admin database and ESP32 sensor logs</Text>
       </View>
 
       {loading ? (
@@ -171,7 +171,7 @@ export default function SensorAlertScreen({ navigation }) {
         <View style={styles.mapHeader}>
           <View>
             <Text style={styles.mapTitle}>Evidence locations</Text>
-            <Text style={styles.mapLabel}>Markers show only parks with at least one unsolved alert.</Text>
+            <Text style={styles.mapLabel}>Markers show unresolved alerts from the camera and sensor-log feeds.</Text>
           </View>
         </View>
 
@@ -213,7 +213,7 @@ export default function SensorAlertScreen({ navigation }) {
         </View>
 
         {unsolvedAlerts.map((alert) => (
-          <View key={alert.id} style={styles.alertRow}>
+          <View key={alert.alertKey || alert.id} style={styles.alertRow}>
             <View style={styles.alertIconWrap}>
               <Text style={styles.alertIcon}>!</Text>
             </View>
@@ -222,6 +222,7 @@ export default function SensorAlertScreen({ navigation }) {
                 <Text style={styles.alertName}>{alert.name}</Text>
               </TouchableOpacity>
               <Text style={styles.alertMeta}>{alert.location || 'Location unavailable'}</Text>
+              <Text style={styles.alertSource}>{alert.sourceLabel || 'Alert source unavailable'}</Text>
               <Text style={styles.alertStatus}>{alert.status}</Text>
               <Text style={styles.alertTimestamp}>{alert.timestamp}</Text>
   
@@ -267,6 +268,7 @@ const styles = StyleSheet.create({
   alertTextWrap: { flex: 1 },
   alertName: { fontSize: 15, fontWeight: '800', color: '#243424' },
   alertMeta: { marginTop: 2, color: '#687263', fontSize: 13 },
+  alertSource: { marginTop: 4, color: '#445244', fontSize: 12, fontWeight: '700' },
   alertStatus: { marginTop: 4, color: '#445244', fontSize: 13 },
   alertTimestamp: { marginTop: 2, color: '#999999', fontSize: 12, fontWeight: '500' },
   emptyText: { marginTop: 8, color: '#687263', fontSize: 13 }

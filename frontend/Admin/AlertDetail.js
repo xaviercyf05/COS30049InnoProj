@@ -10,6 +10,7 @@ function AlertDetail({ route, navigation }) {
   const [alerts, setAlerts] = useState([]);
   const alertFromRoute = route?.params?.alert || {};
   const [alert, setAlert] = useState(alertFromRoute);
+  const canUpdateStatus = alert.canUpdateStatus !== false;
   const videoUrl = alert.videoUrl || '';
   const labelsText = alert.labels ? JSON.stringify(alert.labels, null, 2) : '';
   const [videoLoading, setVideoLoading] = useState(false);
@@ -20,6 +21,10 @@ function AlertDetail({ route, navigation }) {
   const [solving, setSolving] = useState(false);
 
   const toggleSolved = async () => {
+    if (!canUpdateStatus) {
+      return;
+    }
+
     const newResolved = !alert.resolved;
     const id = alert.id || alert.evidenceId || alert.evidenceId;
     if (!id) return;
@@ -123,6 +128,7 @@ function AlertDetail({ route, navigation }) {
         <View style={styles.header}>
           <Text style={styles.title}>{alert.name || 'Evidence Detail'}</Text>
           <Text style={styles.meta}>{alert.location || 'Location unavailable'}</Text>
+          <Text style={styles.source}>{alert.sourceLabel || 'Alert source unavailable'}</Text>
         </View>
 
         <View style={styles.card}>
@@ -147,32 +153,41 @@ function AlertDetail({ route, navigation }) {
           ) : null}
 
           {isWeb ? (
-            <View style={styles.buttonRow}>
-              <TouchableOpacity
-                style={[styles.download, (!videoUrl || videoLoading) && styles.downloadDisabled]}
-                onPress={downloadVideo}
-                disabled={!videoUrl || videoLoading}
-              >
-                <View style={styles.buttonContent}>
-                  {videoLoading ? (
-                    <ActivityIndicator size="small" color="#FFFFFF" />
-                  ) : (
-                    <Text style={styles.downloadText} numberOfLines={1}>
-                      {videoUrl ? 'Download Evidence Video' : 'Video not available'}
+            <>
+              <View style={styles.buttonRow}>
+                {videoUrl ? (
+                  <TouchableOpacity
+                    style={[styles.download, videoLoading && styles.downloadDisabled]}
+                    onPress={downloadVideo}
+                    disabled={videoLoading}
+                  >
+                    <View style={styles.buttonContent}>
+                      {videoLoading ? (
+                        <ActivityIndicator size="small" color="#FFFFFF" />
+                      ) : (
+                        <Text style={styles.downloadText} numberOfLines={1}>
+                          Download Evidence Video
+                        </Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                ) : null}
+                {canUpdateStatus ? (
+                  <TouchableOpacity
+                    style={[styles.solveButton, alert.resolved && styles.solvedButtonStyle]}
+                    onPress={toggleSolved}
+                    disabled={solving}
+                  >
+                    <Text style={[styles.solveButtonText, alert.resolved && styles.solvedButtonText]}>
+                      {alert.resolved ? '✓ Solved' : 'Mark Solved'}
                     </Text>
-                  )}
-                </View>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[styles.solveButton, alert.resolved && styles.solvedButtonStyle]}
-                onPress={toggleSolved}
-                disabled={solving}
-              >
-                <Text style={[styles.solveButtonText, alert.resolved && styles.solvedButtonText]}>
-                  {alert.resolved ? '✓ Solved' : 'Mark Solved'}
-                </Text>
-              </TouchableOpacity>
-            </View>
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              {!videoUrl && !canUpdateStatus ? (
+                <Text style={styles.sectionText}>This alert came from ESP32SensorLogs and is read-only in-app.</Text>
+              ) : null}
+            </>
           ) : videoUrl && token && player ? (
             <>
               <TouchableOpacity
@@ -194,16 +209,19 @@ function AlertDetail({ route, navigation }) {
               <TouchableOpacity
                 style={[styles.solveButton, alert.resolved && styles.solvedButtonStyle]}
                 onPress={toggleSolved}
+                disabled={solving || !canUpdateStatus}
               >
                 <View style={styles.buttonContent}>
                   <Text style={[styles.solveButtonText, alert.resolved && styles.solvedButtonText]} numberOfLines={1}>
-                    {alert.resolved ? '✓ Solved' : 'Mark Solved'}
+                    {canUpdateStatus ? (alert.resolved ? '✓ Solved' : 'Mark Solved') : 'Status managed externally'}
                   </Text>
                 </View>
               </TouchableOpacity>
             </>
           ) : (
-            <Text style={styles.sectionText}>Loading video...</Text>
+            <Text style={styles.sectionText}>
+              {canUpdateStatus ? 'Loading video...' : 'This alert came from ESP32SensorLogs and is read-only in-app.'}
+            </Text>
           )}
 
           {downloadError ? <Text style={styles.errorText}>{downloadError}</Text> : null}
@@ -219,6 +237,7 @@ const styles = StyleSheet.create({
   header: { marginBottom: 12 },
   title: { fontSize: 20, fontWeight: '800', color: '#243424' },
   meta: { marginTop: 6, color: '#6C7566' },
+  source: { marginTop: 4, color: '#445244', fontSize: 12, fontWeight: '700' },
   card: { marginTop: 10, backgroundColor: '#FFFFFF', padding: 16, borderRadius: 12 },
   sectionTitle: { fontWeight: '800', color: '#233322' },
   sectionText: { marginTop: 6, color: '#445244' },
@@ -297,4 +316,4 @@ const styles = StyleSheet.create({
   },
 });
 
-export default withSidebarChrome(AlertDetail, { title: 'Evidence Detail' });
+export default withSidebarChrome(AlertDetail, { title: 'Alert Detail' });

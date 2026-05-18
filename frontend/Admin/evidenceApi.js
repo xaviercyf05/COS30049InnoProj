@@ -379,14 +379,15 @@ function normaliseEsp32SensorLogRecord(record) {
     alertKey: `esp32-${alertId}`,
     name: rawName,
     location: location || String(getFieldValue(labels, ['location', 'address', 'area'], '') || '').trim() || 'ESP32 sensor',
-    status: rawStatus,
+    status: 'Unusual environmental condition',
+    severity: rawStatus,
     resolved,
     eventType: String(getFieldValue(record, ['eventType', 'EventType', 'alertType', 'AlertType'], 'esp32_sensor_alert') || 'esp32_sensor_alert'),
     labels,
     parkName: displayParkName || location || String(getFieldValue(labels, ['parkName', 'siteName', 'name'], '') || '').trim() || null,
     sourceType: 'esp32-sensor-log',
     sourceLabel: 'ESP32 sensor log',
-    canUpdateStatus: false,
+    canUpdateStatus: true,
     latitude,
     longitude,
     showOnMap: Boolean(latitude !== null && longitude !== null),
@@ -483,19 +484,34 @@ export async function fetchAdminEvidenceAlerts() {
   }
 }
 
-export async function updateEvidenceStatus(evidenceId, resolved) {
+export async function updateAlertStatus(alertOrId, resolved) {
   const token = await AsyncStorage.getItem(AUTH_TOKEN_KEY);
 
   if (!token) {
     throw new Error('Authentication required');
   }
 
-  const response = await requestAdminEvidenceApi(`/api/v1/admin/evidence/${evidenceId}/status`, token, {
+  const alert = alertOrId && typeof alertOrId === 'object' ? alertOrId : null;
+  const id = alert ? alert.id || alert.evidenceId : alertOrId;
+
+  if (!id) {
+    throw new Error('This alert is missing an id.');
+  }
+
+  const endpoint = alert?.sourceType === 'esp32-sensor-log'
+    ? `/api/v1/admin/esp32sensorlogs/${id}/status`
+    : `/api/v1/admin/evidence/${id}/status`;
+
+  const response = await requestAdminEvidenceApi(endpoint, token, {
     method: 'PUT',
     body: { resolved: !!resolved },
   });
 
   return response.data;
+}
+
+export async function updateEvidenceStatus(evidenceId, resolved) {
+  return updateAlertStatus(evidenceId, resolved);
 }
 
 function buildSensorCsvFormData(fileAsset, fallbackDeviceID = 'manual-upload') {

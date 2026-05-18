@@ -314,7 +314,6 @@ export default function SensorAlertScreen({ navigation }) {
               <TouchableOpacity onPress={() => navigation.navigate('AlertDetail', { alert })}>
                 <Text style={styles.alertName}>{alert.name}</Text>
               </TouchableOpacity>
-              <Text style={styles.alertMeta}>{alert.location || 'Location unavailable'}</Text>
               <Text style={styles.alertSource}>{alert.sourceLabel || 'Alert source unavailable'}</Text>
               <Text style={styles.alertTimestamp}>{alert.timestamp}</Text>
 
@@ -368,7 +367,6 @@ const styles = StyleSheet.create({
   alertIcon: { fontSize: 22, fontWeight: '900', color: '#D64545' },
   alertTextWrap: { flex: 1 },
   alertName: { fontSize: 15, fontWeight: '800', color: '#243424' },
-  alertMeta: { marginTop: 2, color: '#687263', fontSize: 13 },
   alertSource: { marginTop: 4, color: '#445244', fontSize: 12, fontWeight: '700' },
   alertStatus: { marginTop: 4, color: '#445244', fontSize: 13 },
   alertTimestamp: { marginTop: 2, color: '#999999', fontSize: 12, fontWeight: '500' },

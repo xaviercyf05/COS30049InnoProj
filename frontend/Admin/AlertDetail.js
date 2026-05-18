@@ -3,7 +3,7 @@ import { ActivityIndicator, Alert, Platform, View, Text, StyleSheet, TouchableOp
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { withSidebarChrome } from '../components/AppSidebarChrome.js';
 import { VideoView, useVideoPlayer } from 'expo-video';
-import { updateEvidenceStatus } from './evidenceApi.js';
+import { updateAlertStatus } from './evidenceApi.js';
 
 function AlertDetail({ route, navigation }) {
   const [token, setToken] = useState(null);
@@ -26,15 +26,18 @@ function AlertDetail({ route, navigation }) {
     }
 
     const newResolved = !alert.resolved;
-    const id = alert.id || alert.evidenceId || alert.evidenceId;
-    if (!id) return;
+    const id = alert.id || alert.evidenceId;
+    if (!id) {
+      Alert.alert('Update failed', 'This alert is missing an id.');
+      return;
+    }
 
     // optimistic UI change
     setAlert((prev) => ({ ...prev, resolved: newResolved }));
     setSolving(true);
 
     try {
-      await updateEvidenceStatus(id, newResolved);
+      await updateAlertStatus(alert, newResolved);
       // rely on overview/sensor screens to refresh on focus when user navigates back
     } catch (error) {
       // revert on error
@@ -178,7 +181,7 @@ function AlertDetail({ route, navigation }) {
                     disabled={solving}
                   >
                     <Text style={[styles.solveButtonText, alert.resolved && styles.solvedButtonText]}>
-                      {alert.resolved ? '✓ Solved' : 'Mark Solved'}
+                      {alert.resolved ? 'Cancel Solved' : 'Mark Solved'}
                     </Text>
                   </TouchableOpacity>
                 ) : null}
@@ -209,15 +212,23 @@ function AlertDetail({ route, navigation }) {
               >
                 <View style={styles.buttonContent}>
                   <Text style={[styles.solveButtonText, alert.resolved && styles.solvedButtonText]} numberOfLines={1}>
-                    {canUpdateStatus ? (alert.resolved ? '✓ Solved' : 'Mark Solved') : 'Status managed externally'}
+                    {canUpdateStatus ? (alert.resolved ? 'Cancel Solved' : 'Mark Solved') : 'Status managed externally'}
                   </Text>
                 </View>
               </TouchableOpacity>
             </>
           ) : (
-            <Text style={styles.sectionText}>
-              {canUpdateStatus ? 'Loading video...' : 'This alert came from ESP32SensorLogs and is read-only in-app.'}
-            </Text>
+            <TouchableOpacity
+              style={[styles.solveButton, alert.resolved && styles.solvedButtonStyle]}
+              onPress={toggleSolved}
+              disabled={solving || !canUpdateStatus}
+            >
+              <View style={styles.buttonContent}>
+                <Text style={[styles.solveButtonText, alert.resolved && styles.solvedButtonText]} numberOfLines={1}>
+                  {canUpdateStatus ? (alert.resolved ? 'Cancel Solved' : 'Mark Solved') : 'Status managed externally'}
+                </Text>
+              </View>
+            </TouchableOpacity>
           )}
 
           {downloadError ? <Text style={styles.errorText}>{downloadError}</Text> : null}

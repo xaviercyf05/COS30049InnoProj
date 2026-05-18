@@ -1,19 +1,41 @@
-import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
-import { fetchAdminEvidenceAlerts } from './evidenceApi.js';
+import React, { useEffect, useState } from 'react';
+import { Alert, View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { fetchAdminEvidenceAlerts, updateAlertStatus } from './evidenceApi.js';
 
 export default function AlertHistory({ navigation }) {
   const [alerts, setAlerts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all'); // 'all', 'solved', 'unsolved'
+  const [updatingAlertId, setUpdatingAlertId] = useState(null);
 
-  const toggleSolved = (id) => {
+  const toggleSolved = async (targetAlert) => {
+    const id = targetAlert?.id || targetAlert?.evidenceId;
+    if (!id) {
+      Alert.alert('Update failed', 'This alert is missing an id.');
+      return;
+    }
+
+    const newResolved = !targetAlert.resolved;
+    setUpdatingAlertId(id);
     setAlerts((prevAlerts) =>
       prevAlerts.map((alert) =>
-        alert.id === id ? { ...alert, resolved: !alert.resolved } : alert
+        alert.id === id ? { ...alert, resolved: newResolved } : alert
       )
     );
+
+    try {
+      await updateAlertStatus(targetAlert, newResolved);
+    } catch (updateError) {
+      setAlerts((prevAlerts) =>
+        prevAlerts.map((alert) =>
+          alert.id === id ? { ...alert, resolved: !newResolved } : alert
+        )
+      );
+      Alert.alert('Update failed', updateError?.message || 'Unable to update status.');
+    } finally {
+      setUpdatingAlertId(null);
+    }
   };
 
   const filteredAlerts = alerts.filter((alert) => {
@@ -106,6 +128,15 @@ export default function AlertHistory({ navigation }) {
                 onPress={() => navigation.navigate('AlertDetail', { alert: item })}
               >
                 <Text style={styles.detailButtonText}>View Details</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.detailButton, item.resolved && styles.solvedButton]}
+                onPress={() => toggleSolved(item)}
+                disabled={updatingAlertId === (item.id || item.evidenceId)}
+              >
+                <Text style={[styles.detailButtonText, item.resolved && styles.solvedButtonText]}>
+                  {item.resolved ? 'Cancel Solved' : 'Mark Solved'}
+                </Text>
               </TouchableOpacity>
             </View>
           </View>

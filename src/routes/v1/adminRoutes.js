@@ -288,6 +288,40 @@ router.put(
 );
 
 /**
+ * PUT /admin/esp32sensorlogs/:logId/status - Update ESP32 sensor log solved status
+ * Body: { resolved: boolean }
+ */
+router.put(
+  "/esp32sensorlogs/:logId/status",
+  [
+    param("logId").isInt({ min: 1 }).withMessage("Invalid sensor log ID."),
+    body("resolved").isBoolean().withMessage("resolved must be a boolean."),
+  ],
+  validate,
+  asyncHandler(adminController.updateEsp32SensorLogStatus)
+);
+
+router.put(
+  "/esp32-sensor-logs/:logId/status",
+  [
+    param("logId").isInt({ min: 1 }).withMessage("Invalid sensor log ID."),
+    body("resolved").isBoolean().withMessage("resolved must be a boolean."),
+  ],
+  validate,
+  asyncHandler(adminController.updateEsp32SensorLogStatus)
+);
+
+router.put(
+  "/sensor-logs/:logId/status",
+  [
+    param("logId").isInt({ min: 1 }).withMessage("Invalid sensor log ID."),
+    body("resolved").isBoolean().withMessage("resolved must be a boolean."),
+  ],
+  validate,
+  asyncHandler(adminController.updateEsp32SensorLogStatus)
+);
+
+/**
  * GET /admin/evidence/:evidenceId/video - Stream an evidence video
  */
 router.get(

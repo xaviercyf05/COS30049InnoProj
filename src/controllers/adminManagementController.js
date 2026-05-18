@@ -1374,6 +1374,28 @@ async function updateEvidenceStatus(req, res) {
   }
 }
 
+async function updateEsp32SensorLogStatus(req, res) {
+  try {
+    const { logId } = req.params;
+    const resolved = req.body && (req.body.resolved === true || req.body.resolved === 'true' || req.body.resolved === 1 || req.body.resolved === '1');
+    const statusValue = resolved ? 1 : 0;
+
+    const [result] = await query(
+      `UPDATE ESP32SensorLogs SET Status = ? WHERE LogID = ?`,
+      [statusValue, logId]
+    );
+
+    if (result.affectedRows === 0) {
+      return res.status(404).json({ success: false, message: 'ESP32 sensor log not found.' });
+    }
+
+    return res.json({ success: true, data: { logId: Number(logId), resolved: !!resolved } });
+  } catch (error) {
+    console.error('Update ESP32 sensor log status error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update ESP32 sensor log status.' });
+  }
+}
+
 async function getAnalyticsDashboard(req, res) {
   try {
     const [guideRows] = await query(
@@ -1649,6 +1671,7 @@ module.exports = {
   uploadEsp32SensorLogsCsv,
   streamEvidenceVideo,
   updateEvidenceStatus,
+  updateEsp32SensorLogStatus,
   listPayments,
   updatePaymentStatus,
   getAnalyticsDashboard,

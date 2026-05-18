@@ -237,6 +237,14 @@ function findRowValueByHeader(rowValues, headerMap, headerCandidates) {
   return null;
 }
 
+function getManualDeviceId(req) {
+  return String(
+    getFirstMatchingValue(req.body, ["DeviceID", "deviceID", "DeviceId", "deviceId", "device"], "") ||
+      getFirstMatchingValue(req.query, ["DeviceID", "deviceID", "DeviceId", "deviceId", "device"], "") ||
+      ""
+  ).trim();
+}
+
 function toNullableFloat(value) {
   if (value === undefined || value === null || value === "") {
     return null;
@@ -381,7 +389,21 @@ async function uploadEsp32SensorLogsCsv(req, res) {
       });
     }
 
-    const fallbackDeviceId = String(req.body.deviceID || req.query.deviceID || "manual-upload").trim() || "manual-upload";
+    const manualDeviceId = getManualDeviceId(req);
+
+    if (!manualDeviceId) {
+      return res.status(400).json({
+        success: false,
+        message: "DeviceID is required for manual upload.",
+        errors: [
+          {
+            row: 0,
+            message: "Enter a DeviceID in the upload form. CSV DeviceID values are ignored for manual uploads.",
+          },
+        ],
+      });
+    }
+
     const maxRows = 5000;
     const rowsToInsert = parsed.rows.slice(0, maxRows);
 
@@ -397,7 +419,7 @@ async function uploadEsp32SensorLogsCsv(req, res) {
 
     for (const row of rowsToInsert) {
       await query(insertSql, [
-        row.deviceID || fallbackDeviceId,
+        manualDeviceId,
         row.location,
         row.temperature,
         row.humidity,
@@ -428,7 +450,7 @@ async function uploadEsp32SensorLogsCsv(req, res) {
         insertedCount,
         skippedCount,
         totalDataRows: parsed.rows.length + parsed.errors.length,
-        fallbackDeviceID: fallbackDeviceId,
+        deviceID: manualDeviceId,
         rowLimitApplied: parsed.rows.length > maxRows,
         sampleErrors: parsed.errors.slice(0, 20),
       },

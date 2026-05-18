@@ -214,7 +214,7 @@ router.get(
 
 /**
  * POST /admin/esp32sensorlogs/upload - Upload ESP32 sensor logs CSV manually
- * Body: multipart/form-data with file field file
+ * Body: multipart/form-data with file field file and required DeviceID for all uploaded rows
  */
 router.post(
   "/esp32sensorlogs/upload",

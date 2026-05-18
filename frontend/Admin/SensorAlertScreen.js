@@ -4,7 +4,8 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  TouchableOpacity
+  TouchableOpacity,
+  TextInput
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
 import { WebView } from 'react-native-webview';
@@ -17,6 +18,8 @@ export default function SensorAlertScreen({ navigation }) {
   const [error, setError] = useState('');
   const [uploading, setUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState('');
+  const [deviceId, setDeviceId] = useState('');
+  const [selectedCsvFile, setSelectedCsvFile] = useState(null);
   const unsolvedAlerts = useMemo(() => {
     const unsolved = alerts.filter((alert) => !alert?.resolved);
     return [...unsolved]
@@ -58,7 +61,7 @@ export default function SensorAlertScreen({ navigation }) {
     };
   }, [navigation]);
 
-  const handleUploadCsv = useCallback(async () => {
+  const handleChooseCsv = useCallback(async () => {
     try {
       setUploadMessage('');
 
@@ -78,18 +81,34 @@ export default function SensorAlertScreen({ navigation }) {
         return;
       }
 
+      setSelectedCsvFile(fileAsset);
+      setUploadMessage('CSV selected. Enter the device ID, then upload.');
+    } catch (pickError) {
+      setUploadMessage(pickError?.message || 'Failed to choose CSV file.');
+    }
+  }, []);
+
+  const handleUploadCsv = useCallback(async () => {
+    if (!selectedCsvFile) {
+      setUploadMessage('Please choose a CSV file first.');
+      return;
+    }
+
+    try {
+      setUploadMessage('');
       setUploading(true);
-      const result = await uploadEsp32SensorLogsCsv(fileAsset);
+      const result = await uploadEsp32SensorLogsCsv(selectedCsvFile, deviceId.trim() || undefined);
       const insertedCount = Number(result?.data?.insertedCount || 0);
       const skippedCount = Number(result?.data?.skippedCount || 0);
       setUploadMessage(`CSV uploaded. Inserted ${insertedCount} row(s), skipped ${skippedCount} row(s).`);
+      setSelectedCsvFile(null);
       await loadAlerts();
     } catch (uploadError) {
       setUploadMessage(uploadError?.message || 'Failed to upload CSV file.');
     } finally {
       setUploading(false);
     }
-  }, [loadAlerts]);
+  }, [deviceId, loadAlerts, selectedCsvFile]);
 
   const mapHtml = useMemo(() => {
     const mapAlerts = JSON.stringify(alerts);
@@ -251,10 +270,31 @@ export default function SensorAlertScreen({ navigation }) {
         <Text style={styles.title}>Live alert map</Text>
         <Text style={styles.subtitle}>Real-time alerts from the body-worn camera and ESP32 sensor</Text>
         <View style={styles.heroActions}>
-          <TouchableOpacity style={styles.uploadButton} onPress={handleUploadCsv} disabled={uploading}>
-            <Text style={styles.uploadButtonText}>{uploading ? 'Uploading...' : 'Upload Sensor CSV'}</Text>
+          <TouchableOpacity style={styles.uploadButton} onPress={handleChooseCsv} disabled={uploading}>
+            <Text style={styles.uploadButtonText}>{selectedCsvFile ? 'Change CSV File' : 'Choose Sensor CSV'}</Text>
           </TouchableOpacity>
         </View>
+        {selectedCsvFile ? (
+          <View style={styles.uploadPanel}>
+            <Text style={styles.selectedFileText}>Selected: {selectedCsvFile.name || 'sensor-log.csv'}</Text>
+            <View style={styles.deviceInputGroup}>
+              <Text style={styles.deviceInputLabel}>Device ID</Text>
+              <TextInput
+                style={styles.deviceInput}
+                value={deviceId}
+                onChangeText={setDeviceId}
+                placeholder="e.g. device001"
+                placeholderTextColor="#9AA191"
+                autoCapitalize="none"
+                autoCorrect={false}
+                editable={!uploading}
+              />
+            </View>
+            <TouchableOpacity style={styles.uploadButton} onPress={handleUploadCsv} disabled={uploading}>
+              <Text style={styles.uploadButtonText}>{uploading ? 'Uploading...' : 'Upload Selected CSV'}</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         {uploadMessage ? <Text style={styles.uploadMessage}>{uploadMessage}</Text> : null}
       </View>
 
@@ -351,6 +391,11 @@ const styles = StyleSheet.create({
   kicker: { color: '#7A846A', fontSize: 13, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
   title: { fontSize: 30, fontWeight: '800', color: '#243424', marginTop: 6, letterSpacing: -0.6 },
   subtitle: { marginTop: 8, color: '#6C7566', fontSize: 14 },
+  uploadPanel: { marginTop: 12, gap: 10, alignItems: 'flex-start' },
+  selectedFileText: { color: '#445244', fontSize: 13, fontWeight: '700' },
+  deviceInputGroup: { width: '100%', maxWidth: 320 },
+  deviceInputLabel: { marginBottom: 6, color: '#445244', fontSize: 13, fontWeight: '800' },
+  deviceInput: { backgroundColor: '#FFFFFF', borderWidth: 1, borderColor: '#DDE3D4', borderRadius: 10, color: '#243424', fontSize: 14, paddingHorizontal: 12, paddingVertical: 10 },
   uploadButton: { backgroundColor: '#2C5E2E', borderRadius: 999, paddingHorizontal: 14, paddingVertical: 10 },
   uploadButtonText: { color: '#FFFFFF', fontWeight: '800', fontSize: 13 },
   uploadMessage: { marginTop: 8, color: '#445244', fontSize: 12 },

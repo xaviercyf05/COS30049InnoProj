@@ -263,29 +263,79 @@ function toNullableInteger(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function formatMysqlTimestamp(date) {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hours = String(date.getHours()).padStart(2, "0");
+  const minutes = String(date.getMinutes()).padStart(2, "0");
+  const seconds = String(date.getSeconds()).padStart(2, "0");
+
+  return `${year}-${month}-${day} ${hours}:${minutes}:${seconds}`;
+}
+
+function buildMysqlTimestamp(year, month, day, hours, minutes, seconds = 0) {
+  const date = new Date(
+    Number(year),
+    Number(month) - 1,
+    Number(day),
+    Number(hours),
+    Number(minutes),
+    Number(seconds)
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  return formatMysqlTimestamp(date);
+}
+
 function parseSensorTimestamp(value) {
   if (value === undefined || value === null || value === "") {
     return null;
   }
 
   const normalizedValue = String(value).trim();
+
+  const mysqlDateTimeMatch = normalizedValue.match(
+    /^(\d{4})-(\d{1,2})-(\d{1,2})[ T](\d{1,2}):(\d{2})(?::(\d{2}))?$/
+  );
+  if (mysqlDateTimeMatch) {
+    const [, year, month, day, hours, minutes, seconds = "0"] = mysqlDateTimeMatch;
+    return buildMysqlTimestamp(year, month, day, hours, minutes, seconds);
+  }
+
+  const monthNameMatch = normalizedValue.match(
+    /^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})\s+(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(AM|PM)?$/i
+  );
+  if (monthNameMatch) {
+    const [, day, monthName, year, rawHours, minutes, seconds = "0", amPm] = monthNameMatch;
+    const monthDate = new Date(`${monthName} 1, ${year}`);
+    if (Number.isNaN(monthDate.getTime())) {
+      return null;
+    }
+
+    let hours = Number(rawHours);
+    if (amPm) {
+      const normalizedAmPm = amPm.toUpperCase();
+      if (normalizedAmPm === "PM" && hours < 12) {
+        hours += 12;
+      }
+      if (normalizedAmPm === "AM" && hours === 12) {
+        hours = 0;
+      }
+    }
+
+    return buildMysqlTimestamp(year, monthDate.getMonth() + 1, day, hours, minutes, seconds);
+  }
+
   const directDate = new Date(normalizedValue);
-  if (!Number.isNaN(directDate.getTime())) {
-    return directDate;
-  }
-
-  const match = normalizedValue.match(/^(\d{1,2})\s+([A-Za-z]{3,})\s+(\d{4})\s+(\d{1,2}:\d{2}:\d{2})\s*(AM|PM)$/i);
-  if (!match) {
+  if (Number.isNaN(directDate.getTime())) {
     return null;
   }
 
-  const [, day, monthName, year, timeValue, amPm] = match;
-  const fallbackDate = new Date(`${monthName} ${day}, ${year} ${timeValue} ${amPm.toUpperCase()}`);
-  if (Number.isNaN(fallbackDate.getTime())) {
-    return null;
-  }
-
-  return fallbackDate;
+  return formatMysqlTimestamp(directDate);
 }
 
 function parseEsp32CsvRows(csvContent) {

@@ -18,10 +18,7 @@ FPS = 20
 PRE_RECORD_SECONDS = 3
 RECORD_DURATION_SECONDS = 6
 
-# =========================
-# ULTRA FAST SETTINGS
-# =========================
-COOLDOWN_SECONDS = 3   # only anti-spam delay
+COOLDOWN_SECONDS = 3
 
 # =========================
 # INIT
@@ -42,6 +39,20 @@ video_writer = None
 record_end_time = 0
 
 frame_buffer = deque(maxlen=PRE_RECORD_SECONDS * FPS)
+
+# stability counters (still keep your previous logic if needed)
+plucking_frames = 0
+animal_frames = 0
+
+# =========================
+# HELPER: check overlap (touching logic)
+# =========================
+def is_touching(box1, box2):
+    x1, y1, x2, y2 = box1
+    a1, b1, a2, b2 = box2
+
+    # intersection area check
+    return not (x2 < a1 or a2 < x1 or y2 < b1 or b2 < y1)
 
 # =========================
 # MAIN LOOP
@@ -64,8 +75,11 @@ while True:
     detected_event = False
     alert_text = ""
 
+    animals = []
+    hands = []
+
     # =========================
-    # ULTRA FAST DETECTION
+    # COLLECT DETECTIONS
     # =========================
     if boxes is not None:
 
@@ -78,19 +92,43 @@ while True:
             if conf < CONF_THRESHOLD:
                 continue
 
-            # ⚡ INSTANT TRIGGER
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+
+            # collect animal boxes
+            if cls_name == "Animal":
+                animals.append((x1, y1, x2, y2))
+
+            # treat Person as hand proxy (IMPORTANT if no hand model)
+            if cls_name == "Hand" or cls_name == "Person":
+                hands.append((x1, y1, x2, y2))
+
+            # keep your previous logic if needed
             if cls_name == "Plucking":
+                plucking_frames += 1
+            else:
+                plucking_frames = 0
+
+            if plucking_frames >= 3:
                 detected_event = True
                 alert_text = "PLUCKING DETECTED"
-                break  # stop immediately (FASTEST)
-
-            elif cls_name == "Animal":
-                detected_event = True
-                alert_text = "ANIMAL DETECTED"
-                break
 
     # =========================
-    # COOLDOWN (ONLY STABILITY LAYER)
+    # NEW: ANIMAL + HAND INTERACTION RULE
+    # =========================
+    interaction_detected = False
+
+    for a in animals:
+        for h in hands:
+            if is_touching(a, h):
+                interaction_detected = True
+                break
+
+    if interaction_detected:
+        detected_event = True
+        alert_text = "ANIMAL TOUCH DETECTED"
+
+    # =========================
+    # COOLDOWN
     # =========================
     can_trigger = (current_time - last_alert_time) > COOLDOWN_SECONDS
 
@@ -117,7 +155,7 @@ while True:
         record_end_time = current_time + RECORD_DURATION_SECONDS
 
         print("\n==============================")
-        print("[ULTRA FAST EVENT TRIGGERED]")
+        print("[EVENT TRIGGERED]")
         print(alert_text)
         print("==============================\n")
 
@@ -146,7 +184,7 @@ while True:
             2
         )
 
-    cv2.imshow("ULTRA FAST Detection System", annotated)
+    cv2.imshow("AI Interaction Detection System", annotated)
 
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break

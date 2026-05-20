@@ -1,6 +1,7 @@
 import cv2
 import os
 import time
+from collections import deque
 from ultralytics import YOLO  # type: ignore
 
 # =========================
@@ -9,19 +10,41 @@ from ultralytics import YOLO  # type: ignore
 MODEL_PATH = "best5.pt"
 CAMERA_SOURCE = 0
 
-# Higher confidence helps reduce false detection
-CONFIDENCE_THRESHOLD = 0.6
+# Lower confidence for better action detection
+CONFIDENCE_THRESHOLD = 0.45
 
 SAVE_FOLDER = "evidence"
 
-# Your trained classes
 TARGET_CLASSES = ["Animal", "Plucking"]
 
 SAVE_COOLDOWN_SECONDS = 5
 ALERT_DISPLAY_SECONDS = 2.0
 
+# =========================
+# RECORDING SETTINGS
+# =========================
 RECORD_DURATION_SECONDS = 6
+PRE_RECORD_SECONDS = 3
+
 FPS = 20
+
+# =========================
+# FRAME CONFIRMATION
+# =========================
+PLUCKING_CONFIRM_FRAMES = 3
+ANIMAL_CONFIRM_FRAMES = 2
+
+# =========================
+# PRE-RECORD BUFFER
+# =========================
+PRE_RECORD_FRAMES = PRE_RECORD_SECONDS * FPS
+frame_buffer = deque(maxlen=PRE_RECORD_FRAMES)
+
+# =========================
+# COUNTERS
+# =========================
+plucking_counter = 0
+animal_counter = 0
 
 # =========================
 # PREPARE
@@ -43,7 +66,9 @@ last_save_time = 0
 alert_until_time = 0
 current_alert_text = ""
 
-# Recording variables
+# =========================
+# RECORDING VARIABLES
+# =========================
 recording = False
 video_writer = None
 record_end_time = 0
@@ -59,14 +84,33 @@ while True:
         print("[ERROR] Failed to read frame.")
         break
 
-    # Run YOLO detection
-    results = model(frame, conf=CONFIDENCE_THRESHOLD)
+    # =========================
+    # YOLO TRACKING
+    # =========================
+    results = model.track(
+        frame,
+        conf=CONFIDENCE_THRESHOLD,
+        persist=True,
+        verbose=False
+    )
 
-    # Draw prediction boxes
+    # Draw boxes
     annotated_frame = results[0].plot()
 
-    detected_target = False
+    # =========================
+    # SAVE TO BUFFER
+    # =========================
+    frame_buffer.append(annotated_frame.copy())
+
+    current_time = time.time()
+
     detected_labels = []
+
+    # =========================
+    # TEMP FLAGS
+    # =========================
+    plucking_detected = False
+    animal_detected = False
 
     # =========================
     # DETECTION CHECK
@@ -78,14 +122,14 @@ while True:
         conf = float(box.conf[0].item())
 
         # =========================
-        # HUMAN PLUCKING
+        # PLUCKING DETECTION
         # =========================
         if cls_name == "Plucking":
 
-            detected_target = True
+            plucking_detected = True
 
             detected_labels.append(
-                f"Human Plant Plucking Detected ({conf:.2f})"
+                f"Human Plant Plucking ({conf:.2f})"
             )
 
         # =========================
@@ -93,13 +137,41 @@ while True:
         # =========================
         elif cls_name == "Animal":
 
-            detected_target = True
+            animal_detected = True
 
             detected_labels.append(
-                f"Animal Detected ({conf:.2f})"
+                f"Animal ({conf:.2f})"
             )
 
-    current_time = time.time()
+    # =========================
+    # FRAME CONFIRMATION
+    # =========================
+    if plucking_detected:
+        plucking_counter += 1
+    else:
+        plucking_counter = 0
+
+    if animal_detected:
+        animal_counter += 1
+    else:
+        animal_counter = 0
+
+    # =========================
+    # FINAL DETECTION DECISION
+    # =========================
+    detected_target = False
+
+    if plucking_counter >= PLUCKING_CONFIRM_FRAMES:
+
+        detected_target = True
+
+        current_alert_text = "ALERT: Plant Plucking Detected!"
+
+    elif animal_counter >= ANIMAL_CONFIRM_FRAMES:
+
+        detected_target = True
+
+        current_alert_text = "ALERT: Animal Detected!"
 
     # =========================
     # START RECORDING
@@ -112,9 +184,14 @@ while True:
 
         timestamp = time.strftime("%Y%m%d_%H%M%S")
 
-        filename = os.path.join(
+        video_filename = os.path.join(
             SAVE_FOLDER,
             f"evidence_{timestamp}.mp4"
+        )
+
+        image_filename = os.path.join(
+            SAVE_FOLDER,
+            f"snapshot_{timestamp}.jpg"
         )
 
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
@@ -122,21 +199,34 @@ while True:
         height, width, _ = frame.shape
 
         video_writer = cv2.VideoWriter(
-            filename,
+            video_filename,
             fourcc,
             FPS,
             (width, height)
         )
 
+        # =========================
+        # SAVE PREVIOUS BUFFER
+        # =========================
+        for buffered_frame in frame_buffer:
+            video_writer.write(buffered_frame)
+
+        # =========================
+        # SAVE SNAPSHOT
+        # =========================
+        cv2.imwrite(image_filename, annotated_frame)
+
         recording = True
         record_end_time = current_time + RECORD_DURATION_SECONDS
         last_save_time = current_time
 
-        print("[ALERT] Recording started!")
+        print("\n==============================")
+        print("[ALERT] Illegal Activity Detected!")
         print("[INFO] Detected:", ", ".join(detected_labels))
-        print(f"[INFO] Saving video: {filename}")
+        print(f"[INFO] Saving video: {video_filename}")
+        print(f"[INFO] Saving snapshot: {image_filename}")
+        print("==============================\n")
 
-        current_alert_text = "ALERT: Illegal Activity Detected!"
         alert_until_time = current_time + ALERT_DISPLAY_SECONDS
 
     # =========================
@@ -175,11 +265,13 @@ while True:
     # SHOW WINDOW
     # =========================
     cv2.imshow(
-        "YOLOv8 Real-Time Detection",
+        "YOLOv8 Smart Surveillance",
         annotated_frame
     )
 
-    # Press Q to quit
+    # =========================
+    # PRESS Q TO QUIT
+    # =========================
     if cv2.waitKey(1) & 0xFF == ord("q"):
         break
 

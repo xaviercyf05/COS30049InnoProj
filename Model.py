@@ -10,7 +10,7 @@ from ultralytics import YOLO  # type: ignore
 MODEL_PATH = "best5.pt"
 CAMERA_SOURCE = 0
 
-CONF_THRESHOLD = 0.30
+CONF_THRESHOLD = 0.45
 
 SAVE_FOLDER = "evidence"
 

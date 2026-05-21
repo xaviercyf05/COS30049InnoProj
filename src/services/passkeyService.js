@@ -276,14 +276,17 @@ async function verifyPasskeyRegistration({ tempToken, credential, deviceName, ex
   }
 
   const {
-    credentialID,
     credentialPublicKey,
     counter,
     credentialDeviceType,
     credentialBackedUp,
+    credential: registeredCredential,
+    aaguid,
   } = verification.registrationInfo;
 
-  const credentialId = encodeBase64Url(Buffer.from(credentialID));
+  const credentialId = String(
+    registeredCredential?.id || registeredCredential?.rawId || responseCredentialIdFromBrowser(credential) || ''
+  ).trim();
   const credentialPublicKeyBase64 = encodeBase64Url(Buffer.from(credentialPublicKey));
   const transports = Array.isArray(credential.response?.transports)
     ? credential.response.transports.filter(Boolean)
@@ -301,7 +304,7 @@ async function verifyPasskeyRegistration({ tempToken, credential, deviceName, ex
       Number(counter || 0),
       JSON.stringify(transports),
       responseDeviceName,
-      credential.response?.aaguid || null,
+      aaguid || null,
       credentialBackedUp ? 1 : 0,
       1,
     ]
@@ -312,6 +315,10 @@ async function verifyPasskeyRegistration({ tempToken, credential, deviceName, ex
     userId,
     deviceName: responseDeviceName,
   };
+}
+
+function responseCredentialIdFromBrowser(responseCredential) {
+  return String(responseCredential?.id || responseCredential?.rawId || '').trim();
 }
 
 async function createPasskeyAuthenticationOptions(identifier = '') {

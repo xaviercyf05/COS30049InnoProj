@@ -6,6 +6,7 @@ const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const userController = require("../../controllers/userController");
 const mfaController = require("../../controllers/mfaController");
+const passkeyController = require("../../controllers/passkeyController");
 
 const router = express.Router();
 
@@ -137,6 +138,63 @@ router.post(
   ],
   validate,
   asyncHandler(mfaController.regenerateRecoveryCodes)
+);
+
+/**
+ * GET /user/passkeys - List registered passkeys for the current user
+ */
+router.get(
+  "/passkeys",
+  asyncHandler(passkeyController.listPasskeys)
+);
+
+/**
+ * POST /user/passkeys/setup/initiate - Begin passkey registration
+ * Body: { deviceName? }
+ */
+router.post(
+  "/passkeys/setup/initiate",
+  [
+    body("deviceName")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 120 })
+      .withMessage("Device name must be between 1 and 120 characters."),
+  ],
+  validate,
+  asyncHandler(passkeyController.initiatePasskeyRegistration)
+);
+
+/**
+ * POST /user/passkeys/setup/confirm - Finish passkey registration
+ * Body: { tempToken, credential, deviceName? }
+ */
+router.post(
+  "/passkeys/setup/confirm",
+  [
+    body("tempToken")
+      .notEmpty()
+      .withMessage("Temporary token is required.")
+      .isLength({ min: 1, max: 1000 })
+      .withMessage("Token is too long."),
+    body().custom((_, { req }) => {
+      if (!req.body.credential) {
+        throw new Error('Passkey credential is required.');
+      }
+
+      return true;
+    }),
+  ],
+  validate,
+  asyncHandler(passkeyController.confirmPasskeyRegistration)
+);
+
+/**
+ * DELETE /user/passkeys/:credentialId - Remove a registered passkey
+ */
+router.delete(
+  "/passkeys/:credentialId",
+  asyncHandler(passkeyController.deletePasskey)
 );
 
 module.exports = router;

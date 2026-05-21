@@ -384,6 +384,23 @@ CREATE INDEX idx_email_verification_tokens_token ON EmailVerificationTokens (Tok
 CREATE INDEX idx_email_verification_tokens_user_type ON EmailVerificationTokens (UserID, TokenType);
 CREATE INDEX idx_email_verification_tokens_expires ON EmailVerificationTokens (ExpiresAt);
 
+CREATE TABLE IF NOT EXISTS PasskeyCredentials (
+  CredentialID VARCHAR(255) NOT NULL PRIMARY KEY,
+  UserID INT UNSIGNED NOT NULL,
+  PublicKey LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
+  Counter INT UNSIGNED NOT NULL DEFAULT 0,
+  Transports TEXT NULL,
+  DeviceName VARCHAR(255) NULL,
+  AAGUID VARCHAR(64) NULL,
+  BackupEligible TINYINT(1) NOT NULL DEFAULT 0,
+  IsDiscoverable TINYINT(1) NOT NULL DEFAULT 0,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  LastUsedAt TIMESTAMP NULL DEFAULT NULL,
+  CONSTRAINT fk_passkey_credentials_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX idx_passkey_credentials_user ON PasskeyCredentials (UserID, CreatedAt);
+
 CREATE TABLE IF NOT EXISTS MFARecoveryCodes (
   RecoveryCodeID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   UserID INT UNSIGNED NOT NULL,

@@ -5,6 +5,7 @@ const { query } = require("../config/db");
 const emailService = require("../services/emailService");
 const emailVerificationService = require("../services/emailVerificationService");
 const { createAuthTokenService } = require("../services/authTokenService");
+const mfaService = require("../services/mfaService");
 const progressService = require("../services/progressService");
 
 const profileImagePrefix = "/uploads/profile-images/";
@@ -98,7 +99,7 @@ async function findUserForLogin(loginIdentifier) {
     : null;
 
   const [rows] = await query(
-    `SELECT u.UserID, u.Username, u.PasswordHash, u.Email, u.FullName, u.Status, u.IsActive, r.RoleTitle
+    `SELECT u.UserID, u.Username, u.PasswordHash, u.Email, u.FullName, u.Status, u.IsActive, u.MFAEnabled, r.RoleTitle
        FROM Users u
        INNER JOIN Roles r ON r.RoleID = u.RoleID
       WHERE (
@@ -403,6 +404,88 @@ async function verifyEmailLoginCode(req, res) {
     return res.json(buildLoginSuccessPayload(user, tokenPair));
   } catch (error) {
     console.error("Verify email login code error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Internal server error.",
+    });
+  }
+}
+
+/**
+ * Login using a stored MFA recovery code without requiring email or TOTP.
+ */
+async function loginWithRecoveryCode(req, res) {
+  try {
+    const loginIdentifier = String(req.body?.identifier || req.body?.username || req.body?.userId || "").trim();
+    const recoveryCode = String(req.body?.recoveryCode || req.body?.code || "").trim().toUpperCase();
+    const remember = !!req.body?.remember;
+
+    if (!loginIdentifier) {
+      return res.status(400).json({
+        success: false,
+        message: "Username or User ID is required.",
+      });
+    }
+
+    if (!recoveryCode) {
+      return res.status(400).json({
+        success: false,
+        message: "Recovery code is required.",
+      });
+    }
+
+    const user = await findUserForLogin(loginIdentifier);
+
+    if (!user) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid recovery code.",
+      });
+    }
+
+    if (user.IsActive === 0) {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is inactive. Please verify your account first.",
+      });
+    }
+
+    if (user.Status !== "Active") {
+      return res.status(403).json({
+        success: false,
+        message: `Account is ${user.Status}. Please contact an administrator.`,
+      });
+    }
+
+    if (user.MFAEnabled !== 1) {
+      return res.status(400).json({
+        success: false,
+        message: "Recovery code login is only available for accounts with MFA enabled.",
+      });
+    }
+
+    const isValidRecoveryCode = await mfaService.verifyRecoveryCode(user.UserID, recoveryCode);
+
+    if (!isValidRecoveryCode) {
+      return res.status(401).json({
+        success: false,
+        message: "Invalid or already used recovery code.",
+      });
+    }
+
+    await mfaService.logMFAAudit(
+      user.UserID,
+      "RECOVERY_CODE_LOGIN",
+      { method: "recovery_code" },
+      req.ip || req.socket?.remoteAddress,
+      req.headers["user-agent"]
+    );
+
+    const tokenPair = await issueLoginTokenPair(req, user, remember);
+
+    return res.json(buildLoginSuccessPayload(user, tokenPair));
+  } catch (error) {
+    console.error("Recovery code login error:", error);
     return res.status(500).json({
       success: false,
       message: "Internal server error.",
@@ -1763,6 +1846,7 @@ async function completeMFALogin(req, res) {
 
 module.exports = {
   loginUser,
+  loginWithRecoveryCode,
   requestEmailLoginCode,
   verifyEmailLoginCode,
   completeMFALogin,

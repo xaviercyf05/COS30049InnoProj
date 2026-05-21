@@ -3,6 +3,7 @@ const { body, query } = require("express-validator");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const userController = require("../../controllers/userController");
+const passkeyController = require("../../controllers/passkeyController");
 
 const router = express.Router();
 
@@ -58,6 +59,114 @@ router.post(
   ],
   validate,
   asyncHandler(userController.loginUser)
+);
+
+/**
+ * POST /auth/login/recovery-code - Login using an MFA recovery code
+ * Body: { identifier, recoveryCode } where identifier can be username or userId
+ */
+router.post(
+  "/login/recovery-code",
+  [
+    body("identifier")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Identifier must be between 1 and 100 characters."),
+    body("username")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Username must be between 1 and 100 characters."),
+    body("userId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("User ID must be a positive integer."),
+    body("recoveryCode")
+      .notEmpty()
+      .withMessage("Recovery code is required.")
+      .isLength({ min: 4, max: 20 })
+      .withMessage("Recovery code must be between 4 and 20 characters."),
+    body("remember")
+      .optional()
+      .isBoolean()
+      .withMessage("Remember flag must be a boolean."),
+    body().custom((_, { req }) => {
+      const hasIdentifier =
+        (typeof req.body.identifier === "string" && req.body.identifier.trim().length > 0) ||
+        (typeof req.body.username === "string" && req.body.username.trim().length > 0) ||
+        (req.body.userId !== undefined &&
+          req.body.userId !== null &&
+          String(req.body.userId).trim().length > 0);
+
+      if (!hasIdentifier) {
+        throw new Error("Username or User ID is required.");
+      }
+
+      return true;
+    }),
+  ],
+  validate,
+  asyncHandler(userController.loginWithRecoveryCode)
+);
+
+/**
+ * POST /auth/passkey/login/options - Generate passkey authentication options
+ * Body: { identifier? }
+ */
+router.post(
+  "/passkey/login/options",
+  [
+    body("identifier")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Identifier must be between 1 and 100 characters."),
+    body("username")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Username must be between 1 and 100 characters."),
+    body("email")
+      .optional({ values: "falsy" })
+      .trim()
+      .isEmail()
+      .withMessage("A valid email address is required."),
+    body("userId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("User ID must be a positive integer."),
+  ],
+  validate,
+  asyncHandler(passkeyController.initiatePasskeyAuthentication)
+);
+
+/**
+ * POST /auth/passkey/login/verify - Verify passkey authentication response
+ * Body: { tempToken, credential, remember }
+ */
+router.post(
+  "/passkey/login/verify",
+  [
+    body("tempToken")
+      .notEmpty()
+      .withMessage("Temporary token is required.")
+      .isLength({ min: 1, max: 1000 })
+      .withMessage("Token is too long."),
+    body("remember")
+      .optional()
+      .isBoolean()
+      .withMessage("Remember flag must be a boolean."),
+    body().custom((_, { req }) => {
+      if (!req.body.credential) {
+        throw new Error('Passkey credential is required.');
+      }
+
+      return true;
+    }),
+  ],
+  validate,
+  asyncHandler(passkeyController.verifyPasskeyAuthentication)
 );
 
 /**

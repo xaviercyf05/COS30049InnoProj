@@ -1763,6 +1763,8 @@ async function completeMFALogin(req, res) {
 
 module.exports = {
   loginUser,
+  requestEmailLoginCode,
+  verifyEmailLoginCode,
   completeMFALogin,
   refreshToken,
   getUserProfile,

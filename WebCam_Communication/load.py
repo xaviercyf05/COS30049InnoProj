@@ -8,6 +8,7 @@ import urllib.request
 import urllib.parse
 import ssl
 import threading
+from collections import deque
 from datetime import datetime
 import paho.mqtt.client as mqtt  # type: ignore
 from ultralytics import YOLO  # type: ignore
@@ -20,12 +21,12 @@ except ImportError:
 # =========================
 # SETTINGS
 # =========================
-MODEL_PATH = "best3.pt"
+MODEL_PATH = "best5.pt"
 CAMERA_SOURCE = 0
-CONFIDENCE_THRESHOLD = 0.6
+CONFIDENCE_THRESHOLD = 0.45
 SAVE_FOLDER = "evidence"
 
-TARGET_CLASSES = ["Animal", "Plant"]
+TARGET_CLASSES = ["Animal", "Plucking"]
 LOCATION_OPTIONS = [
     "Bako",
     "Kubah",
@@ -40,6 +41,10 @@ ALERT_DISPLAY_SECONDS = 2.0
 RECORD_DURATION_SECONDS = 6   # how long each clip lasts
 FPS = 20
 WINDOW_NAME = "YOLOv8 Real-Time Detection"
+
+# Pre-record buffer and interaction settings (from Model.py logic)
+PRE_RECORD_SECONDS = 3
+COOLDOWN_SECONDS = 3
 
 # Alert sound settings
 ENABLE_BEEP_ALERT = True
@@ -78,11 +83,14 @@ EVIDENCE_USER_AGENT = os.getenv(
 # Background worker stop event
 tunnel_manager_stop_event = threading.Event()
 pending_queue_lock = threading.Lock()
+pending_sync_wakeup_event = threading.Event()
+last_mqtt_reconnect_attempt = 0.0
 
 
 def on_connect(client, userdata, flags, reason_code, properties):
     if reason_code == 0:
         print(f"[MQTT] Connected to broker {MQTT_BROKER}:{MQTT_PORT}")
+        pending_sync_wakeup_event.set()
     else:
         print(f"[MQTT] Connection failed. Return code: {reason_code}")
 
@@ -131,6 +139,29 @@ def publish_alert(client, labels, video_path, location, event_epoch=None):
     else:
         print(f"[MQTT] Publish failed. Return code: {result.rc}")
         return False
+
+
+def try_reconnect_mqtt(client):
+    """Best-effort reconnect when queued MQTT alerts are pending."""
+    global last_mqtt_reconnect_attempt
+
+    if client.is_connected():
+        return True
+
+    now = time.time()
+    # Avoid reconnect storm while offline.
+    if now - last_mqtt_reconnect_attempt < SYNC_RETRY_SECONDS:
+        return False
+
+    last_mqtt_reconnect_attempt = now
+    try:
+        client.reconnect()
+        print("[MQTT] Reconnect attempt triggered for pending queue.")
+    except Exception as ex:
+        print(f"[MQTT] Reconnect attempt failed: {ex}")
+        return False
+
+    return client.is_connected()
 
 
 def build_multipart_form_data(fields, file_field_name, file_name, file_content_type, file_bytes):
@@ -360,11 +391,13 @@ def sync_pending_evidence(queue_items):
             changed = True
 
         if not mqtt_synced:
+            if not mqtt_client.is_connected():
+                try_reconnect_mqtt(mqtt_client)
             mqtt_synced = publish_alert(
                 mqtt_client,
                 labels,
-                location,
                 video_path,
+                location,
                 event_epoch,
             )
             changed = True
@@ -429,7 +462,8 @@ def pending_sync_worker():
                     with pending_queue_lock:
                         pending_queue = load_pending_queue()
 
-            time.sleep(1)
+            pending_sync_wakeup_event.wait(timeout=1)
+            pending_sync_wakeup_event.clear()
         except Exception as ex:
             print(f"[SYNC-WORKER] Error: {ex}")
             time.sleep(2)
@@ -503,6 +537,17 @@ record_saved_to_api = False
 record_mqtt_sent = False
 quit_requested = False
 
+# Pre-record frame buffer (stores annotated frames so recordings include a few seconds before trigger)
+frame_buffer = deque(maxlen=PRE_RECORD_SECONDS * FPS)
+
+# Stability counters and interaction helpers
+plucking_frames = 0
+
+def is_touching(box1, box2):
+    x1, y1, x2, y2 = box1
+    a1, b1, a2, b2 = box2
+    return not (x2 < a1 or a2 < x1 or y2 < b1 or b2 < y1)
+
 # =========================
 # MAIN LOOP
 # =========================
@@ -515,21 +560,62 @@ while True:
     results = model(frame, conf=CONFIDENCE_THRESHOLD)
     annotated_frame = results[0].plot()
 
+    # keep a rolling buffer of annotated frames so recordings include a few seconds before trigger
+    if annotated_frame is not None:
+        try:
+            frame_buffer.append(annotated_frame.copy())
+        except (AttributeError, MemoryError, TypeError, ValueError) as ex:
+            print(f"[WARN] Could not buffer frame: {ex}")
+
     detected_target = False
     detected_labels = []
 
+    animals = []
+    hands = []
+
+    # collect detections and update stability counters
     for box in results[0].boxes:
         cls_id = int(box.cls[0].item())
         cls_name = model.names[cls_id]
         conf = float(box.conf[0].item())
 
-        if cls_name in TARGET_CLASSES:
-            detected_target = True
+        # get bounding box coords
+        try:
+            x1, y1, x2, y2 = box.xyxy[0].tolist()
+        except Exception:
+            x1 = y1 = x2 = y2 = 0
 
-            if cls_name == "Plant":
-                detected_labels.append(f"Prohibited Plant Interaction ({conf:.2f})")
-            elif cls_name == "Animal":
-                detected_labels.append(f"Prohibited Animal Interaction ({conf:.2f})")
+        if cls_name == "Animal":
+            animals.append((x1, y1, x2, y2))
+
+        if cls_name == "Hand" or cls_name == "Person":
+            hands.append((x1, y1, x2, y2))
+
+        if cls_name == "Plucking":
+            detected_target = True
+            plucking_frames += 1
+            detected_labels.append(f"Human Plant Plucking Detected ({conf:.2f})")
+        elif cls_name == "Animal":
+            detected_target = True
+            plucking_frames = 0
+            detected_labels.append(f"Animal Detected ({conf:.2f})")
+        else:
+            # reset stability counter for plucking when other classes appear
+            plucking_frames = 0
+
+    # check for animal+hand interaction
+    interaction_detected = False
+    for a in animals:
+        for h in hands:
+            if is_touching(a, h):
+                interaction_detected = True
+                break
+        if interaction_detected:
+            break
+
+    # treat sustained plucking as an event
+    if plucking_frames >= 3:
+        detected_target = True
 
     current_time = time.time()
 
@@ -544,6 +630,13 @@ while True:
         fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         height, width, _ = frame.shape
         video_writer = cv2.VideoWriter(filename, fourcc, FPS, (width, height))
+
+        # write buffered frames so the clip includes a few seconds before the trigger
+        try:
+            for f in frame_buffer:
+                video_writer.write(f)
+        except Exception:
+            pass
 
         recording = True
         record_end_time = current_time + RECORD_DURATION_SECONDS
@@ -563,8 +656,8 @@ while True:
             record_mqtt_sent = publish_alert(
                 mqtt_client,
                 detected_labels,
-                record_location,
                 filename,
+                record_location,
                 current_time,
             )
         except Exception:
@@ -586,6 +679,7 @@ while True:
         if current_time >= record_end_time:
             recording = False
             video_writer.release()
+            video_writer = None
             print("[INFO] Recording finished.")
 
             # Always enqueue completed evidence for background sync (non-blocking)
@@ -644,19 +738,7 @@ if video_writer is not None:
     video_writer.release()
     video_writer = None
 
-    # If app exits during an active recording, still queue the clip for API upload.
-    if not quit_requested and not record_saved_to_api and record_file_path:
-        print("[INFO] Queueing interrupted recording for API upload...")
-        record_saved_to_api = submit_evidence_via_api(
-            record_labels,
-            record_location,
-            record_file_path,
-            record_start_time or time.time(),
-        )
-
-if pending_queue:
-    flush_pending_evidence(pending_queue)
-    pending_queue = load_pending_queue()
+pending_queue = load_pending_queue()
 
 mqtt_client.loop_stop()
 mqtt_client.disconnect()

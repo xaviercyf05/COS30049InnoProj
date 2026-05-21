@@ -276,7 +276,6 @@ async function verifyPasskeyRegistration({ tempToken, credential, deviceName, ex
   }
 
   const {
-    credentialPublicKey,
     counter,
     credentialDeviceType,
     credentialBackedUp,
@@ -287,7 +286,7 @@ async function verifyPasskeyRegistration({ tempToken, credential, deviceName, ex
   const credentialId = String(
     registeredCredential?.id || registeredCredential?.rawId || responseCredentialIdFromBrowser(credential) || ''
   ).trim();
-  const credentialPublicKeyBase64 = encodeBase64Url(Buffer.from(credentialPublicKey));
+  const credentialPublicKeyBase64 = encodeBase64Url(Buffer.from(registeredCredential?.publicKey || []));
   const transports = Array.isArray(credential.response?.transports)
     ? credential.response.transports.filter(Boolean)
     : [];

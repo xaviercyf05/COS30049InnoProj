@@ -61,6 +61,104 @@ router.post(
 );
 
 /**
+ * POST /auth/login/email-code/request - Send a passwordless login code to the user's email address.
+ * Body: { identifier } where identifier can be username, email, or userId
+ */
+router.post(
+  "/login/email-code/request",
+  [
+    body("identifier")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 150 })
+      .withMessage("Identifier must be between 1 and 150 characters."),
+    body("username")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Username must be between 1 and 100 characters."),
+    body("email")
+      .optional({ values: "falsy" })
+      .trim()
+      .isEmail()
+      .withMessage("A valid email address is required."),
+    body("userId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("User ID must be a positive integer."),
+    body().custom((_, { req }) => {
+      const hasIdentifier =
+        (typeof req.body.identifier === "string" && req.body.identifier.trim().length > 0) ||
+        (typeof req.body.username === "string" && req.body.username.trim().length > 0) ||
+        (typeof req.body.email === "string" && req.body.email.trim().length > 0) ||
+        (req.body.userId !== undefined && req.body.userId !== null && String(req.body.userId).trim().length > 0);
+
+      if (!hasIdentifier) {
+        throw new Error("Username, email, or User ID is required.");
+      }
+
+      return true;
+    }),
+  ],
+  validate,
+  asyncHandler(userController.requestEmailLoginCode)
+);
+
+/**
+ * POST /auth/login/email-code/verify - Complete passwordless login using the email code.
+ * Body: { identifier, code, remember }
+ */
+router.post(
+  "/login/email-code/verify",
+  [
+    body("identifier")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 150 })
+      .withMessage("Identifier must be between 1 and 150 characters."),
+    body("username")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Username must be between 1 and 100 characters."),
+    body("email")
+      .optional({ values: "falsy" })
+      .trim()
+      .isEmail()
+      .withMessage("A valid email address is required."),
+    body("userId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("User ID must be a positive integer."),
+    body("code")
+      .trim()
+      .isLength({ min: 6, max: 6 })
+      .withMessage("Login code must be 6 digits.")
+      .matches(/^\d{6}$/)
+      .withMessage("Login code must contain only digits."),
+    body("remember")
+      .optional()
+      .isBoolean()
+      .withMessage("Remember flag must be a boolean."),
+    body().custom((_, { req }) => {
+      const hasIdentifier =
+        (typeof req.body.identifier === "string" && req.body.identifier.trim().length > 0) ||
+        (typeof req.body.username === "string" && req.body.username.trim().length > 0) ||
+        (typeof req.body.email === "string" && req.body.email.trim().length > 0) ||
+        (req.body.userId !== undefined && req.body.userId !== null && String(req.body.userId).trim().length > 0);
+
+      if (!hasIdentifier) {
+        throw new Error("Username, email, or User ID is required.");
+      }
+
+      return true;
+    }),
+  ],
+  validate,
+  asyncHandler(userController.verifyEmailLoginCode)
+);
+
+/**
  * POST /auth/forgot-password - Request a password reset email
  * Body: { email }
  */

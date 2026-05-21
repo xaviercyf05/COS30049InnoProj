@@ -3,6 +3,7 @@ const { query } = require('../config/db');
 
 // Token expiration time in milliseconds (7 days)
 const TOKEN_EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000;
+const LOGIN_OTP_EXPIRATION_MS = 10 * 60 * 1000;
 
 /**
  * Generate a unique verification token
@@ -47,6 +48,39 @@ async function createVerificationToken(userId, tokenType = 'account_activation')
 }
 
 /**
+ * Create a short-lived login code for passwordless email sign-in.
+ * @param {number} userId - User ID to create code for
+ * @returns {Promise<object>} - The generated login code token record
+ */
+async function createLoginOtpToken(userId) {
+  try {
+    await query(
+      `DELETE FROM EmailVerificationTokens
+       WHERE UserID = ? AND TokenType = 'login_otp'`,
+      [userId]
+    );
+
+    const token = String(crypto.randomInt(100000, 1000000));
+    const expiresAt = new Date(Date.now() + LOGIN_OTP_EXPIRATION_MS);
+
+    const [result] = await query(
+      `INSERT INTO EmailVerificationTokens (UserID, Token, TokenType, ExpiresAt)
+       VALUES (?, ?, 'login_otp', ?)`,
+      [userId, token, expiresAt]
+    );
+
+    return {
+      tokenId: result.insertId,
+      token,
+      expiresAt,
+    };
+  } catch (error) {
+    console.error('Error creating login OTP token:', error);
+    throw error;
+  }
+}
+
+/**
  * Verify an email verification token
  * @param {string} token - Token to verify
  * @param {string} tokenType - Type of token to verify
@@ -82,6 +116,41 @@ async function verifyToken(token, tokenType = 'account_activation') {
     return tokenRecord;
   } catch (error) {
     console.error('Error verifying token:', error);
+    throw error;
+  }
+}
+
+/**
+ * Verify a passwordless login code for a specific user.
+ * @param {number} userId - User ID to verify against
+ * @param {string} token - Login code to verify
+ * @returns {Promise<object|null>} - Token record if valid, null otherwise
+ */
+async function verifyLoginOtpToken(userId, token) {
+  try {
+    const [rows] = await query(
+      `SELECT TokenID, UserID, Token, TokenType, ExpiresAt
+       FROM EmailVerificationTokens
+       WHERE UserID = ? AND Token = ? AND TokenType = 'login_otp'
+       LIMIT 1`,
+      [userId, token]
+    );
+
+    if (rows.length === 0) {
+      return null;
+    }
+
+    const tokenRecord = rows[0];
+    const expiresAt = new Date(tokenRecord.ExpiresAt);
+
+    if (expiresAt < new Date()) {
+      await deleteVerificationToken(tokenRecord.TokenID);
+      return null;
+    }
+
+    return tokenRecord;
+  } catch (error) {
+    console.error('Error verifying login OTP token:', error);
     throw error;
   }
 }
@@ -205,7 +274,9 @@ async function getUserFromToken(token, tokenType = 'account_activation') {
 
 module.exports = {
   createVerificationToken,
+  createLoginOtpToken,
   verifyToken,
+  verifyLoginOtpToken,
   deleteVerificationToken,
   cleanupExpiredTokens,
   activateUserAccount,

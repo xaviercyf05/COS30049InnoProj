@@ -377,7 +377,7 @@ CREATE TABLE IF NOT EXISTS EmailVerificationTokens (
   ExpiresAt TIMESTAMP NOT NULL,
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_email_verification_tokens_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
-  CONSTRAINT chk_email_verification_token_type CHECK (TokenType IN ('account_activation', 'password_reset'))
+  CONSTRAINT chk_email_verification_token_type CHECK (TokenType IN ('account_activation', 'password_reset', 'login_otp'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE INDEX idx_email_verification_tokens_token ON EmailVerificationTokens (Token);

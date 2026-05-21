@@ -6,6 +6,9 @@ const emailConfig = {
   host: 'smtp.gmail.com',
   port: 587,
   secure: false,
+  connectionTimeout: 10000,
+  greetingTimeout: 10000,
+  socketTimeout: 10000,
   auth: {
     user: process.env.EMAIL_HOST || 'sfcadmin.noreply@gmail.com',
     pass: process.env.EMAIL_APP_PASSWORD || '',

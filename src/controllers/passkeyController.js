@@ -93,6 +93,7 @@ async function confirmPasskeyRegistration(req, res) {
       tempToken,
       credential,
       deviceName,
+      expectedOrigin: req.headers.origin || req.get('origin') || '',
     });
 
     if (Number(result.userId) !== Number(userId)) {
@@ -205,7 +206,11 @@ async function verifyPasskeyAuthentication(req, res) {
       });
     }
 
-    const result = await passkeyService.verifyPasskeyAuthentication({ tempToken, credential });
+    const result = await passkeyService.verifyPasskeyAuthentication({
+      tempToken,
+      credential,
+      expectedOrigin: req.headers.origin || req.get('origin') || '',
+    });
     const tokenPair = await issuePasskeyTokenPair(req, result.user, req.body?.remember);
 
     return res.json(buildPasskeySuccessPayload(result.user, tokenPair));

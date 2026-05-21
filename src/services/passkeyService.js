@@ -17,6 +17,16 @@ function getPasskeyOrigin() {
   return process.env.PASSKEY_ORIGIN || 'https://innopappserver.xyz';
 }
 
+function getExpectedOrigin(requestOrigin) {
+  const normalizedOrigin = String(requestOrigin || '').trim();
+
+  if (normalizedOrigin && normalizedOrigin !== 'null') {
+    return normalizedOrigin;
+  }
+
+  return getPasskeyOrigin();
+}
+
 function getPasskeyRpId() {
   if (process.env.PASSKEY_RP_ID) {
     return process.env.PASSKEY_RP_ID;
@@ -247,14 +257,14 @@ async function createPasskeyRegistrationOptions(userId) {
   };
 }
 
-async function verifyPasskeyRegistration({ tempToken, credential, deviceName }) {
+async function verifyPasskeyRegistration({ tempToken, credential, deviceName, expectedOrigin }) {
   const challengePayload = verifyChallengeToken(tempToken, PASSKEY_REGISTRATION_TOKEN_TYPE);
   const userId = Number(challengePayload.userId);
 
   const verification = await verifyRegistrationResponse({
     response: credential,
     expectedChallenge: challengePayload.challenge,
-    expectedOrigin: getPasskeyOrigin(),
+    expectedOrigin: getExpectedOrigin(expectedOrigin),
     expectedRPID: getPasskeyRpId(),
     requireUserVerification: false,
   });
@@ -338,7 +348,7 @@ async function createPasskeyAuthenticationOptions(identifier = '') {
   };
 }
 
-async function verifyPasskeyAuthentication({ tempToken, credential }) {
+async function verifyPasskeyAuthentication({ tempToken, credential, expectedOrigin }) {
   const challengePayload = verifyChallengeToken(tempToken, PASSKEY_AUTHENTICATION_TOKEN_TYPE);
   const credentialId = getCredentialIdFromResponse(credential);
 
@@ -353,7 +363,7 @@ async function verifyPasskeyAuthentication({ tempToken, credential }) {
   const verification = await verifyAuthenticationResponse({
     response: credential,
     expectedChallenge: challengePayload.challenge,
-    expectedOrigin: getPasskeyOrigin(),
+    expectedOrigin: getExpectedOrigin(expectedOrigin),
     expectedRPID: getPasskeyRpId(),
     requireUserVerification: false,
     authenticator: {

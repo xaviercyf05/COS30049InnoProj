@@ -372,11 +372,10 @@ async function verifyPasskeyAuthentication({ tempToken, credential, expectedOrig
     expectedOrigin: getExpectedOrigin(expectedOrigin),
     expectedRPID: getPasskeyRpId(),
     requireUserVerification: false,
-    authenticator: {
-      credentialID: decodeBase64Url(storedCredential.CredentialID),
-      credentialPublicKey: decodeBase64Url(storedCredential.PublicKey),
-      counter: storedCredential.Counter,
-      transports: storedCredential.Transports,
+    credential: {
+      id: decodeBase64Url(storedCredential.CredentialID),
+      publicKey: decodeBase64Url(storedCredential.PublicKey),
+      counter: Number(storedCredential.Counter || 0),
     },
   });
 

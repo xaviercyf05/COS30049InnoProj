@@ -11,36 +11,8 @@ const profileImagePrefix = "/uploads/profile-images/";
 const profileImageStorageDir = path.join(__dirname, "..", "..", "uploads", "profile-images");
 const authTokenService = createAuthTokenService();
 const passwordResetBaseUrl = "https://api.innopappserver.xyz";
-const LOGIN_CODE_EXPIRATION_MINUTES = 10;
-
-function normalizeLoginIdentifier(identifier, username, userId, email) {
-  const candidate =
-    (typeof identifier === "string" && identifier.trim().length > 0 && identifier) ||
-    (typeof username === "string" && username.trim().length > 0 && username) ||
-    (typeof email === "string" && email.trim().length > 0 && email) ||
-    (userId !== undefined && userId !== null ? String(userId) : "");
-
-  return String(candidate || "").trim();
-}
-
-async function findUserForAuthentication(loginIdentifier) {
-  const parsedUserId = /^\d+$/.test(loginIdentifier)
-    ? Number.parseInt(loginIdentifier, 10)
-    : null;
-
-  const [rows] = await query(
-    `SELECT u.UserID, u.Username, u.Email, u.PasswordHash, u.Status, u.IsActive, r.RoleTitle, u.FullName
-       FROM Users u
-       INNER JOIN Roles r ON r.RoleID = u.RoleID
-      WHERE u.Username = ?
-         OR u.Email = ?
-         OR (? IS NOT NULL AND u.UserID = ?)
-      LIMIT 1`,
-    [loginIdentifier, loginIdentifier, parsedUserId, parsedUserId]
-  );
-
-  return rows.length > 0 ? rows[0] : null;
-}
+const LOGIN_CODE_TOKEN_TYPE = "login_code";
+const LOGIN_CODE_EXPIRY_MINUTES = 10;
 
 function buildPasswordResetLink(token) {
   return `${passwordResetBaseUrl}/api/v1/auth/reset-password?token=${encodeURIComponent(token)}`;
@@ -115,6 +87,82 @@ function buildRoleAwareProfile(user, viewerRole) {
   };
 }
 
+async function findUserForLogin(loginIdentifier) {
+  const normalizedIdentifier = String(loginIdentifier || "").trim();
+  if (!normalizedIdentifier) {
+    return null;
+  }
+
+  const parsedUserId = /^\d+$/.test(normalizedIdentifier)
+    ? Number.parseInt(normalizedIdentifier, 10)
+    : null;
+
+  const [rows] = await query(
+    `SELECT u.UserID, u.Username, u.PasswordHash, u.Email, u.FullName, u.Status, u.IsActive, r.RoleTitle
+       FROM Users u
+       INNER JOIN Roles r ON r.RoleID = u.RoleID
+      WHERE (
+        u.Username = ?
+        OR u.Email = ?
+        OR (? IS NOT NULL AND u.UserID = ?)
+      )
+      LIMIT 1`,
+    [normalizedIdentifier, normalizedIdentifier, parsedUserId, parsedUserId]
+  );
+
+  return rows.length > 0 ? rows[0] : null;
+}
+
+async function issueLoginTokenPair(req, user, remember) {
+  const tokenPair = await authTokenService.issueTokenPair({
+    user,
+    remember: !!remember,
+    userAgent: req.headers["user-agent"] || null,
+    ipAddress: req.ip || req.socket?.remoteAddress || null,
+  });
+
+  try {
+    await progressService.syncUserOverallProgress(user.UserID);
+  } catch (error) {
+    console.warn("Unable to sync overall progress on login:", error.message);
+  }
+
+  return tokenPair;
+}
+
+function buildLoginSuccessPayload(user, tokenPair) {
+  return {
+    success: true,
+    data: {
+      token: tokenPair.accessToken,
+      refreshToken: tokenPair.refreshToken,
+      tokenType: "Bearer",
+      expiresIn: tokenPair.accessTokenExpiresIn,
+      refreshTokenExpiresIn: tokenPair.refreshTokenExpiresIn,
+      user: {
+        userId: user.UserID,
+        username: user.Username,
+        role: user.RoleTitle,
+      },
+    },
+  };
+}
+
+function maskEmailAddress(email) {
+  const normalizedEmail = String(email || "").trim();
+  const [localPart = "", domainPart = ""] = normalizedEmail.split("@");
+
+  if (!localPart || !domainPart) {
+    return normalizedEmail;
+  }
+
+  const visibleStart = localPart.slice(0, 2);
+  const visibleEnd = localPart.length > 3 ? localPart.slice(-1) : "";
+  const maskedLocalPart = `${visibleStart}${"*".repeat(Math.max(1, localPart.length - visibleStart.length - visibleEnd.length))}${visibleEnd}`;
+
+  return `${maskedLocalPart}@${domainPart}`;
+}
+
 function createProfileImageUrl(fileName) {
   return `${profileImagePrefix}${fileName}`;
 }
@@ -146,16 +194,24 @@ async function removeStoredProfileImage(imageUrl) {
 async function loginUser(req, res) {
   try {
     const { identifier, username, userId, password, remember } = req.body;
-    const loginIdentifier = normalizeLoginIdentifier(identifier, username, userId);
+
+    const loginIdentifier =
+      (typeof identifier === "string" && identifier.trim().length > 0
+        ? identifier
+        : typeof username === "string" && username.trim().length > 0
+          ? username
+          : userId !== undefined && userId !== null
+            ? String(userId)
+            : "").trim();
 
     if (!loginIdentifier) {
       return res.status(400).json({
         success: false,
-        message: "Username or User ID is required.",
+        message: "Username, email, or User ID is required.",
       });
     }
 
-    const user = await findUserForAuthentication(loginIdentifier);
+    const user = await findUserForLogin(loginIdentifier);
 
     if (!user) {
       return res.status(401).json({
@@ -220,34 +276,9 @@ async function loginUser(req, res) {
       });
     }
 
-    const tokenPair = await authTokenService.issueTokenPair({
-      user,
-      remember: !!remember,
-      userAgent: req.headers['user-agent'] || null,
-      ipAddress: req.ip || req.socket?.remoteAddress || null,
-    });
+    const tokenPair = await issueLoginTokenPair(req, user, remember);
 
-    try {
-      await progressService.syncUserOverallProgress(user.UserID);
-    } catch (error) {
-      console.warn("Unable to sync overall progress on login:", error.message);
-    }
-
-    return res.json({
-      success: true,
-      data: {
-        token: tokenPair.accessToken,
-        refreshToken: tokenPair.refreshToken,
-        tokenType: "Bearer",
-        expiresIn: tokenPair.accessTokenExpiresIn,
-        refreshTokenExpiresIn: tokenPair.refreshTokenExpiresIn,
-        user: {
-          userId: user.UserID,
-          username: user.Username,
-          role: user.RoleTitle,
-        },
-      },
-    });
+    return res.json(buildLoginSuccessPayload(user, tokenPair));
   } catch (error) {
     console.error("Login error:", error);
     return res.status(500).json({
@@ -258,54 +289,55 @@ async function loginUser(req, res) {
 }
 
 /**
- * Request a login code that is delivered to the account email address.
+ * Request a passwordless email login code.
  */
 async function requestEmailLoginCode(req, res) {
   try {
-    const loginIdentifier = normalizeLoginIdentifier(
-      req.body?.identifier,
-      req.body?.username,
-      req.body?.userId,
-      req.body?.email
-    );
+    const loginIdentifier = String(req.body?.identifier || req.body?.username || req.body?.email || req.body?.userId || "").trim();
 
     if (!loginIdentifier) {
       return res.status(400).json({
         success: false,
-        message: "Username, user ID, or email is required.",
+        message: "Username, email, or User ID is required.",
       });
     }
 
-    const user = await findUserForAuthentication(loginIdentifier);
+    const user = await findUserForLogin(loginIdentifier);
 
-    if (!user || user.IsActive === 0 || String(user.Status || "").toLowerCase() !== "active") {
-      return res.json({
+    if (!user || user.IsActive === 0 || user.Status !== "Active") {
+      return res.status(200).json({
         success: true,
-        message: "If an account exists for that identifier, a login code has been sent.",
+        message: "If an active account matches that identifier, a sign-in code has been sent.",
+        data: { codeSent: false },
       });
     }
 
-    const loginCodeRecord = await emailVerificationService.createLoginOtpToken(user.UserID);
+    const loginCode = await emailVerificationService.createLoginCodeToken(user.UserID, LOGIN_CODE_TOKEN_TYPE);
 
     try {
       await emailService.sendLoginCodeEmail(
         user.Email,
-        user.FullName || user.Username,
-        loginCodeRecord.token,
-        LOGIN_CODE_EXPIRATION_MINUTES
+        user.FullName || user.Username || user.Email,
+        loginCode.token,
+        loginCode.expiresAt
       );
     } catch (sendError) {
-      await emailVerificationService.deleteVerificationToken(loginCodeRecord.tokenId).catch(() => {});
+      await emailVerificationService.deleteVerificationTokenByToken(loginCode.token, LOGIN_CODE_TOKEN_TYPE).catch(() => {});
       console.error("Login code email send failed:", sendError);
-      return res.status(503).json({
+      return res.status(500).json({
         success: false,
-        message: "Unable to send a login code right now. Please try again later.",
+        message: "Unable to send the sign-in code. Please try again later.",
       });
     }
 
     return res.json({
       success: true,
-      message: "If an account exists for that identifier, a login code has been sent.",
+      message: "If an active account matches that identifier, a sign-in code has been sent.",
+      data: {
+        codeSent: true,
+        maskedEmail: maskEmailAddress(user.Email),
+        expiresIn: LOGIN_CODE_EXPIRY_MINUTES * 60,
+      },
     });
   } catch (error) {
     console.error("Request email login code error:", error);
@@ -317,76 +349,58 @@ async function requestEmailLoginCode(req, res) {
 }
 
 /**
- * Verify a login code and complete sign-in.
+ * Verify a passwordless email login code and issue the standard auth tokens.
  */
 async function verifyEmailLoginCode(req, res) {
   try {
-    const { identifier, username, userId, email, code, remember } = req.body;
-    const loginIdentifier = normalizeLoginIdentifier(identifier, username, userId, email);
-    const loginCode = String(code || "").trim();
+    const loginIdentifier = String(req.body?.identifier || req.body?.username || req.body?.email || req.body?.userId || "").trim();
+    const loginCode = String(req.body?.loginCode || req.body?.code || "").trim();
+    const remember = !!req.body?.remember;
 
     if (!loginIdentifier) {
       return res.status(400).json({
         success: false,
-        message: "Username, user ID, or email is required.",
+        message: "Username, email, or User ID is required.",
       });
     }
 
-    if (!/^\d{6}$/.test(loginCode)) {
+    if (!loginCode || loginCode.length < 6 || loginCode.length > 12) {
       return res.status(400).json({
         success: false,
-        message: "A 6-digit login code is required.",
+        message: "A valid sign-in code is required.",
       });
     }
 
-    const user = await findUserForAuthentication(loginIdentifier);
+    const user = await findUserForLogin(loginIdentifier);
 
-    if (!user || user.IsActive === 0 || String(user.Status || "").toLowerCase() !== "active") {
+    if (!user) {
       return res.status(401).json({
         success: false,
-        message: "Invalid or expired login code.",
+        message: "Invalid sign-in code.",
       });
     }
 
-    const tokenRecord = await emailVerificationService.verifyLoginOtpToken(user.UserID, loginCode);
+    if (user.IsActive === 0 || user.Status !== "Active") {
+      return res.status(403).json({
+        success: false,
+        message: "Your account is not active. Please contact an administrator.",
+      });
+    }
 
-    if (!tokenRecord) {
+    const tokenRecord = await emailVerificationService.verifyToken(loginCode, LOGIN_CODE_TOKEN_TYPE);
+
+    if (!tokenRecord || Number(tokenRecord.UserID) !== Number(user.UserID)) {
       return res.status(401).json({
         success: false,
-        message: "Invalid or expired login code.",
+        message: "Invalid or expired sign-in code.",
       });
     }
 
     await emailVerificationService.deleteVerificationToken(tokenRecord.TokenID);
 
-    const tokenPair = await authTokenService.issueTokenPair({
-      user,
-      remember: !!remember,
-      userAgent: req.headers['user-agent'] || null,
-      ipAddress: req.ip || req.socket?.remoteAddress || null,
-    });
+    const tokenPair = await issueLoginTokenPair(req, user, remember);
 
-    try {
-      await progressService.syncUserOverallProgress(user.UserID);
-    } catch (error) {
-      console.warn("Unable to sync overall progress on email login:", error.message);
-    }
-
-    return res.json({
-      success: true,
-      data: {
-        token: tokenPair.accessToken,
-        refreshToken: tokenPair.refreshToken,
-        tokenType: "Bearer",
-        expiresIn: tokenPair.accessTokenExpiresIn,
-        refreshTokenExpiresIn: tokenPair.refreshTokenExpiresIn,
-        user: {
-          userId: user.UserID,
-          username: user.Username,
-          role: user.RoleTitle,
-        },
-      },
-    });
+    return res.json(buildLoginSuccessPayload(user, tokenPair));
   } catch (error) {
     console.error("Verify email login code error:", error);
     return res.status(500).json({
@@ -1749,8 +1763,6 @@ async function completeMFALogin(req, res) {
 
 module.exports = {
   loginUser,
-  requestEmailLoginCode,
-  verifyEmailLoginCode,
   completeMFALogin,
   refreshToken,
   getUserProfile,

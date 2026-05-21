@@ -1,36 +1,19 @@
 const nodemailer = require('nodemailer');
 
-const smtpHost = process.env.EMAIL_SMTP_HOST || 'smtp.gmail.com';
-const smtpPort = Number.parseInt(process.env.EMAIL_SMTP_PORT || '587', 10);
-const smtpSecure = String(process.env.EMAIL_SMTP_SECURE || 'false').toLowerCase() === 'true';
-const smtpUser = process.env.EMAIL_SMTP_USER || process.env.EMAIL_HOST || 'sfcadmin.noreply@gmail.com';
-const smtpPass = process.env.EMAIL_SMTP_PASS || process.env.EMAIL_APP_PASSWORD || '';
-const fromAddress = process.env.EMAIL_FROM_ADDRESS || smtpUser;
-const emailTransportMode = String(process.env.EMAIL_TRANSPORT || 'smtp').toLowerCase();
+// Email configuration from environment variables
+// Note: EMAIL_HOST in .env is the email ADDRESS (sfcadmin.noreply@gmail.com), not the SMTP host
+const emailConfig = {
+  host: 'smtp.gmail.com',
+  port: 587,
+  secure: false,
+  auth: {
+    user: process.env.EMAIL_HOST || 'sfcadmin.noreply@gmail.com',
+    pass: process.env.EMAIL_APP_PASSWORD || '',
+  },
+};
 
 // Create reusable transporter
-const transporter =
-  emailTransportMode === 'console'
-    ? {
-        async sendMail(mailOptions) {
-          console.log('[EMAIL_TRANSPORT=console] To:', mailOptions.to);
-          console.log('[EMAIL_TRANSPORT=console] Subject:', mailOptions.subject);
-          console.log('[EMAIL_TRANSPORT=console] Body:', mailOptions.text || '[html only]');
-          return { messageId: `console-${Date.now()}` };
-        },
-        async verify() {
-          return true;
-        },
-      }
-    : nodemailer.createTransport({
-        host: smtpHost,
-        port: smtpPort,
-        secure: smtpSecure,
-        auth: {
-          user: smtpUser,
-          pass: smtpPass,
-        },
-      });
+const transporter = nodemailer.createTransport(emailConfig);
 
 /**
  * Send account activation email to newly approved registration
@@ -198,7 +181,7 @@ async function sendAccountActivationEmail(email, fullName, verificationLink) {
   `;
 
   const mailOptions = {
-    from: fromAddress,
+    from: emailConfig.auth.user,
     to: email,
     subject: 'Activate Your Park Guide Account - Sarawak National Parks',
     html: htmlContent,
@@ -378,7 +361,7 @@ async function sendPasswordResetEmail(email, fullName, resetLink) {
   `;
 
   const mailOptions = {
-    from: fromAddress,
+    from: emailConfig.auth.user,
     to: email,
     subject: 'Reset Your Password - Sarawak National Parks',
     html: htmlContent,
@@ -396,14 +379,16 @@ async function sendPasswordResetEmail(email, fullName, resetLink) {
 }
 
 /**
- * Send a passwordless login code to a user email address.
+ * Send a passwordless login code email.
  * @param {string} email - Recipient email address
  * @param {string} fullName - Full name of the user
- * @param {string} loginCode - 6-digit login code
- * @param {number} expiresMinutes - Code expiration window in minutes
+ * @param {string} loginCode - The 6-digit login code
+ * @param {Date|string} expiresAt - Expiration timestamp for the code
  * @returns {Promise<object>} - Email send result
  */
-async function sendLoginCodeEmail(email, fullName, loginCode, expiresMinutes = 10) {
+async function sendLoginCodeEmail(email, fullName, loginCode, expiresAt) {
+  const formattedExpiresAt = expiresAt ? new Date(expiresAt).toLocaleString() : '10 minutes';
+
   const htmlContent = `
     <!DOCTYPE html>
     <html lang="en">
@@ -454,40 +439,33 @@ async function sendLoginCodeEmail(email, fullName, loginCode, expiresMinutes = 1
           color: #555;
         }
         .code-box {
-          margin: 24px auto;
-          padding: 18px 24px;
-          border-radius: 12px;
           background-color: #ECF2E5;
-          border: 1px solid #C9D8BE;
+          border: 1px solid #D8E2CF;
+          border-radius: 12px;
+          padding: 18px;
           text-align: center;
-          letter-spacing: 0.2em;
-          font-size: 28px;
-          font-weight: 800;
-          color: #21401D;
-          width: fit-content;
-          min-width: 220px;
-        }
-        .requirements {
-          background-color: #F7FAF4;
-          border-left: 4px solid #2E6B4D;
-          padding: 16px;
           margin: 20px 0;
-          border-radius: 4px;
         }
-        .requirements h3 {
-          margin-top: 0;
-          margin-bottom: 12px;
-          color: #2E6B4D;
-          font-size: 16px;
+        .code-label {
+          display: block;
+          font-size: 12px;
+          font-weight: 700;
+          letter-spacing: 1px;
+          color: #667264;
+          margin-bottom: 10px;
+          text-transform: uppercase;
         }
-        .requirements ul {
-          margin: 0;
-          padding-left: 20px;
+        .code-value {
+          font-size: 34px;
+          font-weight: 800;
+          letter-spacing: 8px;
+          color: #21401D;
+        }
+        .hint {
           font-size: 13px;
-          color: #555;
-        }
-        .requirements li {
-          margin: 6px 0;
+          color: #667264;
+          text-align: center;
+          margin-top: 6px;
         }
         .footer {
           background-color: #f5f5f5;
@@ -505,22 +483,19 @@ async function sendLoginCodeEmail(email, fullName, loginCode, expiresMinutes = 1
     <body>
       <div class="container">
         <div class="header">
-          <h1>Your Login Code</h1>
+          <h1>Sign In Code</h1>
         </div>
         <div class="content">
           <h2>Hello ${escapeHtml(fullName)},</h2>
-          <p>Use the code below to sign in to your Sarawak National Parks training account.</p>
-          <div class="code-box">${escapeHtml(loginCode)}</div>
-          <p>This code can be used on both web and mobile sign-in screens.</p>
+          <p>Use the code below to finish signing in to your Sarawak National Parks training account.</p>
 
-          <div class="requirements">
-            <h3>Security Notes:</h3>
-            <ul>
-              <li>This code expires in ${Number(expiresMinutes) || 10} minutes.</li>
-              <li>If you did not request this code, you can ignore this email.</li>
-              <li>Never share this code with anyone.</li>
-            </ul>
+          <div class="code-box">
+            <span class="code-label">Your login code</span>
+            <div class="code-value">${escapeHtml(loginCode)}</div>
           </div>
+
+          <p class="hint">This code expires in ${escapeHtml(formattedExpiresAt)} and can only be used once.</p>
+          <p class="hint">If you did not request this code, you can ignore this email.</p>
         </div>
         <div class="footer">
           <p><strong>Sarawak Forestry Corporation</strong></p>
@@ -535,11 +510,11 @@ async function sendLoginCodeEmail(email, fullName, loginCode, expiresMinutes = 1
   `;
 
   const mailOptions = {
-    from: fromAddress,
+    from: emailConfig.auth.user,
     to: email,
-    subject: 'Your Login Code - Sarawak National Parks',
+    subject: 'Your Sign-In Code - Sarawak National Parks',
     html: htmlContent,
-    text: generateLoginCodePlainText(fullName, loginCode, expiresMinutes),
+    text: generateLoginCodePlainText(fullName, loginCode, formattedExpiresAt),
   };
 
   try {
@@ -612,22 +587,19 @@ This is an automated email. Please do not reply directly.
   `;
 }
 
-function generateLoginCodePlainText(fullName, loginCode, expiresMinutes) {
+function generateLoginCodePlainText(fullName, loginCode, expiresAt) {
   return `
-Login Code
+Sign In Code
 
 Hello ${fullName},
 
-Use the code below to sign in to your Sarawak National Parks training account:
+Use the code below to finish signing in to your Sarawak National Parks training account:
 
 ${loginCode}
 
-This code expires in ${Number(expiresMinutes) || 10} minutes.
+This code expires at ${expiresAt} and can only be used once.
 
-Security Notes:
-- This code can only be used once
-- If you did not request this code, you can ignore this email
-- Never share this code with anyone
+If you did not request this code, you can ignore this email.
 
 ---
 Sarawak Forestry Corporation

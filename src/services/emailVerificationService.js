@@ -3,7 +3,6 @@ const { query } = require('../config/db');
 
 // Token expiration time in milliseconds (7 days)
 const TOKEN_EXPIRATION_MS = 7 * 24 * 60 * 60 * 1000;
-const LOGIN_OTP_EXPIRATION_MS = 10 * 60 * 1000;
 
 /**
  * Generate a unique verification token
@@ -11,6 +10,14 @@ const LOGIN_OTP_EXPIRATION_MS = 10 * 60 * 1000;
  */
 function generateVerificationToken() {
   return crypto.randomBytes(32).toString('hex');
+}
+
+/**
+ * Generate a numeric login code for passwordless email login.
+ * @returns {string} - Six digit login code.
+ */
+function generateLoginCode() {
+  return String(crypto.randomInt(100000, 1000000));
 }
 
 /**
@@ -48,34 +55,32 @@ async function createVerificationToken(userId, tokenType = 'account_activation')
 }
 
 /**
- * Create a short-lived login code for passwordless email sign-in.
- * @param {number} userId - User ID to create code for
- * @returns {Promise<object>} - The generated login code token record
+ * Create a short-lived login code in the database.
+ * @param {number} userId - User ID to create the code for
+ * @param {string} tokenType - Type of token ('login_code')
+ * @returns {Promise<object>} - The generated token and expiry metadata
  */
-async function createLoginOtpToken(userId) {
+async function createLoginCodeToken(userId, tokenType = 'login_code') {
   try {
     await query(
       `DELETE FROM EmailVerificationTokens
-       WHERE UserID = ? AND TokenType = 'login_otp'`,
-      [userId]
+       WHERE UserID = ? AND TokenType = ?`,
+      [userId, tokenType]
     );
 
-    const token = String(crypto.randomInt(100000, 1000000));
-    const expiresAt = new Date(Date.now() + LOGIN_OTP_EXPIRATION_MS);
+    const token = generateLoginCode();
+    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
-    const [result] = await query(
+    await query(
       `INSERT INTO EmailVerificationTokens (UserID, Token, TokenType, ExpiresAt)
-       VALUES (?, ?, 'login_otp', ?)`,
-      [userId, token, expiresAt]
+       VALUES (?, ?, ?, ?)`,
+      [userId, token, tokenType, expiresAt]
     );
 
-    return {
-      tokenId: result.insertId,
-      token,
-      expiresAt,
-    };
+    console.log(`Login code created for UserID: ${userId}, Type: ${tokenType}`);
+    return { token, expiresAt };
   } catch (error) {
-    console.error('Error creating login OTP token:', error);
+    console.error('Error creating login code token:', error);
     throw error;
   }
 }
@@ -121,41 +126,6 @@ async function verifyToken(token, tokenType = 'account_activation') {
 }
 
 /**
- * Verify a passwordless login code for a specific user.
- * @param {number} userId - User ID to verify against
- * @param {string} token - Login code to verify
- * @returns {Promise<object|null>} - Token record if valid, null otherwise
- */
-async function verifyLoginOtpToken(userId, token) {
-  try {
-    const [rows] = await query(
-      `SELECT TokenID, UserID, Token, TokenType, ExpiresAt
-       FROM EmailVerificationTokens
-       WHERE UserID = ? AND Token = ? AND TokenType = 'login_otp'
-       LIMIT 1`,
-      [userId, token]
-    );
-
-    if (rows.length === 0) {
-      return null;
-    }
-
-    const tokenRecord = rows[0];
-    const expiresAt = new Date(tokenRecord.ExpiresAt);
-
-    if (expiresAt < new Date()) {
-      await deleteVerificationToken(tokenRecord.TokenID);
-      return null;
-    }
-
-    return tokenRecord;
-  } catch (error) {
-    console.error('Error verifying login OTP token:', error);
-    throw error;
-  }
-}
-
-/**
  * Delete a verification token after use
  * @param {number} tokenId - Token ID to delete
  * @returns {Promise<void>}
@@ -169,6 +139,32 @@ async function deleteVerificationToken(tokenId) {
     console.log(`Verification token deleted: ${tokenId}`);
   } catch (error) {
     console.error('Error deleting verification token:', error);
+    throw error;
+  }
+}
+
+/**
+ * Delete a verification token by its raw token value.
+ * @param {string} token - Token value to delete
+ * @param {string|null} tokenType - Optional token type filter
+ * @returns {Promise<void>}
+ */
+async function deleteVerificationTokenByToken(token, tokenType = null) {
+  try {
+    if (tokenType) {
+      await query(
+        `DELETE FROM EmailVerificationTokens WHERE Token = ? AND TokenType = ?`,
+        [token, tokenType]
+      );
+      return;
+    }
+
+    await query(
+      `DELETE FROM EmailVerificationTokens WHERE Token = ?`,
+      [token]
+    );
+  } catch (error) {
+    console.error('Error deleting verification token by value:', error);
     throw error;
   }
 }
@@ -274,12 +270,13 @@ async function getUserFromToken(token, tokenType = 'account_activation') {
 
 module.exports = {
   createVerificationToken,
-  createLoginOtpToken,
+  createLoginCodeToken,
   verifyToken,
-  verifyLoginOtpToken,
   deleteVerificationToken,
+  deleteVerificationTokenByToken,
   cleanupExpiredTokens,
   activateUserAccount,
   getUserFromToken,
   generateVerificationToken,
+  generateLoginCode,
 };

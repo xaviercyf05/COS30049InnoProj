@@ -1,19 +1,36 @@
 const nodemailer = require('nodemailer');
 
-// Email configuration from environment variables
-// Note: EMAIL_HOST in .env is the email ADDRESS (sfcadmin.noreply@gmail.com), not the SMTP host
-const emailConfig = {
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_HOST || 'sfcadmin.noreply@gmail.com',
-    pass: process.env.EMAIL_APP_PASSWORD || '',
-  },
-};
+const smtpHost = process.env.EMAIL_SMTP_HOST || 'smtp.gmail.com';
+const smtpPort = Number.parseInt(process.env.EMAIL_SMTP_PORT || '587', 10);
+const smtpSecure = String(process.env.EMAIL_SMTP_SECURE || 'false').toLowerCase() === 'true';
+const smtpUser = process.env.EMAIL_SMTP_USER || process.env.EMAIL_HOST || 'sfcadmin.noreply@gmail.com';
+const smtpPass = process.env.EMAIL_SMTP_PASS || process.env.EMAIL_APP_PASSWORD || '';
+const fromAddress = process.env.EMAIL_FROM_ADDRESS || smtpUser;
+const emailTransportMode = String(process.env.EMAIL_TRANSPORT || 'smtp').toLowerCase();
 
 // Create reusable transporter
-const transporter = nodemailer.createTransport(emailConfig);
+const transporter =
+  emailTransportMode === 'console'
+    ? {
+        async sendMail(mailOptions) {
+          console.log('[EMAIL_TRANSPORT=console] To:', mailOptions.to);
+          console.log('[EMAIL_TRANSPORT=console] Subject:', mailOptions.subject);
+          console.log('[EMAIL_TRANSPORT=console] Body:', mailOptions.text || '[html only]');
+          return { messageId: `console-${Date.now()}` };
+        },
+        async verify() {
+          return true;
+        },
+      }
+    : nodemailer.createTransport({
+        host: smtpHost,
+        port: smtpPort,
+        secure: smtpSecure,
+        auth: {
+          user: smtpUser,
+          pass: smtpPass,
+        },
+      });
 
 /**
  * Send account activation email to newly approved registration
@@ -181,7 +198,7 @@ async function sendAccountActivationEmail(email, fullName, verificationLink) {
   `;
 
   const mailOptions = {
-    from: emailConfig.auth.user,
+    from: fromAddress,
     to: email,
     subject: 'Activate Your Park Guide Account - Sarawak National Parks',
     html: htmlContent,
@@ -361,7 +378,7 @@ async function sendPasswordResetEmail(email, fullName, resetLink) {
   `;
 
   const mailOptions = {
-    from: emailConfig.auth.user,
+    from: fromAddress,
     to: email,
     subject: 'Reset Your Password - Sarawak National Parks',
     html: htmlContent,
@@ -518,7 +535,7 @@ async function sendLoginCodeEmail(email, fullName, loginCode, expiresMinutes = 1
   `;
 
   const mailOptions = {
-    from: emailConfig.auth.user,
+    from: fromAddress,
     to: email,
     subject: 'Your Login Code - Sarawak National Parks',
     html: htmlContent,

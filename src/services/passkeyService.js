@@ -394,10 +394,10 @@ async function verifyPasskeyAuthentication({ tempToken, credential, expectedOrig
 
   return {
     user: {
-      userId: storedCredential.UserID,
-      username: storedCredential.Username,
-      fullName: storedCredential.FullName,
-      role: storedCredential.RoleTitle,
+      UserID: storedCredential.UserID,
+      Username: storedCredential.Username,
+      FullName: storedCredential.FullName,
+      RoleTitle: storedCredential.RoleTitle,
     },
     credentialId: storedCredential.CredentialID,
   };

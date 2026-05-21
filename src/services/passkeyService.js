@@ -328,7 +328,7 @@ async function createPasskeyAuthenticationOptions(identifier = '') {
     rpID: getPasskeyRpId(),
     userVerification: 'preferred',
     allowCredentials: credentials.map((credential) => ({
-      id: decodeBase64Url(credential.CredentialID),
+      id: String(credential.CredentialID || '').trim(),
       type: 'public-key',
       transports: credential.Transports,
     })),

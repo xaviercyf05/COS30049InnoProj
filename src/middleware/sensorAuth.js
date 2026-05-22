@@ -1,8 +1,15 @@
 // Middleware to authenticate ESP32 devices using a shared secret per-device.
 // Supports loading device keys from the environment variable SENSOR_DEVICE_KEYS
-// as a JSON string like: {"device001":"cos30049fr"}
+// as a JSON string like: {"device-Bako":"cos30049fr","device-Kubah":"cos30049fr"}
 
-const DEFAULT_KEYS = { device001: "cos30049fr" };
+const DEFAULT_KEYS = {
+  "device-Bako": "cos30049fr",
+  "device-Kubah": "cos30049fr",
+  "device-Similajau": "cos30049fr",
+  "device-Gunung Mulu": "cos30049fr",
+  "device-Maludam": "cos30049fr",
+};
+const DEFAULT_DEVICE_ID = "device-Bako";
 
 function loadDeviceKeys() {
   try {
@@ -20,7 +27,7 @@ const DEVICE_KEYS = loadDeviceKeys();
 
 function validateDeviceKey(req, res, next) {
   const apiKey = (req.headers['x-device-key'] || req.body && req.body.key || '').toString();
-  const deviceID = (req.headers['x-device-id'] || req.body && req.body.deviceID || 'device001').toString();
+  const deviceID = (req.headers['x-device-id'] || req.body && req.body.deviceID || DEFAULT_DEVICE_ID).toString();
 
   if (!apiKey) {
     return res.status(401).json({ success: false, message: 'Missing device API key' });

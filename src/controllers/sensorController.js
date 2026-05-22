@@ -2,6 +2,11 @@ const { query } = require('../config/db');
 
 const ALLOWED_LOCATIONS = ['Bako', 'Kubah', 'Similajau', 'Gunung Mulu', 'Maludam'];
 
+function buildDeviceId(location) {
+  const normalizedLocation = String(location || '').trim();
+  return normalizedLocation ? `device-${normalizedLocation}` : 'device-Bako';
+}
+
 const SENSOR_LOG_FIELDS = `
   LogID,
   DeviceID,
@@ -30,9 +35,9 @@ const SENSOR_LOG_FIELDS = `
 async function logSensorData(req, res) {
   try {
     const payload = req.body || {};
-    const deviceID = req.deviceID || payload.deviceID || 'device001';
     const location = (payload.location || '').toString().trim();
     const resolvedLocation = ALLOWED_LOCATIONS.includes(location) ? location : 'Unknown';
+    const deviceID = (req.deviceID || payload.deviceID || buildDeviceId(location)).toString().trim();
 
     // basic required fields check
     if (payload.temp === undefined || payload.hum === undefined || payload.distance === undefined) {

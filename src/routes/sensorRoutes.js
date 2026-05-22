@@ -5,6 +5,8 @@ const { validateDeviceKey } = require('../middleware/sensorAuth');
 const validate = require('../middleware/validate');
 
 const router = express.Router();
+const ALLOWED_LOCATIONS = ['Bako', 'Kubah', 'Similajau', 'Gunung Mulu', 'Maludam'];
+const ALLOWED_DEVICE_IDS = ALLOWED_LOCATIONS.map((location) => `device-${location}`);
 
 router.post('/log',
   validateDeviceKey,
@@ -12,7 +14,8 @@ router.post('/log',
     body('temp').exists().isFloat({ min: -50, max: 100 }),
     body('hum').exists().isFloat({ min: 0, max: 100 }),
     body('distance').exists().isFloat({ min: 0 }),
-    body('location').optional().isIn(['Bako', 'Kubah', 'Similajau', 'Gunung Mulu', 'Maludam'])
+    body('deviceID').optional().isIn(ALLOWED_DEVICE_IDS),
+    body('location').optional().isIn(ALLOWED_LOCATIONS)
   ],
   validate,
   sensorController.logSensorData

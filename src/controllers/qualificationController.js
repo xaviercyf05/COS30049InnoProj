@@ -204,6 +204,35 @@ async function getQualificationProgress(req, res) {
 }
 
 /**
+ * Admin: get persisted on-site module completion rows.
+ */
+async function getOnSiteCompletions(req, res) {
+  try {
+    const moduleId = req.query.moduleId ? Number(req.query.moduleId) : null;
+
+    if (req.query.moduleId && (!Number.isInteger(moduleId) || moduleId <= 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "moduleId must be a valid integer.",
+      });
+    }
+
+    const completions = await qualificationService.getModuleCompletions(moduleId);
+
+    return res.json({
+      success: true,
+      data: completions,
+    });
+  } catch (error) {
+    console.error("Get on-site completions error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch on-site completions.",
+    });
+  }
+}
+
+/**
  * Admin: mark a module as completed for a user after verification.
  */
 async function markModuleCompletedAdmin(req, res) {
@@ -258,5 +287,6 @@ module.exports = {
   getUserQualifications,
   enrollInQualification,
   getQualificationProgress,
+  getOnSiteCompletions,
   markModuleCompletedAdmin,
 };

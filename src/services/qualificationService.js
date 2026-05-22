@@ -269,6 +269,46 @@ async function isModuleCompleted(userId, moduleId) {
   return rows.length > 0;
 }
 
+async function getModuleCompletions(moduleId = null) {
+  await ensureManualCompletionSchema();
+
+  const params = [];
+  let whereClause = '';
+
+  if (Number.isInteger(Number(moduleId)) && Number(moduleId) > 0) {
+    whereClause = 'WHERE mc.ModuleID = ?';
+    params.push(Number(moduleId));
+  }
+
+  const [rows] = await query(
+    `SELECT mc.UserID,
+            mc.ModuleID,
+            mc.AssessmentID,
+            mc.CompletedBy,
+            mc.CompletedAt,
+            mc.UpdatedAt,
+            u.FullName,
+            u.Username
+       FROM ModuleCompletions mc
+       INNER JOIN Users u ON u.UserID = mc.UserID
+       ${whereClause}
+      ORDER BY mc.UpdatedAt DESC, mc.CompletedAt DESC, mc.UserID ASC`,
+    params
+  );
+
+  return rows.map((row) => ({
+    userId: Number(row.UserID),
+    moduleId: Number(row.ModuleID),
+    assessmentId: row.AssessmentID ? Number(row.AssessmentID) : null,
+    completionStatus: 'completed',
+    updatedAt: row.UpdatedAt,
+    completedAt: row.CompletedAt,
+    note: null,
+    parkGuideName: row.FullName || row.Username || `User ${row.UserID}`,
+    userName: row.Username || null,
+  }));
+}
+
 async function markModuleCompletedByAdmin(userId, moduleId, completedBy, assessmentId = null) {
   await ensureManualCompletionSchema();
 
@@ -351,6 +391,7 @@ module.exports = {
   isModuleUnlocked,
   isAssessmentPassed,
   isModuleCompleted,
+  getModuleCompletions,
   markModuleCompletedByAdmin,
   canIssueBadgeForAssessment,
 };

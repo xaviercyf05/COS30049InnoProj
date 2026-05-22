@@ -27,6 +27,27 @@ const richContentModule = require("../feature_modules/rich-content");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
+// If a frontend build exists in known locations, serve it so deployment can be
+// as-simple-as copying the repo (useful for quick updates of PWA assets).
+const frontendDistCandidates = [
+  path.join(__dirname, '..', 'frontend', 'dist'),
+  path.join(__dirname, '..', 'branch', 'COS30049InnoProj', 'frontend', 'dist'),
+];
+let servedFrontendDist = null;
+for (const candidate of frontendDistCandidates) {
+  try {
+    if (fs.existsSync(candidate)) {
+      servedFrontendDist = candidate;
+      break;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+if (servedFrontendDist) {
+  app.use(express.static(servedFrontendDist));
+}
+const filesDir = path.join(__dirname, "files");
 const uploadsDir = path.join(__dirname, "..", "uploads");
 const richContentStorageDir = richContentModule.initRichContentStorage();
 
@@ -74,8 +95,10 @@ app.use(morgan("combined"));
 app.use(express.json({ limit: env.requestBodyLimit }));
 app.use(express.urlencoded({ limit: env.requestBodyLimit, extended: true }));
 fs.mkdirSync(uploadsDir, { recursive: true });
+fs.mkdirSync(filesDir, { recursive: true });
 app.use(express.static(publicDir));
 app.use("/public", express.static(publicDir));
+app.use("/files", express.static(filesDir));
 app.use(
   "/uploads",
   (req, res, next) => {
@@ -87,7 +110,32 @@ app.use(
 app.use("/storage", express.static(richContentStorageDir));
 
 app.get("/", (req, res) => {
+  if (servedFrontendDist) {
+    return res.sendFile(path.join(servedFrontendDist, "index.html"));
+  }
+
   return res.sendFile(path.join(publicDir, "index.html"));
+});
+
+// Temporary explicit icon route to bypass static middleware/config issues.
+app.get('/icons/:icon', (req, res, next) => {
+  const iconName = req.params.icon;
+  const candidates = [];
+  if (servedFrontendDist) candidates.push(path.join(servedFrontendDist, 'icons', iconName));
+  candidates.push(path.join(publicDir, 'icons', iconName));
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        return res.sendFile(p);
+      }
+    } catch (e) {
+      // continue
+    }
+  }
+
+  // Let the normal handlers handle 404s (and logging)
+  return next();
 });
 
 /**

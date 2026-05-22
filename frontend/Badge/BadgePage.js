@@ -38,6 +38,7 @@ function BadgeScreen({ currentProfile }) {
           loadedBadges.map((badge) => ({
             id: badge.id || badge.badgeId,
             name: badge.name,
+            earned: Boolean(badge.earned ?? badge.unlocked),
             unlocked: Boolean(badge.unlocked),
             image: badge.image,
             validityMonths: badge.validityMonths || badge.validity_months || null,
@@ -73,7 +74,7 @@ function BadgeScreen({ currentProfile }) {
     };
   }, []);
 
-  const earnedBadges = badges.filter((badge) => badge.unlocked).length;
+  const earnedBadges = badges.filter((badge) => badge.earned).length;
   const totalBadges = badges.length;
   const displayName = currentProfile?.fullName || currentProfile?.username || 'User';
   const resolvedProfileImagePath = pickProfileImagePath(currentProfile);
@@ -122,7 +123,7 @@ function BadgeScreen({ currentProfile }) {
               <TouchableOpacity key={badge.id} style={styles.badgeCard}>
                 <Image
                   source={{ uri: badge.image || 'https://cdn-icons-png.flaticon.com/512/16779/16779402.png' }}
-                  style={[styles.badgeIcon, { opacity: badge.unlocked ? 1 : 0.3 }]}
+                  style={[styles.badgeIcon, { opacity: badge.earned ? 1 : 0.3 }]}
                 />
                 <Text style={styles.badgeText}>{badge.name}</Text>
                 <Text style={styles.badgeMetaText}>

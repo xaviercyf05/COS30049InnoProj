@@ -1016,8 +1016,8 @@ function AdminAssessment({ route, navigation }) {
 					<>
 						<View style={styles.headerSection}>
 							<Text style={styles.headerKicker}>Admin Panel</Text>
-							<Text style={styles.headerTitle}>Student Attempts</Text>
-							<Text style={styles.headerSubtitle}>View and manage student submissions</Text>
+							<Text style={styles.headerTitle}>Park Guide Attempts</Text>
+							<Text style={styles.headerSubtitle}>View and manage park guide submissions</Text>
 							<Text style={styles.statsText}>Total: {attempts.length} attempt(s)</Text>
 						</View>
 

@@ -35,6 +35,30 @@ function toProgressPercent(value) {
   return Math.round(parsed);
 }
 
+function normalizeCompletionStatus(value, fallback = 'incomplete') {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (normalized === 'completed' || normalized === 'complete') {
+    return 'completed';
+  }
+
+  if (normalized === 'incomplete' || normalized === 'pending') {
+    return 'incomplete';
+  }
+
+  return fallback;
+}
+
+function formatCompletionStatus(value, fallback = 'incomplete') {
+  const status = normalizeCompletionStatus(value, fallback);
+  return status === 'completed' ? 'Completed' : 'Incomplete';
+}
+
+function isOnSiteStage(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+  return normalized === 'on-site' || normalized === 'onsite' || normalized === 'on site';
+}
+
 export default function ProfileScreen({ navigation }) {
   const [profile, setProfile] = useState(null);
   const [moduleProgress, setModuleProgress] = useState([]);
@@ -78,6 +102,12 @@ export default function ProfileScreen({ navigation }) {
           title: module.title || module.name || `Module ${index + 1}`,
           progressPercent: toProgressPercent(module.progressPercent ?? module.progress ?? 0),
           stage: module.stage || module.moduleType || module.module_type || 'General',
+          completionStatus: normalizeCompletionStatus(
+            module.completionStatus || module.onSiteCompletionStatus || module.onSiteStatus,
+            isOnSiteStage(module.stage || module.moduleType || module.module_type)
+              ? 'incomplete'
+              : 'incomplete'
+          ),
           unlocked: module.unlocked !== false,
           lockReason: module.lockReason || module.progressMessage || '',
         }));
@@ -261,19 +291,40 @@ export default function ProfileScreen({ navigation }) {
                           {module.stage || 'General'}
                         </Text>
                       </View>
-                      <Text style={styles.moduleCardPercent}>{module.progressPercent}%</Text>
+                      {isOnSiteStage(module.stage) ? (
+                        <View
+                          style={[
+                            styles.moduleStatusBadge,
+                            module.completionStatus === 'completed'
+                              ? styles.moduleStatusBadgeComplete
+                              : styles.moduleStatusBadgeIncomplete,
+                          ]}
+                        >
+                          <Text style={styles.moduleStatusBadgeText}>
+                            {formatCompletionStatus(module.completionStatus)}
+                          </Text>
+                        </View>
+                      ) : (
+                        <Text style={styles.moduleCardPercent}>{module.progressPercent}%</Text>
+                      )}
                     </View>
 
-                    <View style={styles.moduleProgressBar}>
-                      <View
-                        style={[
-                          styles.moduleProgressFill,
-                          { width: `${module.progressPercent}%` },
-                        ]}
-                      />
-                    </View>
-
-                    {/* status text intentionally removed per UX request */}
+                    {isOnSiteStage(module.stage) ? (
+                      <Text style={styles.moduleCardStatus}>
+                        {module.completionStatus === 'completed'
+                          ? 'Marked completed by admin after on-site training.'
+                          : 'Marked incomplete until admin confirms on-site training.'}
+                      </Text>
+                    ) : (
+                      <View style={styles.moduleProgressBar}>
+                        <View
+                          style={[
+                            styles.moduleProgressFill,
+                            { width: `${module.progressPercent}%` },
+                          ]}
+                        />
+                      </View>
+                    )}
                   </View>
                 ))}
               </View>
@@ -560,6 +611,28 @@ const styles = StyleSheet.create({
     color: '#1F3F2A',
     fontSize: 18,
     fontWeight: '800',
+  },
+  moduleStatusBadge: {
+    alignSelf: 'flex-start',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1,
+  },
+  moduleStatusBadgeComplete: {
+    backgroundColor: '#E7F3EA',
+    borderColor: '#A6CBB2',
+  },
+  moduleStatusBadgeIncomplete: {
+    backgroundColor: '#F4F1E7',
+    borderColor: '#D9D0B4',
+  },
+  moduleStatusBadgeText: {
+    color: '#1F3F2A',
+    fontSize: 12,
+    fontWeight: '800',
+    letterSpacing: 0.3,
+    textTransform: 'uppercase',
   },
   moduleProgressBar: {
     height: 8,

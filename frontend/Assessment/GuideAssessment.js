@@ -38,7 +38,9 @@ function GuideAssessment({ navigation, route }) {
 	const [timeLeft, setTimeLeft] = useState(0);
 	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
+	const [timerStarted, setTimerStarted] = useState(false);
 	const [timeUpNotified, setTimeUpNotified] = useState(false);
+	const [tenMinuteWarningShown, setTenMinuteWarningShown] = useState(false);
 	const [warningMessage, setWarningMessage] = useState('');
 	const [durationSeconds, setDurationSeconds] = useState(7200); // 2 hours default
 	const [assessmentId, setAssessmentId] = useState(null);
@@ -58,6 +60,7 @@ function GuideAssessment({ navigation, route }) {
 	);
 
 	const formattedTime = useMemo(() => formatDuration(timeLeft), [timeLeft]);
+	const showTenMinuteBanner = timerStarted && timeLeft > 0 && timeLeft <= 600 && !timeUpNotified;
 
 	// Load assessment questions and details
 	const loadAssessment = useCallback(async () => {
@@ -80,8 +83,12 @@ function GuideAssessment({ navigation, route }) {
 			setAssessmentId(fetchedAssessmentId || moduleId);
 
 			setQuestions(fetchedQuestions);
+			setDurationSeconds(7200);
 			setTimeLeft(7200);
 			setAnswers({});
+			setTimeUpNotified(false);
+			setTenMinuteWarningShown(false);
+			setTimerStarted(true);
 		} catch (err) {
 			setError(err.message || 'Failed to load assessment');
 			Alert.alert('Error', err.message || 'Could not load assessment. Please try again.');
@@ -96,7 +103,7 @@ function GuideAssessment({ navigation, route }) {
 
 	// Timer countdown
 	useEffect(() => {
-		if (timeLeft <= 0) {
+		if (!timerStarted || timeLeft <= 0) {
 			return;
 		}
 
@@ -105,15 +112,24 @@ function GuideAssessment({ navigation, route }) {
 		}, 1000);
 
 		return () => clearInterval(timer);
-	}, [timeLeft]);
+	}, [timeLeft, timerStarted]);
 
 	// Time-up notification
 	useEffect(() => {
-		if (timeLeft === 0 && !timeUpNotified) {
-			Alert.alert('Time is up', 'The assessment timer has ended. Please submit your answers.');
-			setTimeUpNotified(true);
+		if (!timerStarted) {
+			return;
 		}
-	}, [timeLeft, timeUpNotified]);
+
+		if (timeLeft === 600 && !tenMinuteWarningShown) {
+			setTenMinuteWarningShown(true);
+		}
+
+		if (timeLeft === 0 && !timeUpNotified) {
+			setTimeUpNotified(true);
+			Alert.alert('Time is up', 'The assessment timer has ended. Your answers will be submitted now.');
+			onSubmit(true);
+		}
+	}, [timeLeft, timeUpNotified, tenMinuteWarningShown, timerStarted]);
 
 	const onSelectOption = (questionId, optionId) => {
 		setWarningMessage('');
@@ -261,6 +277,14 @@ function GuideAssessment({ navigation, route }) {
 						<Text style={styles.progressText}>Answered: {answeredCount}/{questions.length}</Text>
 						<Text style={styles.timerText}>Time Left: {formattedTime}</Text>
 					</View>
+					{showTenMinuteBanner ? (
+						<View style={styles.timeWarningCard}>
+							<Text style={styles.timeWarningTitle}>10 minutes left</Text>
+							<Text style={styles.timeWarningText}>
+								Please review your answers and submit before time runs out.
+							</Text>
+						</View>
+					) : null}
 				</View>
 
 				{questions.map((item, index) => (
@@ -414,6 +438,27 @@ const styles = StyleSheet.create({
 		color: '#B8D4B0',
 		fontSize: 13,
 		fontWeight: '700',
+	},
+	timeWarningCard: {
+		marginTop: 12,
+		backgroundColor: '#FFF4D8',
+		borderLeftWidth: 4,
+		borderLeftColor: '#D9A441',
+		borderRadius: 12,
+		paddingVertical: 12,
+		paddingHorizontal: 14,
+	},
+	timeWarningTitle: {
+		fontSize: 14,
+		fontWeight: '800',
+		color: '#7A5600',
+		marginBottom: 4,
+	},
+	timeWarningText: {
+		fontSize: 13,
+		fontWeight: '600',
+		color: '#6A4B00',
+		lineHeight: 18,
 	},
 	timerText: {
 		marginTop: 8,

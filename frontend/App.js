@@ -585,6 +585,7 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 						moduleTypeId: parseModuleTypeId(module) || normalizeModuleTypeId(getModuleTypeValue(module)),
 						image: resolveApiAssetUri(module.moduleImageUrl || module.image) || module.moduleImageUrl || module.image,
 						progressPercent: Number(module.progressPercent || module.progress || 0),
+						completionStatus: module.completionStatus || module.onSiteCompletionStatus || module.onSiteStatus || null,
 						// Preserve linking relationships from the API response
 						linkedTpaModuleId: module.linkedTpaModuleId || null,
 						linkedOnsiteModuleId: module.linkedOnsiteModuleId || null,
@@ -763,6 +764,7 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 						moduleTrackIndex: module.trackIndex,
 						progressionUnlocked: module.unlocked,
 						progressionLockReason: module.lockReason,
+						completionStatus: module.completionStatus,
 						prerequisiteModuleId: module.prerequisiteModuleId,
 					});
 				}}
@@ -784,12 +786,16 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 						<Text style={styles.lockReasonText}>{module.lockReason}</Text>
 					) : null}
 
-					{!isAdmin && (
+					{!isAdmin && module.stage === 'on-site' ? (
+						<Text style={styles.lockReasonText}>
+							Status: {String(module.completionStatus || '').trim().toLowerCase() === 'completed' ? 'Completed' : 'Incomplete'}
+						</Text>
+					) : !isAdmin ? (
 						<View style={styles.progressBar}>
 							<View style={[styles.progressFill, { width: `${module.progressPercent}%` }]} />
 							<Text style={styles.progressText}>{module.progressPercent}%</Text>
 						</View>
-					)}
+					) : null}
 				</ImageBackground>
 			</TouchableOpacity>
 		);

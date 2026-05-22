@@ -241,6 +241,8 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const [onSiteCompletionMap, setOnSiteCompletionMap] = useState({});
 	const [badges, setBadges] = useState([]);
 	const [loadingBadges, setLoadingBadges] = useState(true);
+	const [searchQuery, setSearchQuery] = useState('');
+	const [statusFilter, setStatusFilter] = useState('all');
 	const [issuing, setIssuing] = useState(false);
 	const [statusMessage, setStatusMessage] = useState('');
 	const [statusType, setStatusType] = useState('info');
@@ -288,12 +290,34 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		}
 
 		const selectedAssessmentModuleId = String(getNumericModuleId(selectedAssessmentModule) || '').trim();
-		if (!selectedAssessmentModuleId) {
-			return null;
+		const explicitLinkedOnSiteModule = selectedAssessmentModuleId
+			? onSiteModules.find((module) => String(getLinkedTpaModuleId(module) || '') === selectedAssessmentModuleId)
+			: null;
+
+		if (explicitLinkedOnSiteModule) {
+			return explicitLinkedOnSiteModule;
 		}
 
-		return onSiteModules.find((module) => String(getLinkedTpaModuleId(module) || '') === selectedAssessmentModuleId) || null;
-	}, [onSiteModules, selectedAssessmentModule]);
+		const selectedAssessmentModuleIndex = modules.findIndex(
+			(module) => String(getNumericModuleId(module) || '') === selectedAssessmentModuleId
+		);
+
+		if (selectedAssessmentModuleIndex >= 0) {
+			const fallbackOnSiteModule = modules.find((module, index) => {
+				if (index <= selectedAssessmentModuleIndex) {
+					return false;
+				}
+
+				return normalizeModuleStage(module) === 'on-site';
+			});
+
+			if (fallbackOnSiteModule) {
+				return fallbackOnSiteModule;
+			}
+		}
+
+		return onSiteModules[0] || null;
+	}, [modules, onSiteModules, selectedAssessmentModule]);
 	const verificationRows = useMemo(() => {
 		const baseRows = results.map((item) => ({
 			...item,
@@ -337,6 +361,54 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const selectedGuideOnSiteCompletion = selectedGuideOnSiteKey
 		? onSiteCompletionMap[selectedGuideOnSiteKey] || 'incomplete'
 		: 'incomplete';
+
+	const selectedResultStatus = (() => {
+		if (!selectedResult) return '';
+		if (selectedResult.rowType === 'on-site') {
+			return selectedResult.completionStatus === 'completed' ? 'Completed' : 'Incomplete';
+		}
+		const itemPassingScore = Number(selectedResult.passingScore || resolvedPassingScore);
+		const passed = selectedResult.passed || Number(selectedResult.finalScore) >= itemPassingScore;
+		return passed ? 'Passed' : 'Failed';
+	})();
+
+	const displayedRows = useMemo(() => {
+		const q = String(searchQuery || '').trim().toLowerCase();
+		return verificationRows.filter((item) => {
+			if (q) {
+				const name = String(item.parkGuideName || '').toLowerCase();
+				if (!name.includes(q)) return false;
+			}
+
+			if (!statusFilter || statusFilter === 'all') return true;
+
+			if (statusFilter === 'passed' || statusFilter === 'failed') {
+				if (item.rowType === 'on-site') return false;
+				const itemPassingScore = Number(item.passingScore || resolvedPassingScore);
+				const passed = item.passed || Number(item.finalScore) >= itemPassingScore;
+				return statusFilter === 'passed' ? passed : !passed;
+			}
+
+			if (statusFilter === 'onsite') {
+				return item.rowType === 'on-site';
+			}
+
+			if (statusFilter === 'completed' || statusFilter === 'incomplete') {
+				if (item.rowType !== 'on-site') {
+					// For assessment rows, map completed -> passed, incomplete -> failed
+					const itemPassingScore = Number(item.passingScore || resolvedPassingScore);
+					const passed = item.passed || Number(item.finalScore) >= itemPassingScore;
+					return statusFilter === 'completed' ? passed : !passed;
+				}
+
+				return statusFilter === 'completed'
+					? item.completionStatus === 'completed'
+					: item.completionStatus !== 'completed';
+			}
+
+			return true;
+		});
+	}, [verificationRows, searchQuery, statusFilter, resolvedPassingScore]);
 	const eligibleBadges = useMemo(() => {
 		if (!selectedResult) {
 			return [];
@@ -729,6 +801,25 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				) : null}
 
 				<View style={styles.tableCard}>
+					<View style={styles.tableControls}>
+						<TextInput
+							value={searchQuery}
+							onChangeText={setSearchQuery}
+							placeholder="Search by park guide name"
+							placeholderTextColor="#A3A99B"
+							style={styles.searchInput}
+						/>
+						<View style={styles.filterChips}>
+							{['all', 'passed', 'failed', 'onsite', 'completed', 'incomplete'].map((f) => {
+								const active = String(statusFilter) === f;
+								return (
+									<TouchableOpacity key={f} style={[styles.filterChip, active && styles.filterChipActive]} onPress={() => setStatusFilter(f)}>
+										<Text style={[styles.filterChipText, active && styles.filterChipTextActive]}>{f === 'all' ? 'All' : f === 'onsite' ? 'On-Site' : f.charAt(0).toUpperCase() + f.slice(1)}</Text>
+									</TouchableOpacity>
+								);
+							})}
+						</View>
+					</View>
 					<View style={styles.tableHeader}>
 						<Text style={[styles.headerCell, styles.colGuide]}>Park Guide</Text>
 						<Text style={[styles.headerCell, styles.colModule]}>Module</Text>
@@ -736,7 +827,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 						<Text style={[styles.headerCell, styles.colTime]}>Time Used</Text>
 						<Text style={[styles.headerCell, styles.colScore]}>Final Score</Text>
 						<Text style={[styles.headerCell, styles.colStatus]}>Status</Text>
-						<Text style={[styles.headerCell, styles.colAction]}>Action</Text>
+
 					</View>
 
 					{loadingAttempts ? (
@@ -750,43 +841,43 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 							</Text>
 						</View>
 					) : (
-						verificationRows.map((item) => {
-							const isSelected = item.id === selectedResult?.id;
-							const itemPassingScore = Number(item.passingScore || resolvedPassingScore);
-							const passed = item.passed || Number(item.finalScore) >= itemPassingScore;
-							const statusLabel = item.rowType === 'on-site'
-								? item.completionStatus === 'completed' ? 'Completed' : 'Incomplete'
-								: passed ? 'Passed' : 'Failed';
-							const statusStyle = item.rowType === 'on-site'
-								? item.completionStatus === 'completed' ? styles.statusPillComplete : styles.statusPillIncomplete
-								: passed ? styles.statusPillComplete : styles.statusPillIncomplete;
+						<ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
+							{displayedRows.map((item) => {
+								const isSelected = item.id === selectedResult?.id;
+								const itemPassingScore = Number(item.passingScore || resolvedPassingScore);
+								const passed = item.passed || Number(item.finalScore) >= itemPassingScore;
+								const statusLabel = item.rowType === 'on-site'
+									? item.completionStatus === 'completed' ? 'Completed' : 'Incomplete'
+									: passed ? 'Passed' : 'Failed';
+								const statusStyle = item.rowType === 'on-site'
+									? item.completionStatus === 'completed' ? styles.statusPillComplete : styles.statusPillIncomplete
+									: passed ? styles.statusPillComplete : styles.statusPillIncomplete;
 
-							return (
-								<TouchableOpacity
-									key={item.id}
-									style={[styles.tableRow, isSelected && styles.tableRowSelected]}
-									onPress={() => setSelectedResultId(item.id)}
-								>
-									<Text style={[styles.rowCell, styles.rowGuide, isSelected && styles.rowCellSelected]} numberOfLines={2}>
-										{item.parkGuideName}
-									</Text>
-									<Text style={[styles.rowCell, styles.rowModule]} numberOfLines={2}>{item.moduleName}</Text>
-									<Text style={[styles.rowCell, styles.rowDate]} numberOfLines={2}>{formatDateTime(item.dateAttempt)}</Text>
-									<Text style={[styles.rowCell, styles.rowTime]}>{formatDuration(item.timeUsedSeconds)}</Text>
-									<View style={[styles.scorePill, passed ? styles.scorePillPass : styles.scorePillFail]}>
-										<Text style={[styles.scorePillText, passed ? styles.scorePillTextPass : styles.scorePillTextFail]}>
-											{Number.isFinite(Number(item.finalScore)) ? `${Number(item.finalScore)}%` : String(item.finalScore || 'N/A')}
+								return (
+									<TouchableOpacity
+										key={item.id}
+										style={[styles.tableRow, isSelected && styles.tableRowSelected]}
+										onPress={() => setSelectedResultId(item.id)}
+									>
+										<Text style={[styles.rowCell, styles.rowGuide, isSelected && styles.rowCellSelected]} numberOfLines={2}>
+											{item.parkGuideName}
 										</Text>
-									</View>
-										<View style={[styles.statusPill, statusStyle]}>
-											<Text style={styles.statusPillText}>{statusLabel}</Text>
+										<Text style={[styles.rowCell, styles.rowModule]} numberOfLines={2}>{item.moduleName}</Text>
+										<Text style={[styles.rowCell, styles.rowDate]} numberOfLines={2}>{formatDateTime(item.dateAttempt)}</Text>
+										<Text style={[styles.rowCell, styles.rowTime]}>{formatDuration(item.timeUsedSeconds)}</Text>
+										<View style={[styles.scorePill, passed ? styles.scorePillPass : styles.scorePillFail]}>
+											<Text style={[styles.scorePillText, passed ? styles.scorePillTextPass : styles.scorePillTextFail]}>
+												{Number.isFinite(Number(item.finalScore)) ? `${Number(item.finalScore)}%` : String(item.finalScore || 'N/A')}
+											</Text>
 										</View>
-									<View style={styles.rowActionCell}>
-										<Text style={styles.rowActionText}>{isSelected ? 'Selected' : 'Select'}</Text>
-									</View>
-								</TouchableOpacity>
-							);
-						})
+											<View style={[styles.statusPill, statusStyle]}>
+												<Text style={styles.statusPillText}>{statusLabel}</Text>
+										</View>
+
+									</TouchableOpacity>
+								);
+							})}
+						</ScrollView>
 					)}
 				</View>
 
@@ -807,8 +898,8 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 								<Text style={styles.detailValue}>{formatDateTime(selectedResult.dateAttempt)}</Text>
 							</View>
 							<View style={styles.detailItem}>
-								<Text style={styles.detailLabel}>Total Time Used</Text>
-								<Text style={styles.detailValue}>{formatDuration(selectedResult.timeUsedSeconds)}</Text>
+								<Text style={styles.detailLabel}>Status</Text>
+								<Text style={styles.detailValue}>{selectedResultStatus}</Text>
 							</View>
 							<View style={styles.detailItem}>
 								<Text style={styles.detailLabel}>Final Score</Text>
@@ -1059,7 +1150,6 @@ const styles = StyleSheet.create({
 	colTime: { flex: 0.8 },
 	colScore: { flex: 0.75, textAlign: 'center' },
 	colStatus: { flex: 0.9, textAlign: 'center' },
-	colAction: { flex: 0.65, textAlign: 'center' },
 	tableRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
@@ -1112,10 +1202,6 @@ const styles = StyleSheet.create({
 	scorePillTextFail: {
 		color: COLORS.error,
 	},
-	rowActionCell: {
-		flex: 0.65,
-		alignItems: 'center',
-	},
 	statusPill: {
 		flex: 0.9,
 		borderRadius: 999,
@@ -1135,11 +1221,7 @@ const styles = StyleSheet.create({
 		fontWeight: '800',
 		color: COLORS.heading,
 	},
-	rowActionText: {
-		fontSize: 12,
-		fontWeight: '800',
-		color: COLORS.olive,
-	},
+
 	emptyBox: {
 		backgroundColor: COLORS.infoBg,
 		borderRadius: 12,
@@ -1257,6 +1339,52 @@ const styles = StyleSheet.create({
 	},
 	assessmentChipTextActive: {
 		color: COLORS.white,
+	},
+	tableControls: {
+		marginBottom: 10,
+	},
+	searchInput: {
+		borderWidth: 1,
+		borderColor: COLORS.sageBorder,
+		backgroundColor: '#FAFBF8',
+		borderRadius: 12,
+		paddingHorizontal: 12,
+		paddingVertical: 8,
+		fontSize: 13,
+		fontWeight: '500',
+		color: COLORS.heading,
+		marginBottom: 8,
+	},
+	filterChips: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		flexWrap: 'wrap',
+	},
+	filterChip: {
+		paddingVertical: 6,
+		paddingHorizontal: 10,
+		borderRadius: 999,
+		backgroundColor: '#F9FBF7',
+		borderWidth: 1,
+		borderColor: COLORS.sageBorder,
+		marginRight: 8,
+		marginBottom: 6,
+	},
+	filterChipActive: {
+		backgroundColor: COLORS.olive,
+		borderColor: COLORS.olive,
+	},
+	filterChipText: {
+		fontSize: 12,
+		fontWeight: '700',
+		color: COLORS.heading,
+	},
+	filterChipTextActive: {
+		color: COLORS.white,
+	},
+	tableBody: {
+		maxHeight: 360,
+		marginTop: 6,
 	},
 	selectedBadgeBox: {
 		flexDirection: 'row',

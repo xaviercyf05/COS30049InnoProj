@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
+  InteractionManager,
   ImageBackground,
   Platform,
   ScrollView,
@@ -48,6 +49,16 @@ function sanitizeRichHtml(value) {
     .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
     .replace(/\son[a-z]+="[^"]*"/gi, "")
     .replace(/\son[a-z]+='[^']*'/gi, "");
+}
+
+function normalizeModuleCompletionStatus(value) {
+  const normalized = String(value || '').trim().toLowerCase();
+
+  if (normalized === 'completed' || normalized === 'complete') {
+    return 'completed';
+  }
+
+  return 'incomplete';
 }
 
 function buildRichContentDocument(title, contentHtml) {
@@ -133,11 +144,15 @@ function ModuleScreen({
   const routeModuleId = route?.params?.moduleId || null;
   const routeModuleName =
     route?.params?.moduleName || route?.params?.grade || "General";
+  const routeCompletionStatus = route?.params?.completionStatus || null;
   const userLabel =
     currentProfile?.fullName || currentProfile?.username || "Guide";
 
   const [moduleDisplayName, setModuleDisplayName] = useState(routeModuleName);
   const [moduleSummary, setModuleSummary] = useState(route?.params?.moduleSummary || '');
+  const [moduleCompletionStatus, setModuleCompletionStatus] = useState(
+    normalizeModuleCompletionStatus(routeCompletionStatus),
+  );
   const progressionUnlocked =
     isAdmin || route?.params?.progressionUnlocked !== false;
   const progressionLockReason =
@@ -159,6 +174,7 @@ function ModuleScreen({
   const [submissionDetailModalVisible, setSubmissionDetailModalVisible] = useState(false);
   const [selectedFile, setSelectedFile] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [pendingSuccessAlert, setPendingSuccessAlert] = useState(null);
   const fileInputRef = useRef(null); 
 
   const BANK_DETAILS = {
@@ -171,6 +187,7 @@ function ModuleScreen({
   const isPaid = paymentStatus === "paid";
   const isPaymentPending = paymentStatus === "pending";
   const isAccessCheckComplete = !loading && !paymentLoading;
+  const isOnSiteProgressionLocked = isOnSite && !progressionUnlocked;
 
   const formatDateTime = (value) => {
     if (!value) {
@@ -192,6 +209,21 @@ function ModuleScreen({
     }
     setSubmissionDetailModalVisible(true);
   };
+
+  useEffect(() => {
+    if (paymentModalVisible || !pendingSuccessAlert) {
+      return;
+    }
+
+    const interactionHandle = InteractionManager.runAfterInteractions(() => {
+      Alert.alert(pendingSuccessAlert.title, pendingSuccessAlert.message);
+      setPendingSuccessAlert(null);
+    });
+
+    return () => {
+      interactionHandle?.cancel?.();
+    };
+  }, [paymentModalVisible, pendingSuccessAlert]);
 
   const fetchPaymentStatus = async () => {
     if (!routeModuleId || isAdmin) {
@@ -306,17 +338,14 @@ function ModuleScreen({
       console.log('✅ API Response:', response);
 
       // If requestProfileApi doesn't throw, the response was successful (2xx status)
-      Alert.alert('✅ Success', 'Payment evidence submitted successfully!', [
-        { 
-          text: 'OK', 
-          onPress: () => {
-            setPaymentModalVisible(false);
-            setSelectedFile(null);
-            setPaymentStatus('pending');
-            fetchPaymentStatus();
-          } 
-        }
-      ]);
+      setPaymentModalVisible(false);
+      setSelectedFile(null);
+      setPaymentStatus('pending');
+      fetchPaymentStatus();
+      setPendingSuccessAlert({
+        title: '✅ Success',
+        message: 'Payment evidence submitted successfully!',
+      });
     } catch (err) {
       console.error('❌ Submit Error:', err);
       Alert.alert(
@@ -409,6 +438,8 @@ function ModuleScreen({
           response?.data?.moduleTypeId ||
           response?.data?.module_type_id ||
           route?.params?.moduleType ||
+          route?.params?.moduleStage ||
+          route?.params?.stage ||
           route?.params?.moduleTypeId ||
           null;
 
@@ -446,6 +477,15 @@ function ModuleScreen({
           String(response?.data?.summary || response?.data?.Summary || '') || '';
         if (active) {
           setModuleSummary(resolvedSummary);
+        }
+
+        const resolvedCompletionStatus =
+          response?.data?.completionStatus ||
+          response?.data?.onSiteCompletionStatus ||
+          response?.data?.onSiteStatus ||
+          routeCompletionStatus;
+        if (active) {
+          setModuleCompletionStatus(normalizeModuleCompletionStatus(resolvedCompletionStatus));
         }
 
         if (!materials.length && !apiSections?.length) {
@@ -618,6 +658,8 @@ function ModuleScreen({
       // Determine if module is an on-site type from route params (if provided)
       const paramCandidate =
         route?.params?.moduleType ||
+        route?.params?.moduleStage ||
+        route?.params?.stage ||
         route?.params?.module_type ||
         route?.params?.type ||
         route?.params?.moduleTypeId ||
@@ -669,7 +711,7 @@ function ModuleScreen({
     };
   }, [routeModuleId]);
 
-  const canAccessContent = isAdmin || isPaid || isOnSite;
+  const canAccessContent = isAdmin || isPaid || (isOnSite && progressionUnlocked);
 
   useEffect(() => {
     if (!sections.length) {
@@ -1016,6 +1058,15 @@ function ModuleScreen({
             <ActivityIndicator size="large" color="#2E6B4D" />
             <Text style={styles.loadingText}>Checking access and loading module details...</Text>
           </View>
+        ) : isOnSiteProgressionLocked ? (
+          <View style={styles.lockedOverlay}>
+            <Text style={styles.lockIcon}>🔒</Text>
+            <Text style={styles.lockTitle}>On-Site Module Locked</Text>
+
+            <Text style={styles.lockSubtitle}>
+              {progressionLockReason || 'Complete and pass the linked assessment to unlock this on-site module.'}
+            </Text>
+          </View>
         ) : !isAdmin && !isOnSite && paymentStatus && paymentStatus !== "paid" ? (
           <View style={styles.lockedOverlay}>
             <Text style={styles.lockIcon}>🔒</Text>
@@ -1154,7 +1205,7 @@ function ModuleScreen({
                 </TouchableOpacity>
               ) : null}
 
-              {!isAdmin && !isOnSite && routeModuleId && (
+              {!isAdmin && !isOnSite && routeModuleId && !isPaid && (
                 <TouchableOpacity
                   style={styles.paymentButton}
                   onPress={() => setPaymentModalVisible(true)}
@@ -1199,36 +1250,35 @@ function ModuleScreen({
                 </View>
               )}
 
-              <TouchableOpacity
-                style={[
-                  styles.assessmentButton,
-                  !canTakeAssessment && styles.assessmentButtonDisabled,
-                ]}
-                onPress={goToAssessment}
-                disabled={!canTakeAssessment}
-              >
-                <Text
+              {!isOnSite ? (
+                <TouchableOpacity
                   style={[
-                    styles.assessmentButtonText,
-                    !canTakeAssessment && styles.assessmentButtonTextDisabled,
+                    styles.assessmentButton,
+                    !canTakeAssessment && styles.assessmentButtonDisabled,
                   ]}
+                  onPress={goToAssessment}
+                  disabled={!canTakeAssessment}
                 >
-                  {isAdmin
-                    ? "Go to Assessment Page to Edit Questions"
-                    : isOnSite
-                      ? "On-site module — no assessment"
+                  <Text
+                    style={[
+                      styles.assessmentButtonText,
+                      !canTakeAssessment && styles.assessmentButtonTextDisabled,
+                    ]}
+                  >
+                    {isAdmin
+                      ? "Go to Assessment Page to Edit Questions"
                       : !progressionUnlocked
                         ? "Locked by Learning Pathway"
                         : assessmentUnlocked
                           ? "Take Assessment"
                           : "Review Sections First"}
-                </Text>
-                <Text style={styles.assessmentArrow}>{">"}</Text>
-              </TouchableOpacity>
+                  </Text>
+                  <Text style={styles.assessmentArrow}>{">"}</Text>
+                </TouchableOpacity>
+              ) : null}
               {isOnSite ? (
                 <Text style={styles.assessmentHintText}>
-                  This on-site module has no assessment. Completion is recorded
-                  by an admin after training.
+                  This on-site module is {moduleCompletionStatus === 'completed' ? 'Completed' : 'Incomplete'}. Completion is recorded by an admin after training.
                 </Text>
               ) : !progressionUnlocked ? (
                 <Text style={styles.assessmentHintText}>

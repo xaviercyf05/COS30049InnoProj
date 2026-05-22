@@ -725,6 +725,14 @@ router.post(
 );
 
 /**
+ * GET /admin/qualifications/on-site-completions - Read persisted on-site completion rows
+ */
+router.get(
+  "/qualifications/on-site-completions",
+  asyncHandler(qualificationController.getOnSiteCompletions)
+);
+
+/**
  * POST /admin/users/:userId/modules/:moduleId/complete - Manually mark a module as completed
  */
 router.post(

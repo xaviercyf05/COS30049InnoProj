@@ -315,21 +315,21 @@ async function requestEmailLoginCode(req, res) {
 
     const loginCode = await emailVerificationService.createLoginCodeToken(user.UserID, LOGIN_CODE_TOKEN_TYPE);
 
-    setImmediate(() => {
-      void (async () => {
-        try {
-          await emailService.sendLoginCodeEmail(
-            user.Email,
-            user.FullName || user.Username || user.Email,
-            loginCode.token,
-            loginCode.expiresAt
-          );
-        } catch (sendError) {
-          await emailVerificationService.deleteVerificationTokenByToken(loginCode.token, LOGIN_CODE_TOKEN_TYPE).catch(() => {});
-          console.error("Login code email send failed:", sendError);
-        }
-      })();
-    });
+    try {
+      await emailService.sendLoginCodeEmail(
+        user.Email,
+        user.FullName || user.Username || user.Email,
+        loginCode.token,
+        loginCode.expiresAt
+      );
+    } catch (sendError) {
+      await emailVerificationService.deleteVerificationTokenByToken(loginCode.token, LOGIN_CODE_TOKEN_TYPE).catch(() => {});
+      console.error("Login code email send failed:", sendError);
+      return res.status(503).json({
+        success: false,
+        message: "Unable to send the sign-in code email right now. Please try again later.",
+      });
+    }
 
     return res.json({
       success: true,

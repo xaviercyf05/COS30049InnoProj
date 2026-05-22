@@ -1,14 +1,28 @@
 const nodemailer = require('nodemailer');
 
+function parseBoolean(value, fallback = false) {
+  if (value === undefined || value === null || value === '') {
+    return fallback;
+  }
+
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+}
+
+function parsePositiveInteger(value, fallback) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
 // Email configuration from environment variables
 // Note: EMAIL_HOST in .env is the email ADDRESS (sfcadmin.noreply@gmail.com), not the SMTP host
+const smtpPort = parsePositiveInteger(process.env.EMAIL_SMTP_PORT, 465);
 const emailConfig = {
-  host: 'smtp.gmail.com',
-  port: 587,
-  secure: false,
-  connectionTimeout: 10000,
-  greetingTimeout: 10000,
-  socketTimeout: 10000,
+  host: process.env.EMAIL_SMTP_HOST || 'smtp.gmail.com',
+  port: smtpPort,
+  secure: parseBoolean(process.env.EMAIL_SMTP_SECURE, smtpPort === 465),
+  connectionTimeout: parsePositiveInteger(process.env.EMAIL_CONNECTION_TIMEOUT_MS, 30000),
+  greetingTimeout: parsePositiveInteger(process.env.EMAIL_GREETING_TIMEOUT_MS, 30000),
+  socketTimeout: parsePositiveInteger(process.env.EMAIL_SOCKET_TIMEOUT_MS, 30000),
   auth: {
     user: process.env.EMAIL_HOST || 'sfcadmin.noreply@gmail.com',
     pass: process.env.EMAIL_APP_PASSWORD || '',

@@ -61,6 +61,19 @@ EMAIL_APP_PASSWORD=nuwk xtwz vtim bvhq
 - 2-Factor Authentication enabled
 - An "App Password" generated (used in EMAIL_APP_PASSWORD, not your regular password)
 
+If your hosting provider blocks Gmail SMTP on the default port, you can override the transport with these optional variables:
+
+```env
+EMAIL_SMTP_HOST=smtp.gmail.com
+EMAIL_SMTP_PORT=465
+EMAIL_SMTP_SECURE=true
+EMAIL_CONNECTION_TIMEOUT_MS=30000
+EMAIL_GREETING_TIMEOUT_MS=30000
+EMAIL_SOCKET_TIMEOUT_MS=30000
+```
+
+`EMAIL_HOST` remains the sender account address for backward compatibility.
+
 ### 3. Optional: Configure API Base URL
 
 Add to `.env` if you want to customize the verification link base URL (defaults to first CORS_ORIGIN):

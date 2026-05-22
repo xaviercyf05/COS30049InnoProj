@@ -3,6 +3,7 @@
 // as a JSON string like: {"device-Bako":"cos30049fr","device-Kubah":"cos30049fr"}
 
 const DEFAULT_KEYS = {
+  "device001": "cos30049fr",
   "device-Bako": "cos30049fr",
   "device-Kubah": "cos30049fr",
   "device-Similajau": "cos30049fr",

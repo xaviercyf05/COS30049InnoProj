@@ -95,11 +95,19 @@ function AppSidebarChrome({ navigation, route, title, children }) {
   const [menuVisible, setMenuVisible] = useState(false);
   const [notificationVisible, setNotificationVisible] = useState(false);
   const [showAllNotifications, setShowAllNotifications] = useState(false);
+  const [markingAllAsRead, setMarkingAllAsRead] = useState(false);
   const [sidebarMounted, setSidebarMounted] = useState(false);
   const [profile, setProfile] = useState(null);
   const [profileLoading, setProfileLoading] = useState(true);
   const [notifications, setNotifications] = useState(DEFAULT_NOTIFICATIONS);
   const sidebarTranslateX = useRef(new Animated.Value(-320)).current;
+
+  const persistNotificationsState = async (nextNotifications) => {
+    await AsyncStorage.setItem(
+      "local_notifications_state",
+      JSON.stringify(nextNotifications),
+    );
+  };
 
   const markSingleAsRead = async (id) => {
     const updatedNotifications = notifications.map((n) =>
@@ -108,10 +116,7 @@ function AppSidebarChrome({ navigation, route, title, children }) {
     setNotifications(updatedNotifications);
 
     try {
-      await AsyncStorage.setItem(
-        "local_notifications_state",
-        JSON.stringify(updatedNotifications),
-      );
+      await persistNotificationsState(updatedNotifications);
       const token = await AsyncStorage.getItem("auth_token");
       if (token) {
         await requestProfileApi(`/api/v1/notifications/${id}/read`, token, {
@@ -120,6 +125,48 @@ function AppSidebarChrome({ navigation, route, title, children }) {
       }
     } catch (error) {
       console.error("Error saving state:", error);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    const unreadNotifications = notifications.filter((item) => !item.read);
+
+    if (unreadNotifications.length === 0) {
+      setNotificationVisible(false);
+      return;
+    }
+
+    const updatedNotifications = notifications.map((item) => ({
+      ...item,
+      read: true,
+    }));
+
+    setMarkingAllAsRead(true);
+    setNotifications(updatedNotifications);
+
+    try {
+      await persistNotificationsState(updatedNotifications);
+
+      const token = await AsyncStorage.getItem("auth_token");
+      if (token) {
+        await Promise.allSettled(
+          unreadNotifications.map((item) =>
+            requestProfileApi(`/api/v1/notifications/${item.id}/read`, token, {
+              method: "POST",
+            }),
+          ),
+        );
+      }
+
+      setNotificationVisible(false);
+    } catch (error) {
+      console.error("Error marking all notifications as read:", error);
+      Alert.alert(
+        "Notifications",
+        "Unable to mark all notifications as read right now.",
+      );
+    } finally {
+      setMarkingAllAsRead(false);
     }
   };
 
@@ -384,10 +431,24 @@ function AppSidebarChrome({ navigation, route, title, children }) {
             onPress={() => setNotificationVisible(false)}
           />
           <View style={styles.notificationDropdown}>
-            <Text style={styles.dropdownTitle}>
-              Notifications{" "}
-              {showAllNotifications ? `(${notifications.length})` : ""}
-            </Text>
+            <View style={styles.dropdownHeaderRow}>
+              <Text style={styles.dropdownTitle}>
+                Notifications{" "}
+                {showAllNotifications ? `(${notifications.length})` : ""}
+              </Text>
+              <TouchableOpacity
+                style={[
+                  styles.markAllButton,
+                  (markingAllAsRead || unreadCount === 0) && styles.markAllButtonDisabled,
+                ]}
+                onPress={markAllAsRead}
+                disabled={markingAllAsRead || unreadCount === 0}
+              >
+                <Text style={styles.markAllButtonText}>
+                  {markingAllAsRead ? "Marking..." : "Mark All as Read"}
+                </Text>
+              </TouchableOpacity>
+            </View>
 
             <ScrollView
               style={styles.notificationList}
@@ -775,16 +836,42 @@ const styles = StyleSheet.create({
     zIndex: 10051,
     overflow: "hidden",
   },
+  dropdownHeaderRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 12,
+  },
   dropdownTitle: {
+    flex: 1,
     fontSize: 17,
     fontWeight: "700",
     color: "#304637",
     paddingHorizontal: 16,
     paddingVertical: 14,
-    borderBottomWidth: 1,
-    borderBottomColor: "#EEF2EA",
+  },
+  markAllButton: {
+    marginRight: 12,
+    marginTop: 8,
+    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: "#EEF4E8",
+    borderWidth: 1,
+    borderColor: "#D7E3D0",
+  },
+  markAllButtonDisabled: {
+    opacity: 0.55,
+  },
+  markAllButtonText: {
+    color: "#2E6B4D",
+    fontSize: 12,
+    fontWeight: "800",
   },
   notificationList: {
+    borderTopWidth: 1,
+    borderTopColor: "#EEF2EA",
     maxHeight: 300,
   },
   notificationListContent: {

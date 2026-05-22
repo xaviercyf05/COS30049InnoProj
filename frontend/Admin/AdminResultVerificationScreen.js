@@ -733,6 +733,22 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		);
 	};
 
+	const updateOnSiteCompletionForKey = (onSiteKey, completionStatus, parkGuideName) => {
+		if (!onSiteKey) {
+			return;
+		}
+
+		setOnSiteCompletionMap((previousMap) => ({
+			...previousMap,
+			[onSiteKey]: completionStatus,
+		}));
+
+		setStatusType('success');
+		setStatusMessage(
+			`On-site module for ${parkGuideName || onSiteKey} marked as ${completionStatus}.`
+		);
+	};
+
 	const headerPaddingTop = Platform.OS === 'android'
 		? Math.max(12, insets.top + 6)
 		: Math.max(10, insets.top + 4);
@@ -873,6 +889,29 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 											<View style={[styles.statusPill, statusStyle]}>
 												<Text style={styles.statusPillText}>{statusLabel}</Text>
 										</View>
+
+											{item.rowType === 'on-site' ? (
+												<View style={styles.inlineOnSiteActions}>
+													<TouchableOpacity
+														style={[styles.inlineOnSiteButton, styles.inlineOnSiteButtonComplete]}
+														onPress={() => {
+															setSelectedResultId(item.id);
+															updateOnSiteCompletionForKey(item.onSiteKey, 'completed', item.parkGuideName);
+														}}
+													>
+														<Text style={styles.inlineOnSiteButtonText}>Complete</Text>
+													</TouchableOpacity>
+													<TouchableOpacity
+														style={[styles.inlineOnSiteButton, styles.inlineOnSiteButtonIncomplete]}
+														onPress={() => {
+															setSelectedResultId(item.id);
+															updateOnSiteCompletionForKey(item.onSiteKey, 'incomplete', item.parkGuideName);
+														}}
+													>
+														<Text style={styles.inlineOnSiteButtonText}>Incomplete</Text>
+													</TouchableOpacity>
+												</View>
+											) : null}
 
 									</TouchableOpacity>
 								);
@@ -1220,6 +1259,31 @@ const styles = StyleSheet.create({
 		fontSize: 11,
 		fontWeight: '800',
 		color: COLORS.heading,
+	},
+	inlineOnSiteActions: {
+		flexDirection: 'row',
+		gap: 6,
+		marginLeft: 10,
+		flexWrap: 'wrap',
+	},
+	inlineOnSiteButton: {
+		paddingHorizontal: 10,
+		paddingVertical: 8,
+		borderRadius: 999,
+		borderWidth: 1,
+	},
+	inlineOnSiteButtonComplete: {
+		backgroundColor: COLORS.success,
+		borderColor: COLORS.success,
+	},
+	inlineOnSiteButtonIncomplete: {
+		backgroundColor: COLORS.failBg,
+		borderColor: '#F1B9B9',
+	},
+	inlineOnSiteButtonText: {
+		fontSize: 11,
+		fontWeight: '800',
+		color: COLORS.white,
 	},
 
 	emptyBox: {

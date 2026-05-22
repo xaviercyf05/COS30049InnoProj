@@ -14,7 +14,7 @@ fi
 
 DB_HOST="${DB_HOST:-127.0.0.1}"
 DB_PORT="${DB_PORT:-3306}"
-DB_USER="${DB_USER:-root}"
+DB_USER="${DB_USER:-innogroup}"
 DB_PASSWORD="${DB_PASSWORD:-}"
 DB_NAME="${DB_NAME:-appdb}"
 BACKUP_DIR="${BACKUP_DIR:-$(pwd)/db_backups}"

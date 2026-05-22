@@ -325,6 +325,7 @@ async function requestEmailLoginCode(req, res) {
     } catch (sendError) {
       await emailVerificationService.deleteVerificationTokenByToken(loginCode.token, LOGIN_CODE_TOKEN_TYPE).catch(() => {});
       console.error("Login code email send failed:", sendError);
+      const isAuthFailure = sendError?.code === "EAUTH" || sendError?.responseCode === 534;
       return res.status(503).json({
         success: false,
         message: "Unable to send the sign-in code email right now. Please try again later.",

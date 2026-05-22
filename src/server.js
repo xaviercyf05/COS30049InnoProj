@@ -1,9 +1,11 @@
 const app = require("./app");
 const env = require("./config/env");
 const { pool } = require("./config/db");
+const emailService = require("./services/emailService");
 
 const server = app.listen(env.port, () => {
   console.log(`Innopapp API listening on port ${env.port}`);
+  void emailService.testEmailConnection();
 });
 
 async function shutdown(signal) {

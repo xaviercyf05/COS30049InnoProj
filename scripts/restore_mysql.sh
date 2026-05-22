@@ -23,7 +23,7 @@ TARGET_DB="${2:-appdb_test}"
 DB_HOST="${3:-127.0.0.1}"
 DB_PORT="${4:-3306}"
 DB_USER="${5:-innogroup}"
-DB_PASSWORD="${6:-${DB_PASSWORD:-}}"
+DB_PASSWORD="${6:-${DB_PASSWORD:-cos30049fr}}"
 
 if ! command -v mysql >/dev/null 2>&1; then
   echo "mysql client not found in PATH" >&2

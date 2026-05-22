@@ -47,8 +47,9 @@ async function logSensorData(req, res) {
     const insertQuery = `
       INSERT INTO ESP32SensorLogs (
         DeviceID, Location, Temperature, Humidity, Distance, Sound, Rain, Soil, SoilRaw,
-        DistanceStatus, SoundStatus, TempStatus, HumStatus, RainStatus, RainLevel, SoilStatus, Severity
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        DistanceStatus, SoundStatus, TempStatus, HumStatus, RainStatus, RainLevel, SoilStatus,
+        Severity, Timestamp
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, COALESCE(STR_TO_DATE(?, '%d %b %Y %r'), NOW()))
     `;
 
     const values = [
@@ -69,6 +70,7 @@ async function logSensorData(req, res) {
       payload.rainLevel !== undefined ? parseInt(payload.rainLevel) : null,
       payload.soilStatus || null,
       payload.severity || 'LOW',
+      payload.timestamp || null,
     ];
 
     const [result] = await query(insertQuery, values);

@@ -10,3 +10,6 @@ uploads/
 db_backups/
 
 database/appdb (1).sql
+
+/.env
+.env

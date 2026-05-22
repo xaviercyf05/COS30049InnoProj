@@ -340,8 +340,13 @@ function normaliseEsp32SensorLogRecord(record) {
   const location = String(
     getFieldValue(record, ['location', 'Location', 'site', 'Site', 'area', 'Area', 'parkName', 'ParkName'], '') || ''
   ).trim();
+  const deviceId = String(
+    getFieldValue(record, ['DeviceID', 'deviceID', 'deviceId', 'DeviceId'], '') ||
+    getFieldValue(labels, ['deviceId', 'DeviceID', 'deviceID', 'DeviceId'], '') ||
+    ''
+  ).trim();
   const deviceName = String(
-    getFieldValue(record, ['deviceName', 'DeviceName', 'sensorName', 'SensorName', 'deviceId', 'DeviceId', 'sensorId', 'SensorId'], '') || ''
+    getFieldValue(record, ['deviceName', 'DeviceName', 'sensorName', 'SensorName', 'sensorId', 'SensorId'], '') || ''
   ).trim();
   const rawName = String(
     getFieldValue(labels, ['name', 'title', 'alertName', 'deviceName'], '') ||
@@ -378,6 +383,8 @@ function normaliseEsp32SensorLogRecord(record) {
     id: alertId,
     alertKey: `esp32-${alertId}`,
     name: rawName,
+    deviceId: deviceId || null,
+    deviceName: deviceName || null,
     location: location || String(getFieldValue(labels, ['location', 'address', 'area'], '') || '').trim() || 'ESP32 sensor',
     status: 'Unusual environmental condition',
     severity: rawStatus,

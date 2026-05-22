@@ -13,6 +13,7 @@ function AlertDetail({ route, navigation }) {
   const canUpdateStatus = alert.canUpdateStatus !== false;
   const videoUrl = alert.videoUrl || '';
   const labelsText = alert.labels ? JSON.stringify(alert.labels, null, 2) : '';
+  const deviceName = alert.sourceType === 'esp32-sensor-log' ? (alert.deviceId || alert.deviceName || alert.name || '') : '';
   const [videoLoading, setVideoLoading] = useState(false);
   const [downloadError, setDownloadError] = useState('');
   const videoRef = useRef(null);
@@ -136,6 +137,13 @@ function AlertDetail({ route, navigation }) {
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Event summary</Text>
           <Text style={styles.sectionText}>{alert.status || 'No event summary available.'}</Text>
+
+          {deviceName ? (
+            <>
+              <Text style={[styles.sectionTitle, styles.sectionSpacing]}>ESP32 device ID</Text>
+              <Text style={styles.sectionText}>{deviceName}</Text>
+            </>
+          ) : null}
 
           <Text style={[styles.sectionTitle, styles.sectionSpacing]}>Date & Time</Text>
           <Text style={styles.sectionText}>{alert.timestamp || 'Timestamp unavailable'}</Text>

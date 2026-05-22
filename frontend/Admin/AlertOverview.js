@@ -118,7 +118,7 @@ export default function AlertHistory({ navigation }) {
         <View key={item.alertKey || item.id} style={styles.row}>
           <View style={styles.body}>
             <Text style={styles.name}>{item.name}</Text>
-            <Text style={styles.meta}>{item.timestamp} · {item.location || 'Location unavailable'}</Text>
+            <Text style={styles.meta}>{item.timestamp}</Text>
             <Text style={styles.source}>{item.sourceLabel || 'Alert source unavailable'}</Text>
             <Text style={styles.status}>{item.status}</Text>
 

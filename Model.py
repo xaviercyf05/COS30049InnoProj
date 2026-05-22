@@ -10,7 +10,7 @@ from ultralytics import YOLO  # type: ignore
 MODEL_PATH = "best5.pt"
 CAMERA_SOURCE = 0
 
-CONF_THRESHOLD = 0.45
+CONF_THRESHOLD = 0.50
 
 SAVE_FOLDER = "evidence"
 
@@ -47,12 +47,15 @@ animal_frames = 0
 # =========================
 # HELPER: check overlap (touching logic)
 # =========================
+
+
 def is_touching(box1, box2):
     x1, y1, x2, y2 = box1
     a1, b1, a2, b2 = box2
 
     # intersection area check
     return not (x2 < a1 or a2 < x1 or y2 < b1 or b2 < y1)
+
 
 # =========================
 # MAIN LOOP
@@ -63,7 +66,8 @@ while True:
     if not ret:
         break
 
-    results = model.track(frame, conf=CONF_THRESHOLD, persist=True, verbose=False)
+    results = model.track(frame, conf=CONF_THRESHOLD,
+                          persist=True, verbose=False)
     annotated = results[0].plot()
 
     frame_buffer.append(annotated.copy())

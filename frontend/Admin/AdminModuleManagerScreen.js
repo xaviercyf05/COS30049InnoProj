@@ -116,6 +116,16 @@ function parseOrderingValue(value) {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function parseModulePrice(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const normalized = String(value).replace(/,/g, '').trim();
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function sortByOrdering(items) {
   return [...items]
     .map((item, index) => ({
@@ -268,6 +278,7 @@ function createEmptyDraft() {
     id: null,
     title: '',
     summary: '',
+    modulePrice: '',
     moduleType: 'general',
     moduleTypeId: 1,
     linkedTpaModuleId: null,
@@ -297,6 +308,7 @@ function toDraft(moduleEntry) {
     id: moduleEntry.id || (moduleEntry.moduleId ? `module-${moduleEntry.moduleId}` : null),
     title: moduleEntry.title || '',
     summary: moduleEntry.summary || moduleEntry.Summary || '',
+    modulePrice: moduleEntry.modulePrice ?? moduleEntry.price ?? moduleEntry.module_fee ?? moduleEntry.moduleFee ?? '',
     moduleType: normalizedModuleType,
     moduleTypeId: Number(moduleEntry.moduleTypeId || moduleEntry.module_type_id || moduleEntry.typeId || 0) || 1,
     linkedTpaModuleId: Number(
@@ -418,6 +430,7 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
           ...m,
           moduleId,
           title,
+          modulePrice: m.modulePrice ?? m.price ?? m.module_fee ?? m.moduleFee ?? null,
           _typeCandidate: typeCandidate,
         };
       });
@@ -719,6 +732,11 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
       return;
     }
 
+    if (normalizeModuleType(draft.moduleType) !== 'on-site' && parseModulePrice(draft.modulePrice) === null) {
+      showNotice('Missing details', 'Please enter a module price before saving.');
+      return;
+    }
+
     const normalizedSections = renumberSections(draft.sections)
       .map((section, index) => {
         const normalizedTitle = String(section.title || '').trim();
@@ -786,10 +804,14 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
 
       const normalizedType = normalizeModuleType(draft.moduleType);
       const moduleTypeId = moduleTypeStringToId(normalizedType);
+      const normalizedPrice = normalizedType === 'on-site' ? null : parseModulePrice(draft.modulePrice);
     
       const modulePayload = {
         title: draft.title.trim(),
         summary: draft.summary ? String(draft.summary).trim() : '',
+        modulePrice: normalizedPrice,
+        price: normalizedPrice,
+        module_fee: normalizedPrice,
         moduleType: normalizedType,
         moduleTypeId: moduleTypeId,
         type: normalizedType,
@@ -908,6 +930,11 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
                     <Text style={styles.librarySubtext}>
                       Type: {moduleItem.moduleType || 'Unknown'} • {moduleItem.sectionCount || 0} section(s){linkedModuleDisplay}
                     </Text>
+                    {moduleItem.moduleType !== 'on-site' && moduleItem.modulePrice !== null && moduleItem.modulePrice !== undefined && moduleItem.modulePrice !== '' ? (
+                      <Text style={styles.libraryPriceText}>
+                        Price: RM {Number(moduleItem.modulePrice).toFixed(2)}
+                      </Text>
+                    ) : null}
                   </View>
 
                   <View style={styles.libraryActions}>
@@ -976,6 +1003,28 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
             style={[styles.moduleInput, { marginBottom: 12 }]}
           />
 
+          {draft.moduleType !== 'on-site' ? (
+            <TextInput
+              placeholder="Module Price (RM)"
+              placeholderTextColor={PLACEHOLDER_COLOR}
+              value={String(draft.modulePrice ?? '')}
+              onChangeText={(value) => {
+                setDraft((previous) => ({
+                  ...previous,
+                  modulePrice: value,
+                }));
+              }}
+              keyboardType={Platform.OS === 'web' ? 'decimal-pad' : 'numeric'}
+              style={[styles.moduleInput, { marginBottom: 12 }]}
+            />
+          ) : (
+            <View style={styles.typeHelperBox}>
+              <Text style={styles.typeHelperText}>
+                On Site Training Modules do not use a payment price.
+              </Text>
+            </View>
+          )}
+
           <View style={styles.typeSection}>
             <Text style={styles.typeLabel}>Module Type</Text>
             <View style={styles.typeOptionsRow}>
@@ -993,6 +1042,7 @@ function AdminModuleManagerScreen({ navigation, route, useSharedChrome = false }
                         moduleTypeId: option.id,
                         linkedTpaModuleId:
                           option.value === 'on-site' ? previous.linkedTpaModuleId : null,
+                        modulePrice: option.value === 'on-site' ? '' : previous.modulePrice,
                       }));
                     }}
                   >
@@ -1344,6 +1394,12 @@ const styles = StyleSheet.create({
   librarySubtext: {
     color: '#6A7A67',
     fontSize: 12,
+    marginTop: 4,
+  },
+  libraryPriceText: {
+    color: '#2E6B4D',
+    fontSize: 12,
+    fontWeight: '700',
     marginTop: 4,
   },
   libraryActions: {

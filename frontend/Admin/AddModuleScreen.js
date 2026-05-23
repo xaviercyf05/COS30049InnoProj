@@ -78,6 +78,16 @@ function createId() {
   return `${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 }
 
+function parseModulePrice(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const normalized = String(value).replace(/,/g, '').trim();
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function renumberSections(sections) {
   return sections.map((section, sectionIndex) => ({
     ...section,
@@ -111,6 +121,7 @@ function AddModuleScreen({ navigation }) {
   const [moduleType, setModuleType] = useState('general');
   const [moduleTypeId, setModuleTypeId] = useState(1);
   const [moduleSummary, setModuleSummary] = useState('');
+  const [modulePrice, setModulePrice] = useState('');
   const [linkedTpaModuleId, setLinkedTpaModuleId] = useState(null);
   const [moduleImageUrl, setModuleImageUrl] = useState('');
   const [moduleLocalImageUri, setModuleLocalImageUri] = useState('');
@@ -214,6 +225,7 @@ function AddModuleScreen({ navigation }) {
             ...m,
             moduleId,
             title,
+            modulePrice: m.modulePrice ?? m.price ?? m.module_fee ?? m.moduleFee ?? null,
             _typeCandidate: typeCandidate,
           };
         });
@@ -426,6 +438,11 @@ function AddModuleScreen({ navigation }) {
       return;
     }
 
+    if (normalizeModuleType(moduleType) !== 'on-site' && parseModulePrice(modulePrice) === null) {
+      showNotice('Missing details', 'Please enter a module price before saving.');
+      return;
+    }
+
     const token = await AsyncStorage.getItem('auth_token');
 
     if (!token) {
@@ -489,6 +506,7 @@ function AddModuleScreen({ navigation }) {
 
       const normalizedType = normalizeModuleType(moduleType);
       const normalizedTypeId = MODULE_TYPE_OPTIONS.find((option) => option.value === normalizedType)?.id || 1;
+      const normalizedPrice = normalizedType === 'on-site' ? null : parseModulePrice(modulePrice);
 
       await requestProfileApi('/api/v1/admin/modules', token, {
         method: 'POST',
@@ -501,6 +519,9 @@ function AddModuleScreen({ navigation }) {
           module_type: normalizedType,
           module_type_id: normalizedTypeId,
           summary: moduleSummary.trim(),
+          modulePrice: normalizedPrice,
+          price: normalizedPrice,
+          module_fee: normalizedPrice,
           linkedTpaModuleId: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
           linked_tpa_module_id: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
           prerequisiteModuleId: normalizedType === 'on-site' ? Number(linkedTpaModuleId) : null,
@@ -590,6 +611,23 @@ function AddModuleScreen({ navigation }) {
           style={[styles.moduleInput, { marginBottom: 12 }]}
         />
 
+        {moduleType !== 'on-site' ? (
+          <TextInput
+            placeholder="Module Price (RM)"
+            placeholderTextColor={PLACEHOLDER_COLOR}
+            value={modulePrice}
+            onChangeText={setModulePrice}
+            keyboardType={Platform.OS === 'web' ? 'decimal-pad' : 'numeric'}
+            style={[styles.moduleInput, { marginBottom: 12 }]}
+          />
+        ) : (
+          <View style={styles.typeHelperBox}>
+            <Text style={styles.typeHelperText}>
+              On Site Training Modules do not use a payment price.
+            </Text>
+          </View>
+        )}
+
         <View style={styles.typeSection}>
           <Text style={styles.typeLabel}>Module Type</Text>
           <View style={styles.typeOptionsRow}>
@@ -605,6 +643,9 @@ function AddModuleScreen({ navigation }) {
                     if (option.value !== 'on-site') {
                       setLinkedTpaModuleId(null);
                     }
+                      if (option.value === 'on-site') {
+                        setModulePrice('');
+                      }
                   }}
                 >
                   <Text style={[styles.typeOptionText, isActive && styles.typeOptionTextActive]}>

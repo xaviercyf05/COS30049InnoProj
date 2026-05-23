@@ -1649,13 +1649,15 @@ async function getAnalyticsDashboard(req, res) {
 
     const badgeRowsNormalized = badgeRows.map((row) => {
       const awarded = toSafeNumber(row.AwardedCount, 0);
-      const eligible = toSafeNumber(row.EligibleCount, 0);
+      const eligibleBase = toSafeNumber(row.EligibleCount, 0);
+      const pending = Math.max(eligibleBase - awarded, 0);
+      const eligible = awarded + pending;
 
       return {
         badgeName: row.BadgeName || `Badge ${row.BadgeID}`,
         awarded,
         eligible,
-        pending: Math.max(eligible - awarded, 0),
+        pending,
       };
     });
 

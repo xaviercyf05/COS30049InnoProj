@@ -55,6 +55,19 @@ const DEFAULT_PROFILE_IMAGE =
 
 const DEFAULT_NOTIFICATIONS = [];
 
+const normalizeNotificationText = (value) => String(value || "").trim().toLowerCase();
+
+const isAnnouncementNotification = (item) => {
+  const title = normalizeNotificationText(item?.title);
+  const message = normalizeNotificationText(item?.message);
+
+  return (
+    title === "new announcement" ||
+    title.includes("announcement") ||
+    message.includes("announcement")
+  );
+};
+
 const SCREEN_TITLES = {
   Home: "Dashboard",
   Module: "Training Modules",
@@ -119,7 +132,9 @@ function AppSidebarChrome({ navigation, route, title, children }) {
       await persistNotificationsState(updatedNotifications);
       const token = await AsyncStorage.getItem("auth_token");
       if (token) {
-        await requestProfileApi(`/api/v1/notifications/${id}/read`, token, {
+        const target = updatedNotifications.find((n) => n.id === id);
+        const serverId = target?.serverId ?? target?.id;
+        await requestProfileApi(`/api/v1/notifications/${serverId}/read`, token, {
           method: "POST",
         });
       }
@@ -150,11 +165,12 @@ function AppSidebarChrome({ navigation, route, title, children }) {
       const token = await AsyncStorage.getItem("auth_token");
       if (token) {
         await Promise.allSettled(
-          unreadNotifications.map((item) =>
-            requestProfileApi(`/api/v1/notifications/${item.id}/read`, token, {
+          unreadNotifications.map((item) => {
+            const serverId = item.serverId ?? item.id;
+            return requestProfileApi(`/api/v1/notifications/${serverId}/read`, token, {
               method: "POST",
-            }),
-          ),
+            });
+          }),
         );
       }
 
@@ -203,20 +219,37 @@ function AppSidebarChrome({ navigation, route, title, children }) {
 
         const mergedNotifications = notificationsResponse.data.map(
           (item, index) => {
-            const id = item.notificationId || index + 1;
-            const wasReadLocally = localState.find((n) => n.id === id)?.read;
+            const serverId = item.notificationId ?? item.id ?? null;
+            const time = formatTimeAgo(item.createdAt || item.created_at);
+            const announcementNotification = isAnnouncementNotification(item);
+
+            const localMatch = localState.find((n) => {
+              if (serverId && (n.id === serverId || n.serverId === serverId)) return n;
+
+              // Fallback: match by stable content only so read state survives relogin.
+              return (
+                normalizeNotificationText(n.title) === normalizeNotificationText(item.title || "Notification") &&
+                normalizeNotificationText(n.message) === normalizeNotificationText(item.message || "")
+              );
+            });
 
             return {
-              id: id,
+              id: serverId ?? index + 1,
+              serverId: serverId,
               title: item.title || "Notification",
               message: item.message || "",
-              time: formatTimeAgo(item.createdAt || item.created_at),
-              read: item.isRead || wasReadLocally || false,
+              time,
+              read: item.isRead || (localMatch && localMatch.read) || false,
+              isAnnouncement: announcementNotification,
             };
           },
         );
 
-        setNotifications(mergedNotifications);
+        setNotifications(
+          mergedNotifications.filter(
+            (item) => !item.isAnnouncement || !item.read,
+          ),
+        );
       }
     } catch (_error) {
       setProfile(null);
@@ -583,17 +616,7 @@ function AppSidebarChrome({ navigation, route, title, children }) {
                   </Text>
                 </TouchableOpacity>
 
-                <TouchableOpacity
-                  style={styles.sidebarItem}
-                  onPress={() =>
-                    openAdminFeature(
-                      "Calendar",
-                      "View and manage schedule and training calendar entries.",
-                    )
-                  }
-                >
-                  <Text style={styles.sidebarText}>Calendar</Text>
-                </TouchableOpacity>
+                
 
                 <TouchableOpacity
                   style={styles.sidebarItem}

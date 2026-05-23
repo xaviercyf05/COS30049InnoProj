@@ -67,6 +67,19 @@ const SESSION_STORAGE_KEYS = [
 	'innopapp_auth_username',
 	'innopapp_auth_user_id',
 ];
+
+const normalizeNotificationText = (value) => String(value || '').trim().toLowerCase();
+
+const isAnnouncementNotification = (item) => {
+	const title = normalizeNotificationText(item?.title);
+	const message = normalizeNotificationText(item?.message);
+
+	return (
+		title === 'new announcement' ||
+		title.includes('announcement') ||
+		message.includes('announcement')
+	);
+};
 const GENERAL_MODULE_COUNT = 1;
 const PARK_SPECIFIC_MODULE_COUNT = 5;
 const ON_SITE_MODULE_COUNT = 5;
@@ -554,14 +567,35 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 			]);
 
 			if (Array.isArray(notificationsResponse?.data)) {
+				const savedData = await AsyncStorage.getItem('local_notifications_state');
+				const localState = savedData ? JSON.parse(savedData) : [];
+
 				setNotifications(
-					notificationsResponse.data.map((item, index) => ({
-						id: item.notificationId || index + 1,
-						title: item.title || 'Notification',
-						message: item.message || '',
-						time: 'Recently',
-						read: false,
-					}))
+					notificationsResponse.data.map((item, index) => {
+						const serverId = item.notificationId || item.id || null;
+						const title = item.title || 'Notification';
+						const message = item.message || '';
+						const localMatch = localState.find((n) => {
+							if (serverId && (n.id === serverId || n.serverId === serverId)) {
+								return true;
+							}
+
+							return (
+								normalizeNotificationText(n.title) === normalizeNotificationText(title) &&
+								normalizeNotificationText(n.message) === normalizeNotificationText(message)
+							);
+						});
+
+						return {
+							id: serverId || index + 1,
+							serverId,
+							title,
+							message,
+							time: 'Recently',
+							read: Boolean(item.isRead || localMatch?.read),
+							isAnnouncement: isAnnouncementNotification(item),
+						};
+					})
 				);
 			}
 
@@ -924,12 +958,7 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 								<Text style={styles.sidebarText}>{isAdmin ? 'Badge Management' : 'Badges'}</Text>
 							</TouchableOpacity>
 
-							<TouchableOpacity
-								style={styles.sidebarItem}
-								onPress={() => openAdminFeature('Calendar', 'View and manage schedule and training calendar entries.')}
-							>
-								<Text style={styles.sidebarText}>Calendar</Text>
-							</TouchableOpacity>
+                            
 
 							<TouchableOpacity style={styles.sidebarItem} onPress={openAnnouncements}>
 								<Text style={styles.sidebarText}>{isAdmin ? 'Admin Announcements' : 'Announcements'}</Text>

@@ -8,6 +8,24 @@ import {
   PIE_COLORS
 } from './analyticsApi.js';
 
+function normalizeModuleEnrollmentGroup(label) {
+  const normalized = String(label || '').trim().toLowerCase();
+
+  if (
+    normalized === 'on-site' ||
+    normalized === 'onsite' ||
+    normalized === 'on site' ||
+    normalized.includes('on-site') ||
+    normalized.includes('onsite') ||
+    normalized.includes('on site') ||
+    normalized.includes('on-site training')
+  ) {
+    return 'on-site';
+  }
+
+  return 'tpa-general';
+}
+
 function MetricCard({ label, value, note, accent }) {
   return (
     <View style={styles.metricCard}>
@@ -263,6 +281,7 @@ function SheetTable({ columns, rows, activeSheet }) {
 
 export default function AnalyticsDashboard() {
   const [activeSheet, setActiveSheet] = useState(workbookSheets[0].key);
+  const [moduleEnrollmentTab, setModuleEnrollmentTab] = useState('tpa-general');
   const [analyticsData, setAnalyticsData] = useState(createEmptyAnalyticsData());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -300,6 +319,29 @@ export default function AnalyticsDashboard() {
   const currentSheet = useMemo(() => analyticsData[activeSheet] || createEmptyAnalyticsData()[activeSheet], [activeSheet, analyticsData]);
 
   const activeMeta = workbookSheets.find((sheet) => sheet.key === activeSheet) || workbookSheets[0];
+  const moduleGroupViews = useMemo(() => {
+    const pieSlices = Array.isArray(currentSheet?.pieSlices) ? currentSheet.pieSlices : [];
+    const bars = Array.isArray(currentSheet?.bars) ? currentSheet.bars : [];
+    const sourceItems = pieSlices.length > 0 ? pieSlices : bars;
+
+    const tpaGeneralItems = sourceItems.filter((item) => normalizeModuleEnrollmentGroup(item.label) === 'tpa-general');
+    const onSiteItems = sourceItems.filter((item) => normalizeModuleEnrollmentGroup(item.label) === 'on-site');
+
+    return {
+      'tpa-general': {
+        title: 'TPA + General',
+        subtitle: 'General modules and TPA modules combined',
+        items: tpaGeneralItems,
+      },
+      'on-site': {
+        title: 'On-Site',
+        subtitle: 'On-site training module enrollment share',
+        items: onSiteItems,
+      },
+    };
+  }, [currentSheet?.bars, currentSheet?.pieSlices]);
+
+  const currentModuleGroupView = moduleGroupViews[moduleEnrollmentTab] || moduleGroupViews['tpa-general'];
 
   return (
     <ScrollView style={styles.container} contentContainerStyle={styles.content}>
@@ -360,7 +402,7 @@ export default function AnalyticsDashboard() {
           ))}
       </View>
 
-      {currentSheet.chartType === 'pie' && currentSheet.pieSlices && currentSheet.pieSlices.length > 0 && (
+      {((activeSheet === 'modules' || activeSheet === 'progress') || (currentSheet.chartType === 'pie' && currentSheet.pieSlices && currentSheet.pieSlices.length > 0)) && (
         <View style={styles.sectionCard}>
           <View style={styles.sectionHeader}>
             <View>
@@ -370,21 +412,39 @@ export default function AnalyticsDashboard() {
             <View style={[styles.accentSwatch, { backgroundColor: activeMeta.accent }]} />
           </View>
 
-          <PieChart slices={currentSheet.pieSlices} />
-        </View>
-      )}
+          {(activeSheet === 'modules' || activeSheet === 'progress') ? (
+            <>
+              <View style={styles.inlineTabRow}>
+                {Object.entries(moduleGroupViews).map(([key, view]) => {
+                  const active = moduleEnrollmentTab === key;
 
-      {currentSheet.chartType === 'bar' && currentSheet.bars && currentSheet.bars.length > 0 && (
-        <View style={styles.sectionCard}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>{currentSheet.chartTitle}</Text>
-              <Text style={styles.sectionSubtitle}>{currentSheet.chartSubtitle}</Text>
-            </View>
-            <View style={[styles.accentSwatch, { backgroundColor: activeMeta.accent }]} />
-          </View>
+                  return (
+                    <TouchableOpacity
+                      key={key}
+                      style={[
+                        styles.inlineTab,
+                        active && { backgroundColor: activeMeta.accent, borderColor: activeMeta.accent },
+                      ]}
+                      onPress={() => setModuleEnrollmentTab(key)}
+                    >
+                      <Text style={[styles.inlineTabText, active && styles.inlineTabTextActive]}>{view.title}</Text>
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
 
-          <BarChart bars={currentSheet.bars} accent={activeMeta.accent} />
+              <Text style={styles.sectionSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                {currentModuleGroupView.subtitle}
+              </Text>
+              {activeSheet === 'modules' ? (
+                <PieChart slices={currentModuleGroupView.items} />
+              ) : (
+                <BarChart bars={currentModuleGroupView.items} accent={activeMeta.accent} />
+              )}
+            </>
+          ) : (
+            <PieChart slices={currentSheet.pieSlices} />
+          )}
         </View>
       )}
 
@@ -555,7 +615,29 @@ const styles = StyleSheet.create({
     color: '#6B7466',
     fontSize: 13,
     lineHeight: 18,
-    maxWidth: 260
+    width: '100%'
+  },
+  inlineTabRow: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 10,
+    marginBottom: 12,
+  },
+  inlineTab: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#DDE3D4',
+    backgroundColor: '#F8FAF3',
+  },
+  inlineTabText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#556155',
+  },
+  inlineTabTextActive: {
+    color: '#FFFFFF',
   },
   accentSwatch: {
     width: 16,

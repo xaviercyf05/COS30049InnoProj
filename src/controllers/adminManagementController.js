@@ -1451,6 +1451,16 @@ async function getAnalyticsDashboard(req, res) {
         GROUP BY aa.UserID`
     );
 
+      const [userModuleRows] = await query(
+        `SELECT c.UserID,
+            GROUP_CONCAT(DISTINCT m.ModuleTitle ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC SEPARATOR ', ') AS EnrolledModules
+         FROM Certificates c
+         INNER JOIN Users u ON u.UserID = c.UserID
+         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+         INNER JOIN Modules m ON m.QualificationID = c.QualificationID
+        GROUP BY c.UserID`
+      );
+
     const [moduleRows] = await query(
       `SELECT m.ModuleID,
               m.ModuleTitle,
@@ -1486,6 +1496,11 @@ async function getAnalyticsDashboard(req, res) {
       return accumulator;
     }, {});
 
+    const enrolledModulesByUser = userModuleRows.reduce((accumulator, row) => {
+      accumulator[row.UserID] = row.EnrolledModules || '-';
+      return accumulator;
+    }, {});
+
     const guides = guideRows.map((row) => {
       const progress = toSafeNumber(row.Progress, 0);
       const isActive = Number(row.IsActive) === 1;
@@ -1493,7 +1508,7 @@ async function getAnalyticsDashboard(req, res) {
       return {
         guideId: row.UserID,
         fullName: row.FullName || row.Username || `Guide ${row.UserID}`,
-        assignedPark: row.AssignedPark || 'Unassigned',
+        assignedPark: enrolledModulesByUser[row.UserID] || row.AssignedPark || 'Unassigned',
         contact: row.Email || '-',
         isActive,
         activeStatus: isActive ? 'Active' : 'Inactive',
@@ -1519,7 +1534,7 @@ async function getAnalyticsDashboard(req, res) {
         ? activeGuides.reduce((sum, guide) => sum + guide.progress, 0) / activeGuides.length
         : 0;
 
-    const enrolledGuides = toSafeNumber(enrollmentRows[0] && enrollmentRows[0].EnrolledUsers, 0);
+    const enrolledGuides = activeGuides.length;
     const issuedGuides = toSafeNumber(issuedRows[0] && issuedRows[0].IssuedUsers, 0);
 
     const moduleRowsNormalized = moduleRows.map((row) => {
@@ -1589,7 +1604,7 @@ async function getAnalyticsDashboard(req, res) {
           subtitle: 'Track individual training completion on current modules.',
           chartType: 'bar',
           kpis: [
-            { label: 'Guides enrolled', value: String(enrolledGuides), note: 'Users with certificate records' },
+            { label: 'Guides enrolled', value: String(enrolledGuides), note: 'Matches active park guides' },
             { label: 'Avg. progress', value: formatPercentage(averageProgress), note: 'Across active park guides' }
           ],
           chartTitle: 'Average progress by module',
@@ -1636,7 +1651,7 @@ async function getAnalyticsDashboard(req, res) {
           kpis: [
             { label: 'Total badge types', value: String(badgeRowsNormalized.length), note: 'Active badge definitions' },
             { label: 'Awarded badges', value: String(totalAwardedBadges), note: 'From passed linked assessments' },
-            { label: 'Eligible guides', value: String(totalEligibleGuides), note: 'Based on unlock threshold' },
+            { label: 'Total Eligible badges', value: String(totalEligibleGuides), note: 'Based on unlock threshold' },
             { label: 'Pending', value: String(totalPendingBadges), note: 'Eligible not yet awarded' },
           ],
           chartTitle: 'Badge unlock share',

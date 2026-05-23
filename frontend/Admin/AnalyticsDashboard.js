@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import Svg, { Circle, Path } from 'react-native-svg';
 import {
   fetchAnalyticsDashboardData,
+  fetchAdminParkGuideAccounts,
+  updateAdminUserStatus,
   workbookSheets,
   createEmptyAnalyticsData,
   PIE_COLORS
@@ -30,14 +32,19 @@ function MetricCard({ label, value, note, accent }) {
   return (
     <View style={styles.metricCard}>
       <Text style={[styles.metricLabel, { color: accent }]}>{label}</Text>
-      <Text style={styles.metricValue}>{value}</Text>
+      <Text style={styles.metricValue}>{formatNumber(value)}</Text>
       <Text style={styles.metricNote}>{note}</Text>
     </View>
   );
 }
 
 function BarChart({ bars, accent }) {
-  const maxValue = Math.max(...bars.map((item) => item.value), 1);
+  const numericBars = (bars || []).map((item) => ({
+    label: item.label,
+    value: Number(item.value) || 0
+  }));
+
+  const maxValue = Math.max(...numericBars.map((item) => item.value), 1);
   const chartHeight = 200;
   const barWidth = 40;
   const spacing = 20;
@@ -49,22 +56,19 @@ function BarChart({ bars, accent }) {
       contentContainerStyle={styles.barChartScrollContent}
     >
       <View style={styles.verticalChartBody}>
-        {bars.map((item, index) => {
+        {numericBars.map((item, index) => {
           const heightPercentage = (item.value / maxValue) * 100;
           const barHeight = (heightPercentage / 100) * chartHeight;
 
           return (
             <View key={`${item.label}-${index}`} style={[styles.verticalBarContainer, { marginLeft: index === 0 ? spacing : 0 }]}>
-              <Text style={styles.verticalBarValue}>{item.value}</Text>
+              <Text style={styles.verticalBarValue}>{formatNumber(item.value)}</Text>
               <View
-                style={[
-                  styles.verticalBar,
-                  {
-                    height: barHeight,
-                    width: barWidth,
-                    backgroundColor: accent
-                  }
-                ]}
+                style={{
+                  height: barHeight,
+                  width: barWidth,
+                  backgroundColor: accent
+                }}
               />
               <Text style={styles.verticalBarLabel} numberOfLines={2} ellipsizeMode="tail">
                 {item.label}
@@ -241,12 +245,194 @@ function PieChart({ slices }) {
               </View>
 
               <Text style={styles.legendValue}>
-                {slice.value} ppl · {share}%
+                {formatNumber(slice.value)} ppl · {share}%
               </Text>
             </View>
           );
         })}
       </View>
+    </View>
+  );
+}
+
+function formatNumber(value) {
+  const num = Number(value);
+  if (Number.isFinite(num)) {
+    return new Intl.NumberFormat().format(num);
+  }
+
+  return String(value ?? '');
+}
+
+function formatFriendlyDate(value) {
+  if (!value) {
+    return 'N/A';
+  }
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
+  }
+
+  return parsed.toLocaleDateString();
+}
+
+function ParkGuideManagementCard({
+  accounts,
+  loading,
+  error,
+  onRefresh,
+  onToggleStatus,
+  updatingUserId,
+  searchQuery,
+  onSearchQueryChange,
+  statusFilter,
+  onStatusFilterChange,
+}) {
+  const summary = useMemo(() => {
+    const active = accounts.filter((account) => account.isActive).length;
+    const inactive = accounts.filter((account) => !account.isActive).length;
+
+    return {
+      total: accounts.length,
+      active,
+      inactive,
+    };
+  }, [accounts]);
+
+  const filteredAccounts = useMemo(() => {
+    const query = String(searchQuery || '').trim().toLowerCase();
+
+    return accounts.filter((account) => {
+      if (statusFilter === 'active' && !account.isActive) {
+        return false;
+      }
+
+      if (statusFilter === 'inactive' && account.isActive) {
+        return false;
+      }
+
+      if (!query) {
+        return true;
+      }
+
+      return [account.fullName, account.username, account.email, account.role]
+        .some((field) => String(field || '').toLowerCase().includes(query));
+    });
+  }, [accounts, searchQuery, statusFilter]);
+
+  return (
+    <View style={styles.sectionCard}>
+      <View style={styles.sectionHeader}>
+        <View>
+          <Text style={styles.sectionTitle}>Park Guide Accounts</Text>
+          <Text style={styles.sectionSubtitle}>
+            Search guides and deactivate or Activate accounts from one place.
+          </Text>
+        </View>
+        <TouchableOpacity style={styles.refreshPill} onPress={onRefresh}>
+          <Text style={styles.refreshPillText}>{loading ? 'Refreshing...' : 'Refresh'}</Text>
+        </TouchableOpacity>
+      </View>
+
+      <View style={styles.managementStatsRow}>
+        <View style={styles.managementStatCard}>
+          <Text style={styles.managementStatValue}>{summary.total}</Text>
+          <Text style={styles.managementStatLabel}>Total</Text>
+        </View>
+        <View style={styles.managementStatCard}>
+          <Text style={[styles.managementStatValue, { color: '#2E7D32' }]}>{summary.active}</Text>
+          <Text style={styles.managementStatLabel}>Active</Text>
+        </View>
+        <View style={styles.managementStatCard}>
+          <Text style={[styles.managementStatValue, { color: '#C73737' }]}>{summary.inactive}</Text>
+          <Text style={styles.managementStatLabel}>Inactive</Text>
+        </View>
+      </View>
+
+      <TextInput
+        value={searchQuery}
+        onChangeText={onSearchQueryChange}
+        placeholder="Search by guide name, username, or email"
+        placeholderTextColor="#A3A99B"
+        style={styles.managementSearchInput}
+      />
+
+      <View style={styles.managementFilterRow}>
+        {['all', 'active', 'inactive'].map((item) => {
+          const selected = statusFilter === item;
+          return (
+            <TouchableOpacity
+              key={item}
+              style={[styles.managementFilterChip, selected && styles.managementFilterChipActive]}
+              onPress={() => onStatusFilterChange(item)}
+            >
+              <Text style={[styles.managementFilterChipText, selected && styles.managementFilterChipTextActive]}>
+                {item === 'all' ? 'All' : item === 'active' ? 'Active' : 'Inactive'}
+              </Text>
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+
+      {error ? (
+        <View style={styles.errorBox}>
+          <Text style={styles.errorText}>{error}</Text>
+        </View>
+      ) : null}
+
+      {loading ? (
+        <View style={styles.loadingBox}>
+          <ActivityIndicator size="small" color="#52624F" />
+          <Text style={styles.loadingText}>Loading park guide accounts...</Text>
+        </View>
+      ) : filteredAccounts.length === 0 ? (
+        <View style={styles.emptyStateBox}>
+          <Text style={styles.emptyStateText}>No park guides match the current filters.</Text>
+        </View>
+      ) : (
+        filteredAccounts.map((account) => {
+          const active = account.isActive;
+          const statusLabel = active ? 'Active' : 'Inactive';
+          const statusStyle = active ? styles.accountStatusActive : styles.accountStatusInactive;
+          const nextStatus = active ? 'Inactive' : 'Active';
+
+          return (
+            <View key={account.id} style={styles.accountCard}>
+              <View style={styles.accountTopRow}>
+                <View style={styles.accountMeta}>
+                  <Text style={styles.accountName} numberOfLines={1}>{account.fullName}</Text>
+                  <Text style={styles.accountSubtext} numberOfLines={1}>@{account.username || 'unknown'}</Text>
+                  <Text style={styles.accountSubtext} numberOfLines={2}>{account.email || 'No email provided'}</Text>
+                </View>
+
+                <View style={[styles.accountStatusPill, statusStyle]}>
+                  <Text style={styles.accountStatusText}>{statusLabel}</Text>
+                </View>
+              </View>
+
+              <View style={styles.accountDetailsRow}>
+                <Text style={styles.accountDetailLabel}>Role: <Text style={styles.accountDetailValue}>{account.role || 'User'}</Text></Text>
+                <Text style={styles.accountDetailLabel}>Joined: <Text style={styles.accountDetailValue}>{formatFriendlyDate(account.joinDate)}</Text></Text>
+              </View>
+
+              <View style={styles.accountActionRow}>
+                <TouchableOpacity
+                  style={[styles.accountActionButton, active ? styles.accountActionButtonDanger : styles.accountActionButtonSuccess, updatingUserId === account.id && styles.accountActionButtonDisabled]}
+                  onPress={() => onToggleStatus(account)}
+                  disabled={updatingUserId === account.id}
+                >
+                  {updatingUserId === account.id ? (
+                    <ActivityIndicator size="small" color="#FFFFFF" />
+                  ) : (
+                    <Text style={styles.accountActionButtonText}>{active ? 'Deactivate' : 'Activate'}</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            </View>
+          );
+        })
+      )}
     </View>
   );
 }
@@ -282,12 +468,83 @@ function SheetTable({ columns, rows, activeSheet }) {
   );
 }
 
+function ParkGuideTable({ accounts, onToggleStatus, updatingUserId }) {
+  return (
+    <View style={styles.tableWrap}>
+      <View style={styles.tableHeaderRow}>
+        <Text style={styles.tableHeaderCell}>Park Guide</Text>
+        <Text style={styles.tableHeaderCell}>Username</Text>
+        <Text style={styles.tableHeaderCell}>Email</Text>
+        <Text style={styles.tableHeaderCell}>Role</Text>
+        <Text style={styles.tableHeaderCell}>Joined</Text>
+        <Text style={styles.tableHeaderCell}>Action</Text>
+      </View>
+
+      {(accounts || []).map((account, rowIndex) => (
+        <View key={`account-${account.id || rowIndex}`} style={styles.tableRow}>
+          <Text style={styles.tableCell}>{account.fullName}</Text>
+          <Text style={styles.tableCell}>@{account.username || ''}</Text>
+          <Text style={styles.tableCell}>{account.email || ''}</Text>
+          <Text style={styles.tableCell}>{account.role || 'User'}</Text>
+          <Text style={styles.tableCell}>{formatFriendlyDate(account.joinDate)}</Text>
+          <View style={[styles.tableCell, { alignItems: 'flex-end' }]}>
+            <TouchableOpacity
+              style={[styles.accountActionButton, account.isActive ? styles.accountActionButtonDanger : styles.accountActionButtonSuccess, updatingUserId === account.id && styles.accountActionButtonDisabled]}
+              onPress={() => onToggleStatus(account)}
+              disabled={updatingUserId === account.id}
+            >
+              {updatingUserId === account.id ? (
+                <ActivityIndicator size="small" color="#FFFFFF" />
+              ) : (
+                <Text style={styles.accountActionButtonText}>{account.isActive ? 'Deactivate' : 'Activate'}</Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        </View>
+      ))}
+    </View>
+  );
+}
+
 export default function AnalyticsDashboard() {
   const [activeSheet, setActiveSheet] = useState(workbookSheets[0].key);
   const [moduleEnrollmentTab, setModuleEnrollmentTab] = useState('tpa-general');
   const [analyticsData, setAnalyticsData] = useState(createEmptyAnalyticsData());
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const [parkGuideAccounts, setParkGuideAccounts] = useState([]);
+  const [parkGuideAccountsLoading, setParkGuideAccountsLoading] = useState(false);
+  const [parkGuideAccountsError, setParkGuideAccountsError] = useState('');
+  const [parkGuideSearchQuery, setParkGuideSearchQuery] = useState('');
+  const [parkGuideStatusFilter, setParkGuideStatusFilter] = useState('all');
+  const [updatingUserId, setUpdatingUserId] = useState('');
+
+  const parkGuideSummary = useMemo(() => {
+    const accounts = Array.isArray(parkGuideAccounts) ? parkGuideAccounts : [];
+    const active = accounts.filter((a) => a.isActive).length;
+    const inactive = accounts.filter((a) => !a.isActive).length;
+
+    return {
+      total: accounts.length,
+      active,
+      inactive,
+    };
+  }, [parkGuideAccounts]);
+
+  const filteredParkGuideAccounts = useMemo(() => {
+    const accounts = Array.isArray(parkGuideAccounts) ? parkGuideAccounts : [];
+    const query = String(parkGuideSearchQuery || '').trim().toLowerCase();
+
+    return accounts.filter((account) => {
+      if (parkGuideStatusFilter === 'active' && !account.isActive) return false;
+      if (parkGuideStatusFilter === 'inactive' && account.isActive) return false;
+
+      if (!query) return true;
+
+      return [account.fullName, account.username, account.email, account.role]
+        .some((field) => String(field || '').toLowerCase().includes(query));
+    });
+  }, [parkGuideAccounts, parkGuideSearchQuery, parkGuideStatusFilter]);
 
   useEffect(() => {
     let mounted = true;
@@ -318,6 +575,62 @@ export default function AnalyticsDashboard() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (activeSheet === 'parkGuides') {
+      loadParkGuideAccounts();
+    }
+  }, [activeSheet]);
+
+  const loadParkGuideAccounts = async () => {
+    setParkGuideAccountsLoading(true);
+    setParkGuideAccountsError('');
+
+    try {
+      const accounts = await fetchAdminParkGuideAccounts();
+      setParkGuideAccounts(accounts);
+    } catch (fetchError) {
+      setParkGuideAccounts([]);
+      setParkGuideAccountsError(fetchError.message || 'Failed to load park guide accounts.');
+    } finally {
+      setParkGuideAccountsLoading(false);
+    }
+  };
+
+  const handleToggleParkGuideStatus = async (account) => {
+    if (!account?.userId) {
+      Alert.alert('Missing user', 'This park guide does not have a valid user id.');
+      return;
+    }
+
+    const isActive = Boolean(account.isActive);
+    const nextStatus = isActive ? 'Inactive' : 'Active';
+    const actionLabel = isActive ? 'Deactivate' : 'Activate';
+
+    Alert.alert(
+      `${actionLabel} account`,
+      `Are you sure you want to ${actionLabel.toLowerCase()} ${account.fullName || account.username || 'this park guide'}?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: actionLabel,
+          style: isActive ? 'destructive' : 'default',
+          onPress: async () => {
+            setUpdatingUserId(account.id);
+
+            try {
+              await updateAdminUserStatus(account.userId, nextStatus);
+              await loadParkGuideAccounts();
+            } catch (updateError) {
+              Alert.alert('Update failed', updateError.message || 'Unable to update the account status.');
+            } finally {
+              setUpdatingUserId('');
+            }
+          }
+        }
+      ]
+    );
+  };
 
   const currentSheet = useMemo(() => analyticsData[activeSheet] || createEmptyAnalyticsData()[activeSheet], [activeSheet, analyticsData]);
 
@@ -397,6 +710,8 @@ export default function AnalyticsDashboard() {
         </ScrollView>
       </View>
 
+      
+
       <View style={styles.kpiGrid}>
         {(currentSheet.kpis || [])
           .filter((item) => !(activeSheet === 'progress' && item.label?.toLowerCase().includes('hour')))
@@ -451,7 +766,82 @@ export default function AnalyticsDashboard() {
         </View>
       )}
 
-      {currentSheet.columns && currentSheet.rows && currentSheet.columns.length > 0 && (
+      {activeSheet === 'parkGuides' ? (
+        <View style={styles.sectionCard}>
+          <View style={styles.sectionHeader}>
+            <View>
+              <Text style={styles.sectionTitle}>Park Guide Accounts</Text>
+              <Text style={styles.sectionSubtitle}>Search guides and deactivate or Activate accounts from one place.</Text>
+            </View>
+            <TouchableOpacity style={styles.refreshPill} onPress={loadParkGuideAccounts}>
+              <Text style={styles.refreshPillText}>{parkGuideAccountsLoading ? 'Refreshing...' : 'Refresh'}</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.managementStatsRow}>
+            <View style={styles.managementStatCard}>
+              <Text style={styles.managementStatValue}>{parkGuideSummary.total}</Text>
+              <Text style={styles.managementStatLabel}>Total</Text>
+            </View>
+            <View style={styles.managementStatCard}>
+              <Text style={[styles.managementStatValue, { color: '#2E7D32' }]}>{parkGuideSummary.active}</Text>
+              <Text style={styles.managementStatLabel}>Active</Text>
+            </View>
+            <View style={styles.managementStatCard}>
+              <Text style={[styles.managementStatValue, { color: '#C73737' }]}>{parkGuideSummary.inactive}</Text>
+              <Text style={styles.managementStatLabel}>Inactive</Text>
+            </View>
+          </View>
+
+          <TextInput
+            value={parkGuideSearchQuery}
+            onChangeText={setParkGuideSearchQuery}
+            placeholder="Search by guide name, username, or email"
+            placeholderTextColor="#A3A99B"
+            style={styles.managementSearchInput}
+          />
+
+          <View style={styles.managementFilterRow}>
+            {['all', 'active', 'inactive'].map((item) => {
+              const selected = parkGuideStatusFilter === item;
+              return (
+                <TouchableOpacity
+                  key={item}
+                  style={[styles.managementFilterChip, selected && styles.managementFilterChipActive]}
+                  onPress={() => setParkGuideStatusFilter(item)}
+                >
+                  <Text style={[styles.managementFilterChipText, selected && styles.managementFilterChipTextActive]}>
+                    {item === 'all' ? 'All' : item === 'active' ? 'Active' : 'Inactive'}
+                  </Text>
+                </TouchableOpacity>
+              );
+            })}
+          </View>
+
+          {parkGuideAccountsError ? (
+            <View style={styles.errorBox}>
+              <Text style={styles.errorText}>{parkGuideAccountsError}</Text>
+            </View>
+          ) : null}
+
+          {parkGuideAccountsLoading ? (
+            <View style={styles.loadingBox}>
+              <ActivityIndicator size="small" color="#52624F" />
+              <Text style={styles.loadingText}>Loading park guide accounts...</Text>
+            </View>
+          ) : filteredParkGuideAccounts.length === 0 ? (
+            <View style={styles.emptyStateBox}>
+              <Text style={styles.emptyStateText}>No park guides match the current filters.</Text>
+            </View>
+          ) : (
+            <ParkGuideTable
+              accounts={filteredParkGuideAccounts}
+              onToggleStatus={handleToggleParkGuideStatus}
+              updatingUserId={updatingUserId}
+            />
+          )}
+        </View>
+      ) : currentSheet.columns && currentSheet.rows && currentSheet.columns.length > 0 ? (
         <View style={styles.sectionCard}>
           <SheetTable
             columns={currentSheet.columns}
@@ -459,7 +849,7 @@ export default function AnalyticsDashboard() {
             activeSheet={activeSheet}
           />
         </View>
-      )}
+      ) : null}
     </ScrollView>
   );
 }
@@ -790,4 +1180,170 @@ const styles = StyleSheet.create({
     fontWeight: '800',
     color: '#243424'
   }
+  ,
+  refreshPill: {
+    borderRadius: 999,
+    borderWidth: 1,
+    borderColor: '#DDE3D4',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    backgroundColor: '#F8FAF3'
+  },
+  refreshPillText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#556155'
+  },
+  managementStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    marginBottom: 12
+  },
+  managementStatCard: {
+    alignItems: 'center',
+    flex: 1
+  },
+  managementStatValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#243424'
+  },
+  managementStatLabel: {
+    fontSize: 12,
+    color: '#6B7466'
+  },
+  managementSearchInput: {
+    borderWidth: 1,
+    borderColor: '#E5E9DD',
+    backgroundColor: '#FAFBF8',
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    fontSize: 13,
+    marginBottom: 10
+  },
+  managementFilterRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginBottom: 12
+  },
+  managementFilterChip: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    backgroundColor: '#F8FAF3',
+    borderWidth: 1,
+    borderColor: '#DDE3D4'
+  },
+  managementFilterChipActive: {
+    backgroundColor: '#6E815D',
+    borderColor: '#6E815D'
+  },
+  managementFilterChipText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#556155'
+  },
+  managementFilterChipTextActive: {
+    color: '#FFFFFF'
+  },
+  loadingBox: {
+    paddingVertical: 12,
+    alignItems: 'center'
+  },
+  loadingText: {
+    marginTop: 8,
+    color: '#556155'
+  },
+  emptyStateBox: {
+    paddingVertical: 18,
+    alignItems: 'center'
+  },
+  emptyStateText: {
+    color: '#6B7466'
+  },
+  accountCard: {
+    borderWidth: 1,
+    borderColor: '#E5E9DD',
+    borderRadius: 12,
+    padding: 12,
+    marginBottom: 10,
+    backgroundColor: '#FAFBF8'
+  },
+  accountTopRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between'
+  },
+  accountMeta: {
+    flex: 1,
+    paddingRight: 12
+  },
+  accountName: {
+    fontSize: 14,
+    fontWeight: '800',
+    color: '#243424'
+  },
+  accountSubtext: {
+    fontSize: 12,
+    color: '#556155'
+  },
+  accountStatusPill: {
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 999,
+    borderWidth: 1
+  },
+  accountStatusActive: {
+    backgroundColor: '#E8F5E0',
+    borderColor: '#C6E6C6'
+  },
+  accountStatusInactive: {
+    backgroundColor: '#FFECEC',
+    borderColor: '#F5C6C6'
+  },
+  accountStatusText: {
+    fontSize: 12,
+    fontWeight: '800',
+    color: '#243424'
+  },
+  accountDetailsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 8
+  },
+  accountDetailLabel: {
+    fontSize: 12,
+    color: '#556155'
+  },
+  accountDetailValue: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: '#243424'
+  },
+  accountActionRow: {
+    marginTop: 10,
+    alignItems: 'flex-end'
+  },
+  accountActionButton: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 12,
+    minWidth: 120,
+    alignItems: 'center'
+  },
+  accountActionButtonDanger: {
+    backgroundColor: '#C73737'
+  },
+  accountActionButtonSuccess: {
+    backgroundColor: '#2E7D32'
+  },
+  accountActionButtonDisabled: {
+    opacity: 0.65
+  },
+  accountActionButtonText: {
+    color: '#FFFFFF',
+    fontWeight: '800'
+  },
 });

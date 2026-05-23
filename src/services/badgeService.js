@@ -71,7 +71,35 @@ async function listIssuancesForUserAssessmentPairs(pairs) {
   return map;
 }
 
+async function getIssuanceByUserAssessmentBadge({ userId, assessmentId, badgeId }) {
+  if (!Number.isInteger(Number(userId)) || !Number.isInteger(Number(assessmentId)) || !Number.isInteger(Number(badgeId))) {
+    return null;
+  }
+
+  const [rows] = await query(
+    `SELECT IssuanceID, UserID, BadgeID, AssessmentID, Status, IssuedBy, IssuedAt, Note, CreatedAt, UpdatedAt
+       FROM BadgeIssuances
+      WHERE UserID = ? AND AssessmentID = ? AND BadgeID = ?
+      LIMIT 1`,
+    [Number(userId), Number(assessmentId), Number(badgeId)]
+  );
+
+  return rows && rows[0] ? {
+    issuanceId: rows[0].IssuanceID,
+    userId: rows[0].UserID,
+    badgeId: rows[0].BadgeID,
+    assessmentId: rows[0].AssessmentID,
+    status: rows[0].Status,
+    issuedBy: rows[0].IssuedBy,
+    issuedAt: rows[0].IssuedAt,
+    note: rows[0].Note,
+    createdAt: rows[0].CreatedAt,
+    updatedAt: rows[0].UpdatedAt,
+  } : null;
+}
+
 module.exports = {
   upsertIssuance,
   listIssuancesForUserAssessmentPairs,
+  getIssuanceByUserAssessmentBadge,
 };

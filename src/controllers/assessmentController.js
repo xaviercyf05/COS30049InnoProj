@@ -639,9 +639,11 @@ async function issueBadgeToUser(req, res) {
       [targetUserId, badgeId, issuedBy, assessmentId, eligibility.assessment.ModuleID]
     );
 
+    let issuanceRecord = null;
+
     try {
       // Persist issuance record for frontend/admin audit
-      await badgeService.upsertIssuance({
+      issuanceRecord = await badgeService.upsertIssuance({
         userId: targetUserId,
         assessmentId: assessmentId,
         badgeId: badgeId,
@@ -654,10 +656,40 @@ async function issueBadgeToUser(req, res) {
       // Do not block response to client if issuance persistence fails
     }
 
-    return res.json({ success: true, message: 'Badge issued to user.' });
+    return res.json({ success: true, message: 'Badge issued to user.', data: issuanceRecord });
   } catch (error) {
     console.error('Issue badge to user error:', error);
     return res.status(500).json({ success: false, message: error.message || 'Failed to issue badge.' });
+  }
+}
+
+async function getBadgeIssuanceStatus(req, res) {
+  try {
+    const userId = Number(req.query.userId);
+    const assessmentId = Number(req.query.assessmentId);
+    const badgeId = Number(req.query.badgeId);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
+
+    if (!Number.isInteger(assessmentId) || assessmentId <= 0) {
+      return res.status(400).json({ success: false, message: 'assessmentId is required.' });
+    }
+
+    if (!Number.isInteger(badgeId) || badgeId <= 0) {
+      return res.status(400).json({ success: false, message: 'badgeId is required.' });
+    }
+
+    const issuance = await badgeService.getIssuanceByUserAssessmentBadge({ userId, assessmentId, badgeId });
+
+    return res.json({
+      success: true,
+      data: issuance,
+    });
+  } catch (error) {
+    console.error('Get badge issuance status error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to fetch badge issuance status.' });
   }
 }
 
@@ -734,4 +766,5 @@ module.exports = {
   unlinkAssessmentBadge,
   getAssessmentBadge,
   issueBadgeToUser,
+  getBadgeIssuanceStatus,
 };

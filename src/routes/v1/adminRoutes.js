@@ -786,6 +786,14 @@ router.post(
 );
 
 /**
+ * GET /admin/badges/issuance-status - Get one badge issuance record by user, assessment, and badge.
+ */
+router.get(
+  "/badges/issuance-status",
+  asyncHandler(assessmentController.getBadgeIssuanceStatus)
+);
+
+/**
  * GET /admin/modules/:moduleId/badges - Get badges linked to a module
  */
 router.get(

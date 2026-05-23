@@ -1442,13 +1442,14 @@ async function getAnalyticsDashboard(req, res) {
     );
 
     const [userBadgeRows] = await query(
-      `SELECT aa.UserID,
+      `SELECT bi.UserID,
               GROUP_CONCAT(DISTINCT b.BadgeName ORDER BY b.BadgeName SEPARATOR ', ') AS EarnedBadges
-         FROM AssessmentAttempts aa
-         INNER JOIN Assessments a ON a.AssessmentID = aa.AssessmentID
-         INNER JOIN Badges b ON b.BadgeID = a.BadgeID
-        WHERE aa.Status = 'Passed'
-        GROUP BY aa.UserID`
+         FROM BadgeIssuances bi
+         INNER JOIN Badges b ON b.BadgeID = bi.BadgeID
+         INNER JOIN Users u ON u.UserID = bi.UserID
+         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+        WHERE LOWER(TRIM(COALESCE(bi.Status, ''))) = 'issued'
+        GROUP BY bi.UserID`
     );
 
         const [userModuleEnrollmentRows] = await query(

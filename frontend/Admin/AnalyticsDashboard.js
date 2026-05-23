@@ -66,7 +66,9 @@ function BarChart({ bars, accent }) {
                   }
                 ]}
               />
-              <Text style={styles.verticalBarLabel}>{item.label}</Text>
+              <Text style={styles.verticalBarLabel} numberOfLines={2} ellipsizeMode="tail">
+                {item.label}
+              </Text>
             </View>
           );
         })}
@@ -267,7 +269,8 @@ function SheetTable({ columns, rows, activeSheet }) {
               key={`${activeSheet}-cell-${rowIndex}-${cellIndex}`}
               style={[
                 styles.tableCell,
-                cellIndex === 0 && styles.tableCellStrong
+                cellIndex === 0 && styles.tableCellStrong,
+                activeSheet === 'progress' && cellIndex === 1 && styles.tableCellWrapped
               ]}
             >
               {cell}
@@ -659,6 +662,7 @@ const styles = StyleSheet.create({
   },
   verticalBarContainer: {
     alignItems: 'center',
+    width: 92,
     marginRight: 20
   },
   verticalBar: {
@@ -675,7 +679,12 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#556155',
-    marginTop: 8
+    marginTop: 8,
+    width: 96,
+    textAlign: 'center',
+    flexWrap: 'wrap',
+    lineHeight: 16,
+    minHeight: 32
   },
   pieWrap: {
     marginTop: 8
@@ -772,6 +781,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     color: '#364036',
     fontSize: 13
+  },
+  tableCellWrapped: {
+    lineHeight: 18,
+    flexShrink: 1
   },
   tableCellStrong: {
     fontWeight: '800',

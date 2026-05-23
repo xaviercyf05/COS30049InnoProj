@@ -18,6 +18,7 @@ import { requestProfileApi } from '../Profile/profileApi.js';
 import { fetchAllAssessments, fetchAssessmentAttempts } from '../Assessment/assessmentApi.js';
 
 const DEFAULT_BADGE_ICON = 'https://cdn-icons-png.flaticon.com/512/16779/16779402.png';
+const ON_SITE_COMPLETION_STORAGE_KEY = 'admin_result_verification_on_site_completion_map';
 
 const COLORS = {
 	background: '#FBFCF8',
@@ -191,6 +192,50 @@ const formatLinkedBadgeModules = (badge) => {
 	}
 
 	return String(badge.linkedModuleName || badge.moduleName || badge.moduleTitle || badge.module || '').trim();
+};
+
+const normalizeStoredOnSiteCompletionMap = (value) => {
+	if (!value || typeof value !== 'object' || Array.isArray(value)) {
+		return {};
+	}
+
+	return Object.entries(value).reduce((accumulator, [key, status]) => {
+		const normalizedKey = String(key || '').trim();
+		const normalizedStatus = String(status || '').trim().toLowerCase();
+
+		if (normalizedKey && normalizedStatus) {
+			accumulator[normalizedKey] = normalizedStatus;
+		}
+
+		return accumulator;
+	}, {});
+};
+
+const readStoredOnSiteCompletionMap = async () => {
+	try {
+		const storedValue = await AsyncStorage.getItem(ON_SITE_COMPLETION_STORAGE_KEY);
+		if (!storedValue) {
+			return {};
+		}
+
+		return normalizeStoredOnSiteCompletionMap(JSON.parse(storedValue));
+	} catch (_error) {
+		return {};
+	}
+};
+
+const writeStoredOnSiteCompletionMap = async (completionMap) => {
+	try {
+		const normalizedMap = normalizeStoredOnSiteCompletionMap(completionMap);
+		if (Object.keys(normalizedMap).length === 0) {
+			await AsyncStorage.removeItem(ON_SITE_COMPLETION_STORAGE_KEY);
+			return;
+		}
+
+		await AsyncStorage.setItem(ON_SITE_COMPLETION_STORAGE_KEY, JSON.stringify(normalizedMap));
+	} catch (_error) {
+		// Best-effort cache only.
+	}
 };
 
 const badgeMatchesModule = (badge, moduleId, moduleName) => {
@@ -821,11 +866,6 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const loadOnSiteCompletions = async (moduleId, options = {}) => {
 		const { silent = false } = options;
 
-		if (!moduleId) {
-			setOnSiteCompletionMap({});
-			return;
-		}
-
 		try {
 			const token = await AsyncStorage.getItem('auth_token');
 
@@ -833,7 +873,11 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				throw new Error('Session expired. Please log in again.');
 			}
 
-			const response = await requestProfileApi(`/api/v1/admin/qualifications/on-site-completions?moduleId=${encodeURIComponent(moduleId)}`, token, {
+			const endpoint = moduleId
+				? `/api/v1/admin/qualifications/on-site-completions?moduleId=${encodeURIComponent(moduleId)}`
+				: '/api/v1/admin/qualifications/on-site-completions';
+
+			const response = await requestProfileApi(endpoint, token, {
 				method: 'GET',
 			});
 
@@ -846,10 +890,14 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 				return accumulator;
 			}, {});
+			const storedCompletionMap = await readStoredOnSiteCompletionMap();
 
-			setOnSiteCompletionMap(completionMap);
+			setOnSiteCompletionMap({
+				...completionMap,
+				...storedCompletionMap,
+			});
 		} catch (error) {
-			setOnSiteCompletionMap({});
+			setOnSiteCompletionMap(await readStoredOnSiteCompletionMap());
 			if (!silent) {
 				setStatusType('error');
 				setStatusMessage(error?.message || 'Unable to load on-site completion status right now.');
@@ -1018,13 +1066,22 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		const targetUserId = row.userId;
 
 		const targetOnSiteKey = buildOnSiteCompletionRowKey(targetUserId, targetModuleId);
+		const currentStoredCompletionMap = await readStoredOnSiteCompletionMap();
+		const currentCompletionMap = {
+			...currentStoredCompletionMap,
+			...onSiteCompletionMap,
+		};
+		const nextCompletionMap = targetOnSiteKey
+			? {
+				...currentCompletionMap,
+				[targetOnSiteKey]: completionStatus,
+			}
+			: currentCompletionMap;
 
 		if (completionStatus !== 'completed') {
 			if (targetOnSiteKey) {
-				setOnSiteCompletionMap((previousMap) => ({
-					...previousMap,
-					[targetOnSiteKey]: 'incomplete',
-				}));
+				setOnSiteCompletionMap(nextCompletionMap);
+				await writeStoredOnSiteCompletionMap(nextCompletionMap);
 			}
 
 			setStatusType('success');
@@ -1054,10 +1111,12 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			});
 
 			if (targetOnSiteKey) {
-				setOnSiteCompletionMap((previousMap) => ({
-					...previousMap,
+				const completedCompletionMap = {
+					...currentCompletionMap,
 					[targetOnSiteKey]: 'completed',
-				}));
+				};
+				setOnSiteCompletionMap(completedCompletionMap);
+				await writeStoredOnSiteCompletionMap(completedCompletionMap);
 			}
 
 			setTpaOnSiteQueue((previousQueue) => previousQueue.map((item) => {
@@ -1071,9 +1130,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				return item;
 			}));
 
-			if (selectedOnSiteModule?.moduleId && Number(selectedOnSiteModule.moduleId) === Number(targetModuleId)) {
-				loadOnSiteCompletions(targetModuleId, { silent: true });
-			}
+			await loadOnSiteCompletions(undefined, { silent: true });
 
 			setStatusType('success');
 			setStatusMessage(`On-site module for ${row.parkGuideName || `User ${targetUserId}`} marked as completed.`);
@@ -1218,13 +1275,8 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	}, [isSidebarMode, selectedAssessmentId, isAllAssessmentsSelected]);
 
 	useEffect(() => {
-		if (selectedOnSiteModule?.moduleId) {
-			loadOnSiteCompletions(selectedOnSiteModule.moduleId);
-			return;
-		}
-
-		setOnSiteCompletionMap({});
-	}, [selectedOnSiteModule?.moduleId]);
+		loadOnSiteCompletions(undefined, { silent: true });
+	}, []);
 
 	useEffect(() => {
 		if (!loadingModules && modules.length > 0) {
@@ -1391,20 +1443,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return;
 		}
 
-		if (completionStatus === 'completed') {
-			markOnSiteCompletion(completionStatus);
-			return;
-		}
-
-		setOnSiteCompletionMap((previousMap) => ({
-			...previousMap,
-			[selectedResult.onSiteKey]: completionStatus,
-		}));
-
-		setStatusType('success');
-		setStatusMessage(
-			`On-site module for ${selectedResult.parkGuideName} marked as ${completionStatus}.`
-		);
+		persistOnSiteCompletionForRow(selectedResult, completionStatus);
 	};
 
 	const updateOnSiteCompletionForKey = (row, completionStatus) => {

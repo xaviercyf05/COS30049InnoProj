@@ -1475,15 +1475,25 @@ async function getAnalyticsDashboard(req, res) {
                    WHERE a2.ModuleID = m.ModuleID
                 )
               END AS EnrolledGuides,
-              -- CompletedGuides: count users who passed the module's own assessments
-              (
-                SELECT COUNT(DISTINCT aa3.UserID)
-                  FROM AssessmentAttempts aa3
-                  INNER JOIN Assessments a3 ON a3.AssessmentID = aa3.AssessmentID
-                  INNER JOIN Users u4 ON u4.UserID = aa3.UserID
-                  INNER JOIN Roles r4 ON r4.RoleID = u4.RoleID AND r4.RoleTitle = 'User'
-                 WHERE a3.ModuleID = m.ModuleID AND aa3.Status = 'Passed'
-              ) AS CompletedGuides
+              -- CompletedGuides: for On-Site modules use admin-marked ModuleCompletions,
+              -- otherwise count users who passed the module's own assessments
+              CASE
+                WHEN LOWER(TRIM(COALESCE(mt.TypeName, ''))) = 'on-site training modules' THEN (
+                  SELECT COUNT(DISTINCT mc.UserID)
+                    FROM ModuleCompletions mc
+                    INNER JOIN Users u5 ON u5.UserID = mc.UserID
+                    INNER JOIN Roles r5 ON r5.RoleID = u5.RoleID AND r5.RoleTitle = 'User'
+                   WHERE mc.ModuleID = m.ModuleID AND mc.CompletionStatus = 'completed'
+                )
+                ELSE (
+                  SELECT COUNT(DISTINCT aa3.UserID)
+                    FROM AssessmentAttempts aa3
+                    INNER JOIN Assessments a3 ON a3.AssessmentID = aa3.AssessmentID
+                    INNER JOIN Users u4 ON u4.UserID = aa3.UserID
+                    INNER JOIN Roles r4 ON r4.RoleID = u4.RoleID AND r4.RoleTitle = 'User'
+                   WHERE a3.ModuleID = m.ModuleID AND aa3.Status = 'Passed'
+                )
+              END AS CompletedGuides
          FROM Modules m
          LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
         GROUP BY m.ModuleID, m.ModuleTitle, mt.TypeName

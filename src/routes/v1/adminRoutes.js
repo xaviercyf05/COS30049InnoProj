@@ -725,6 +725,24 @@ router.post(
 );
 
 /**
+ * POST /admin/badges/reject - Mark a badge issuance as rejected (admin action)
+ */
+router.post(
+  "/badges/reject",
+  [
+    body("userId").isInt({ min: 1 }).withMessage("Valid userId is required."),
+    body("badgeId").isInt({ min: 1 }).withMessage("Valid badgeId is required."),
+    body("assessmentId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("assessmentId must be a valid integer."),
+    body("note").optional().isString().withMessage("note must be a string."),
+  ],
+  validate,
+  asyncHandler(assessmentController.rejectBadgeIssuance)
+);
+
+/**
  * GET /admin/qualifications/on-site-completions - Read persisted on-site completion rows
  */
 router.get(

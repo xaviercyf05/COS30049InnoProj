@@ -171,6 +171,8 @@ async function getDashboardModules(req, res) {
         .filter((moduleId) => Number.isInteger(moduleId) && moduleId > 0)
     )];
 
+    const completionByModuleId = await qualificationService.getUserModuleCompletionStatuses(userId, moduleIds);
+
     const [progressRows] = moduleIds.length > 0
       ? await query(
           `SELECT moduleId, progressPercent
@@ -216,6 +218,11 @@ async function getDashboardModules(req, res) {
         unlocked: index === 0,
         assessmentPassed: false,
       };
+      const completionState = completionByModuleId.get(Number(row.ModuleID)) || {
+        completionStatus: 'incomplete',
+        completedAt: null,
+        updatedAt: null,
+      };
 
       return {
         moduleId: row.ModuleID,
@@ -227,6 +234,11 @@ async function getDashboardModules(req, res) {
         qualificationId: row.QualificationID,
         moduleTypeId: row.ModuleTypeID,
         moduleType: row.TypeName || "Unassigned",
+        completionStatus: completionState.completionStatus,
+        onSiteCompletionStatus: completionState.completionStatus,
+        onSiteStatus: completionState.completionStatus,
+        completedAt: completionState.completedAt,
+        completionUpdatedAt: completionState.updatedAt,
         modulePrice: row.ModulePrice === null || row.ModulePrice === undefined ? null : Number(row.ModulePrice),
         image: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
           summary: row.Summary || '',
@@ -352,6 +364,12 @@ async function getModuleDetails(req, res) {
 
     // Get chapters/sections
     const chapters = await materialService.getModuleChapters(moduleId);
+    const completionByModuleId = await qualificationService.getUserModuleCompletionStatuses(userId, [moduleId]);
+    const completionState = completionByModuleId.get(Number(moduleId)) || {
+      completionStatus: 'incomplete',
+      completedAt: null,
+      updatedAt: null,
+    };
 
     return res.json({
       success: true,
@@ -361,6 +379,11 @@ async function getModuleDetails(req, res) {
         title: module.ModuleTitle,
         moduleTypeId: module.ModuleTypeID,
         moduleType: module.TypeName || "Unassigned",
+        completionStatus: completionState.completionStatus,
+        onSiteCompletionStatus: completionState.completionStatus,
+        onSiteStatus: completionState.completionStatus,
+        completedAt: completionState.completedAt,
+        completionUpdatedAt: completionState.updatedAt,
         modulePrice: module.ModulePrice === null || module.ModulePrice === undefined ? null : Number(module.ModulePrice),
         summary: module.Summary || "",
         sections: chapters,

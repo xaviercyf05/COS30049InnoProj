@@ -14,19 +14,44 @@ async function ensureManualCompletionSchema() {
         UserID INT UNSIGNED NOT NULL,
         ModuleID INT UNSIGNED NOT NULL,
         AssessmentID INT UNSIGNED NULL,
+        CompletionStatus ENUM('completed','incomplete') NOT NULL DEFAULT 'completed',
         CompletedBy INT UNSIGNED NULL,
         CompletedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        UpdatedByAdminID INT UNSIGNED NULL,
         UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         UNIQUE KEY uq_module_completions_user_module (UserID, ModuleID),
         CONSTRAINT fk_module_completions_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
         CONSTRAINT fk_module_completions_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE,
         CONSTRAINT fk_module_completions_assessment FOREIGN KEY (AssessmentID) REFERENCES Assessments (AssessmentID) ON DELETE SET NULL,
-        CONSTRAINT fk_module_completions_completed_by FOREIGN KEY (CompletedBy) REFERENCES Users (UserID) ON DELETE SET NULL
+        CONSTRAINT fk_module_completions_completed_by FOREIGN KEY (CompletedBy) REFERENCES Users (UserID) ON DELETE SET NULL,
+        CONSTRAINT fk_module_completions_updated_by_admin FOREIGN KEY (UpdatedByAdminID) REFERENCES Users (UserID) ON DELETE SET NULL
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
     ).catch((error) => {
       manualCompletionSchemaPromise = null;
       throw error;
     });
+
+    const [columns] = await query(
+      `SELECT COLUMN_NAME
+         FROM INFORMATION_SCHEMA.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE()
+          AND TABLE_NAME = 'ModuleCompletions'`
+    );
+
+    const existingColumns = new Set(columns.map((column) => column.COLUMN_NAME));
+    const alterStatements = [];
+
+    if (!existingColumns.has('CompletionStatus')) {
+      alterStatements.push("ADD COLUMN CompletionStatus ENUM('completed','incomplete') NOT NULL DEFAULT 'completed' AFTER AssessmentID");
+    }
+
+    if (!existingColumns.has('UpdatedByAdminID')) {
+      alterStatements.push('ADD COLUMN UpdatedByAdminID INT UNSIGNED NULL AFTER CompletedAt');
+    }
+
+    if (alterStatements.length > 0) {
+      await query(`ALTER TABLE ModuleCompletions ${alterStatements.join(', ')}`);
+    }
   }
 
   return manualCompletionSchemaPromise;
@@ -284,6 +309,52 @@ async function isModuleCompleted(userId, moduleId) {
   return rows.length > 0;
 }
 
+async function getUserModuleCompletionStatuses(userId, moduleIds = []) {
+  await ensureManualCompletionSchema();
+
+  const validModuleIds = [...new Set(
+    (Array.isArray(moduleIds) ? moduleIds : [])
+      .map((value) => Number(value))
+      .filter((value) => Number.isInteger(value) && value > 0)
+  )];
+
+  if (validModuleIds.length === 0) {
+    return new Map();
+  }
+
+  const placeholders = validModuleIds.map(() => '?').join(', ');
+  const [rows] = await query(
+    `SELECT UserID,
+            ModuleID,
+            AssessmentID,
+            CompletionStatus,
+            CompletedBy,
+            CompletedAt,
+            UpdatedByAdminID,
+            UpdatedAt
+       FROM ModuleCompletions
+      WHERE UserID = ?
+        AND ModuleID IN (${placeholders})`,
+    [userId, ...validModuleIds]
+  );
+
+  return new Map(
+    rows.map((row) => [
+      Number(row.ModuleID),
+      {
+        userId: Number(row.UserID),
+        moduleId: Number(row.ModuleID),
+        assessmentId: row.AssessmentID ? Number(row.AssessmentID) : null,
+        completionStatus: String(row.CompletionStatus || 'incomplete').toLowerCase(),
+        completedAt: row.CompletedAt || null,
+        updatedByAdminId: row.UpdatedByAdminID ? Number(row.UpdatedByAdminID) : null,
+        updatedAt: row.UpdatedAt || null,
+        completedBy: row.CompletedBy ? Number(row.CompletedBy) : null,
+      },
+    ])
+  );
+}
+
 async function getModuleCompletions(moduleId = null) {
   await ensureManualCompletionSchema();
 
@@ -315,7 +386,7 @@ async function getModuleCompletions(moduleId = null) {
     userId: Number(row.UserID),
     moduleId: Number(row.ModuleID),
     assessmentId: row.AssessmentID ? Number(row.AssessmentID) : null,
-    completionStatus: 'completed',
+    completionStatus: String(row.CompletionStatus || 'completed').toLowerCase(),
     updatedAt: row.UpdatedAt,
     completedAt: row.CompletedAt,
     note: null,
@@ -331,8 +402,10 @@ async function markModuleCompletedByAdmin(userId, moduleId, completedBy, assessm
     `INSERT INTO ModuleCompletions (UserID, ModuleID, AssessmentID, CompletedBy, CompletedAt)
      VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
      ON DUPLICATE KEY UPDATE
+       CompletionStatus = 'completed',
        AssessmentID = VALUES(AssessmentID),
        CompletedBy = VALUES(CompletedBy),
+       UpdatedByAdminID = VALUES(CompletedBy),
        CompletedAt = CURRENT_TIMESTAMP,
        UpdatedAt = CURRENT_TIMESTAMP`,
     [userId, moduleId, assessmentId, completedBy]
@@ -343,7 +416,8 @@ async function markModuleCompletedByAdmin(userId, moduleId, completedBy, assessm
     moduleId,
     assessmentId,
     completedBy,
-    isCompleted: true,
+    completionStatus: 'completed',
+    completedAt: new Date().toISOString(),
   };
 }
 
@@ -461,6 +535,7 @@ module.exports = {
   isModuleUnlocked,
   isAssessmentPassed,
   isModuleCompleted,
+  getUserModuleCompletionStatuses,
   getModuleCompletions,
   markModuleCompletedByAdmin,
   canIssueBadgeForAssessment,

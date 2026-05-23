@@ -252,11 +252,6 @@ async function getOnSiteCompletions(req, res) {
       success: true,
       data: augmented,
     });
-
-    return res.json({
-      success: true,
-      data: completions,
-    });
   } catch (error) {
     console.error("Get on-site completions error:", error);
     return res.status(500).json({

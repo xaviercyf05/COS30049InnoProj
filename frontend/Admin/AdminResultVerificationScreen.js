@@ -383,7 +383,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 					return [item];
 				}
 
-				const onSiteKey = String(item.userId || item.parkGuideName || item.id || '').trim();
+				const onSiteKey = buildOnSiteCompletionRowKey(item.userId, linkedOnSiteModule.moduleId);
 				const completionStatus = onSiteCompletionMap[onSiteKey] || 'incomplete';
 
 				return [
@@ -501,7 +501,9 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	})();
 	const selectedAssessmentDetailFinalScore = selectedAssessmentDetailResult?.finalScore ?? selectedResult?.finalScore;
 
-	const buildOnSiteCompletionRowKey = (userId, moduleId) => `${String(userId || '').trim()}::${String(moduleId || '').trim()}`;
+	function buildOnSiteCompletionRowKey(userId, moduleId) {
+		return `${String(userId || '').trim()}::${String(moduleId || '').trim()}`;
+	}
 
 	const resolveLinkedOnSiteModule = (tpaModuleId) => {
 		const normalizedTpaModuleId = String(tpaModuleId || '').trim();
@@ -837,7 +839,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 			const completionRows = Array.isArray(response.data) ? response.data : [];
 			const completionMap = completionRows.reduce((accumulator, row) => {
-				const onSiteKey = String(row?.userId || row?.UserID || row?.parkGuideName || row?.userName || '').trim();
+				const onSiteKey = buildOnSiteCompletionRowKey(row?.userId || row?.UserID, row?.moduleId || row?.ModuleID);
 				if (onSiteKey) {
 					accumulator[onSiteKey] = String(row?.completionStatus || 'completed').toLowerCase();
 				}
@@ -1011,23 +1013,25 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return;
 		}
 
-		const onSiteKey = String(row.onSiteKey || row.userId || row.parkGuideName || '').trim();
+		// compute target keys always using user + module id so we scope to a single module
+		const targetModuleId = row.moduleId || row.onSiteModuleId || selectedOnSiteModule?.moduleId;
+		const targetUserId = row.userId;
+
+		const targetOnSiteKey = buildOnSiteCompletionRowKey(targetUserId, targetModuleId);
 
 		if (completionStatus !== 'completed') {
-			if (onSiteKey) {
+			if (targetOnSiteKey) {
 				setOnSiteCompletionMap((previousMap) => ({
 					...previousMap,
-					[onSiteKey]: 'incomplete',
+					[targetOnSiteKey]: 'incomplete',
 				}));
 			}
 
 			setStatusType('success');
-			setStatusMessage(`On-site module for ${row.parkGuideName || onSiteKey} marked as incomplete.`);
+			setStatusMessage(`On-site module for ${row.parkGuideName || targetOnSiteKey} marked as incomplete.`);
 			return;
 		}
 
-		const targetModuleId = row.moduleId || row.onSiteModuleId || selectedOnSiteModule?.moduleId;
-		const targetUserId = row.userId;
 		const targetAssessmentId = row.assessmentId || selectedAssessment?.id || routeAssessmentId || selectedAssessmentId || null;
 
 		if (!targetModuleId || !targetUserId) {
@@ -1049,10 +1053,10 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				body: targetAssessmentId ? { assessmentId: targetAssessmentId } : {},
 			});
 
-			if (onSiteKey) {
+			if (targetOnSiteKey) {
 				setOnSiteCompletionMap((previousMap) => ({
 					...previousMap,
-					[onSiteKey]: 'completed',
+					[targetOnSiteKey]: 'completed',
 				}));
 			}
 

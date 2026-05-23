@@ -461,7 +461,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				return [item];
 			}
 
-			const onSiteKey = String(item.userId || item.parkGuideName || item.id || '').trim();
+			const onSiteKey = buildOnSiteCompletionRowKey(item.userId, linkedOnSiteModule.moduleId);
 			const completionStatus = onSiteCompletionMap[onSiteKey] || 'incomplete';
 
 			return [
@@ -522,7 +522,15 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		});
 	}, [routeModuleId, selectedAssessment, selectedAssessmentModule, selectedResult]);
 	const selectedGuideOnSiteKey = selectedResult
-		? String(selectedResult.onSiteKey || selectedResult.userId || selectedResult.parkGuideName || selectedResult.id || '').trim()
+		? String(
+			selectedResult.onSiteKey
+				|| buildOnSiteCompletionRowKey(selectedResult.userId, selectedResult.moduleId)
+				|| buildOnSiteCompletionRowKey(selectedResult.userId, selectedResult.tpaModuleId)
+				|| selectedResult.userId
+				|| selectedResult.parkGuideName
+				|| selectedResult.id
+				|| ''
+		).trim()
 		: '';
 	const selectedGuideOnSiteCompletion = selectedGuideOnSiteKey
 		? onSiteCompletionMap[selectedGuideOnSiteKey] || 'incomplete'
@@ -548,6 +556,13 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 	function buildOnSiteCompletionRowKey(userId, moduleId) {
 		return `${String(userId || '').trim()}::${String(moduleId || '').trim()}`;
+	}
+
+	function buildBadgeIssuanceStatusKey(userId, assessmentId, badgeId) {
+		return [userId, assessmentId, badgeId]
+			.map((value) => String(value || '').trim())
+			.filter(Boolean)
+			.join('::');
 	}
 
 	const resolveLinkedOnSiteModule = (tpaModuleId) => {
@@ -635,10 +650,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return '';
 		}
 
-		return [selectedIssuanceResult.userId, selectedIssuanceResult.assessmentId || selectedAssessmentId, selectedBadge?.id]
-			.map((value) => String(value || '').trim())
-			.filter(Boolean)
-			.join('::');
+		return buildBadgeIssuanceStatusKey(selectedIssuanceResult.userId, selectedIssuanceResult.assessmentId || selectedAssessmentId, selectedBadge?.id);
 	}, [selectedAssessmentId, selectedBadge?.id, selectedIssuanceResult]);
 	const selectedIssuanceStatus = selectedIssuanceStatusKey
 		? badgeIssuanceStatusMap[selectedIssuanceStatusKey] || 'pending'
@@ -781,6 +793,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		selectedBadge &&
 		selectedIssuanceResult.rowType === 'assessment' &&
 		selectedIssuanceResult.passed &&
+		selectedIssuanceStatus !== 'issued' &&
 		(!selectedOnSiteModule || selectedGuideOnSiteCompletion === 'completed') &&
 		(selectedResult.rowType !== 'on-site' || selectedResult.completionStatus === 'completed')
 	);
@@ -893,8 +906,8 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			const storedCompletionMap = await readStoredOnSiteCompletionMap();
 
 			setOnSiteCompletionMap({
-				...completionMap,
 				...storedCompletionMap,
+				...completionMap,
 			});
 		} catch (error) {
 			setOnSiteCompletionMap(await readStoredOnSiteCompletionMap());
@@ -965,9 +978,31 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				console.debug('Loaded on-site completions', { count: Array.isArray(completionResponse?.data) ? completionResponse.data.length : 0 });
 			}
 			const completionRows = Array.isArray(completionResponse.data) ? completionResponse.data : [];
+			const issuanceStatusMapFromRows = completionRows.reduce((accumulator, row) => {
+				const status = String(row?.badgeIssuanceStatus?.status || '').trim().toLowerCase();
+				const badgeId = row?.badgeIssuanceStatus?.badgeId;
+
+				if (!status || !badgeId) {
+					return accumulator;
+				}
+
+				const issuanceKey = buildBadgeIssuanceStatusKey(row?.userId || row?.UserID, row?.assessmentId || row?.AssessmentID, badgeId);
+				if (issuanceKey) {
+					accumulator[issuanceKey] = status;
+				}
+
+				return accumulator;
+			}, {});
 			const completionKeySet = new Set(
 				completionRows.map((row) => buildOnSiteCompletionRowKey(row?.userId || row?.UserID, row?.moduleId || row?.ModuleID))
 			);
+
+			if (Object.keys(issuanceStatusMapFromRows).length > 0) {
+				setBadgeIssuanceStatusMap((previousMap) => ({
+					...previousMap,
+					...issuanceStatusMapFromRows,
+				}));
+			}
 
 			const attemptsByAssessment = await Promise.all(
 				tpaAssessments.map(async (assessment) => {
@@ -1349,10 +1384,14 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 		setIssuing(true);
 		setStatusMessage('');
-			const issuanceStatusKey = [selectedIssuanceResult.userId, resolvedAssessmentId, selectedBadge?.id]
-				.map((value) => String(value || '').trim())
-				.filter(Boolean)
-				.join('::');
+		const issuanceStatusKey = buildBadgeIssuanceStatusKey(selectedIssuanceResult.userId, resolvedAssessmentId, selectedBadge?.id);
+
+		if (issuanceStatusKey && badgeIssuanceStatusMap[issuanceStatusKey] === 'issued') {
+			setIssuing(false);
+			setStatusType('info');
+			setStatusMessage(`${selectedBadge.name} has already been issued to ${selectedIssuanceResult.parkGuideName}.`);
+			return;
+		}
 
 		try {
 			const token = await AsyncStorage.getItem('auth_token');

@@ -284,17 +284,60 @@ async function markModuleCompletedAdmin(req, res) {
       return res.status(404).json({ success: false, message: "Target user not found." });
     }
 
-    const [moduleRows] = await query("SELECT ModuleID FROM Modules WHERE ModuleID = ? LIMIT 1", [moduleId]);
+    const [moduleRows] = await query(
+      `SELECT m.ModuleID,
+              m.LinkedTpaModuleID,
+              LOWER(TRIM(COALESCE(mt.TypeName, ''))) AS ModuleTypeName
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.ModuleID = ?
+        LIMIT 1`,
+      [moduleId]
+    );
     if (moduleRows.length === 0) {
       return res.status(404).json({ success: false, message: "Module not found." });
     }
 
+    const moduleRow = moduleRows[0];
     const result = await qualificationService.markModuleCompletedByAdmin(
       targetUserId,
       moduleId,
       completedBy,
       assessmentId
     );
+
+    const isOnSiteModule = String(moduleRow.ModuleTypeName || '').includes('on-site');
+    const linkedTpaModuleId = Number(moduleRow.LinkedTpaModuleID) > 0 ? Number(moduleRow.LinkedTpaModuleID) : null;
+
+    if (isOnSiteModule && linkedTpaModuleId) {
+      const [linkedAssessments] = await query(
+        `SELECT a.AssessmentID, a.BadgeID
+           FROM Assessments a
+           INNER JOIN Badges b ON b.BadgeID = a.BadgeID AND b.IsActive = 1
+          WHERE a.ModuleID = ?
+            AND a.BadgeID IS NOT NULL`,
+        [linkedTpaModuleId]
+      );
+
+      for (const linkedAssessment of linkedAssessments) {
+        if (!Number.isInteger(Number(linkedAssessment.AssessmentID)) || !Number.isInteger(Number(linkedAssessment.BadgeID))) {
+          continue;
+        }
+
+        try {
+          await badgeService.upsertIssuance({
+            userId: targetUserId,
+            assessmentId: Number(linkedAssessment.AssessmentID),
+            badgeId: Number(linkedAssessment.BadgeID),
+            status: 'pending',
+            byUserId: completedBy,
+            note: 'On-site module completed; awaiting badge issuance',
+          });
+        } catch (seedError) {
+          console.error('Failed to seed pending badge issuance record:', seedError);
+        }
+      }
+    }
 
     return res.json({
       success: true,

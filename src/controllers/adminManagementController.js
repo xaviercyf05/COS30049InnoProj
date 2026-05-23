@@ -1536,36 +1536,11 @@ async function getAnalyticsDashboard(req, res) {
                    AND LOWER(TRIM(COALESCE(bi.Status, ''))) = 'issued'
               ), 0) AS AwardedCount,
               COALESCE((
-                SELECT COUNT(DISTINCT aa_user.UserID)
-                  FROM Assessments a_user
-                  INNER JOIN AssessmentAttempts aa_user
-                    ON aa_user.AssessmentID = a_user.AssessmentID
-                   AND aa_user.Status = 'Passed'
-                  INNER JOIN Users u_user ON u_user.UserID = aa_user.UserID
-                  INNER JOIN Roles r_user ON r_user.RoleID = u_user.RoleID AND r_user.RoleTitle = 'User'
-                 WHERE a_user.BadgeID = b.BadgeID
-                   AND (
-                     LOWER(TRIM(COALESCE((
-                       SELECT mt.TypeName
-                         FROM Modules m
-                         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-                        WHERE m.ModuleID = a_user.ModuleID
-                        LIMIT 1
-                     ), ''))) <> 'on-site training modules'
-                     OR EXISTS (
-                       SELECT 1
-                         FROM ModuleCompletions mc
-                        WHERE mc.UserID = aa_user.UserID
-                          AND mc.ModuleID = COALESCE((
-                            SELECT m_on.ModuleID
-                              FROM Modules m_on
-                             WHERE m_on.LinkedTpaModuleID = a_user.ModuleID
-                             LIMIT 1
-                          ), a_user.ModuleID)
-                          AND mc.CompletionStatus = 'completed'
-                     )
-                   )
-              ), 0) AS EligibleCount
+                SELECT COUNT(DISTINCT bi_pending.UserID)
+                  FROM BadgeIssuances bi_pending
+                 WHERE bi_pending.BadgeID = b.BadgeID
+                   AND LOWER(TRIM(COALESCE(bi_pending.Status, ''))) = 'pending'
+              ), 0) AS PendingCount
          FROM Badges b
         WHERE b.IsActive = 1
         ORDER BY AwardedCount DESC, b.BadgeID ASC`
@@ -1655,8 +1630,7 @@ async function getAnalyticsDashboard(req, res) {
 
     const badgeRowsNormalized = badgeRows.map((row) => {
       const awarded = toSafeNumber(row.AwardedCount, 0);
-      const eligibleBase = toSafeNumber(row.EligibleCount, 0);
-      const pending = Math.max(eligibleBase - awarded, 0);
+      const pending = toSafeNumber(row.PendingCount, 0);
       const eligible = awarded + pending;
 
       return {
@@ -1740,11 +1714,11 @@ async function getAnalyticsDashboard(req, res) {
           chartType: 'pie',
           kpis: [
             { label: 'Total badge types', value: String(badgeRowsNormalized.length), note: 'Active badge definitions' },
-            { label: 'Awarded badges', value: String(totalAwardedBadges), note: 'From passed linked assessments' },
-            { label: 'Total Eligible Badges', value: String(totalEligibleGuides), note: 'Based on unlock threshold' },
-            { label: 'Pending', value: String(totalPendingBadges), note: 'Eligible not yet awarded' },
+            { label: 'Awarded badges', value: String(totalAwardedBadges), note: 'Admin-issued badges' },
+            { label: 'Total Eligible Badges', value: String(totalEligibleGuides), note: 'Awarded badges + pending badges' },
+            { label: 'Pending', value: String(totalPendingBadges), note: 'On-site Module marked complete but not yet issued by admin' },
           ],
-          chartTitle: 'Badge unlock share',
+          chartTitle: 'Badge issue share',
           chartSubtitle: 'Issued badges for each badge type.',
           pieSlices: badgeRowsNormalized.map((row) => ({
             label: row.badgeName,

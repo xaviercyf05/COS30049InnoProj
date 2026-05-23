@@ -1556,7 +1556,12 @@ async function getAnalyticsDashboard(req, res) {
                        SELECT 1
                          FROM ModuleCompletions mc
                         WHERE mc.UserID = aa_user.UserID
-                          AND mc.ModuleID = a_user.ModuleID
+                          AND mc.ModuleID = COALESCE((
+                            SELECT m_on.ModuleID
+                              FROM Modules m_on
+                             WHERE m_on.LinkedTpaModuleID = a_user.ModuleID
+                             LIMIT 1
+                          ), a_user.ModuleID)
                           AND mc.CompletionStatus = 'completed'
                      )
                    )

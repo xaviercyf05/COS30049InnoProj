@@ -768,21 +768,6 @@ router.post(
 );
 
 /**
- * POST /admin/badges/reject - Mark a badge issuance as rejected (admin action)
- */
-router.post(
-  "/badges/reject",
-  [
-    body("userId").isInt({ min: 1 }).withMessage("Valid userId is required."),
-    body("badgeId").isInt({ min: 1 }).withMessage("Valid badgeId is required."),
-    body("assessmentId").isInt({ min: 1 }).withMessage("Valid assessmentId is required."),
-    body("note").optional().isString().withMessage("note must be a string."),
-  ],
-  validate,
-  asyncHandler(assessmentController.rejectBadgeIssuance)
-);
-
-/**
  * GET /admin/modules/:moduleId/badges - Get badges linked to a module
  */
 router.get(

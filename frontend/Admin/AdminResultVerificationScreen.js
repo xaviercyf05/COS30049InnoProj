@@ -97,15 +97,27 @@ const normalizeModuleStage = (module) => {
 	const rawValue = module?.moduleType || module?.module_type || module?.type || module?.category || module?.moduleTypeId || module?.module_type_id;
 	const normalized = String(rawValue || '').trim().toLowerCase();
 
-	if (rawValue === 1 || rawValue === '1' || normalized === 'general') {
+	if (rawValue === 1 || rawValue === '1' || normalized === 'general' || normalized.includes('general')) {
 		return 'general';
 	}
 
-	if (rawValue === 2 || rawValue === '2' || normalized === 'park-specific' || normalized === 'park_specific' || normalized === 'tpa' || normalized === 'total protected area') {
+	// Treat TPA / park-specific modules broadly by checking substrings
+	if (
+		rawValue === 2 || rawValue === '2' ||
+		normalized === 'park-specific' || normalized === 'park_specific' ||
+		normalized === 'tpa' || normalized.includes('tpa') ||
+		normalized.includes('total protected area') ||
+		normalized.includes('park specific')
+	) {
 		return 'park-specific';
 	}
 
-	if (rawValue === 3 || rawValue === '3' || normalized === 'on-site' || normalized === 'onsite' || normalized === 'on_site' || normalized === 'on site training') {
+	// On-site modules detection (accept various naming conventions)
+	if (
+		rawValue === 3 || rawValue === '3' ||
+		normalized === 'on-site' || normalized === 'onsite' || normalized === 'on_site' ||
+		normalized.includes('on site') || normalized.includes('on-site') || normalized.includes('on-site training') || normalized.includes('on-site training modules')
+	) {
 		return 'on-site';
 	}
 
@@ -239,6 +251,9 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const [modules, setModules] = useState([]);
 	const [loadingModules, setLoadingModules] = useState(true);
 	const [onSiteCompletionMap, setOnSiteCompletionMap] = useState({});
+	const [tpaOnSiteQueue, setTpaOnSiteQueue] = useState([]);
+	const [loadingTpaOnSiteQueue, setLoadingTpaOnSiteQueue] = useState(false);
+	const [queueUpdatingKey, setQueueUpdatingKey] = useState('');
 	const [badges, setBadges] = useState([]);
 	const [loadingBadges, setLoadingBadges] = useState(true);
 	const [searchQuery, setSearchQuery] = useState('');
@@ -371,6 +386,43 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		const passed = selectedResult.passed || Number(selectedResult.finalScore) >= itemPassingScore;
 		return passed ? 'Passed' : 'Failed';
 	})();
+
+	const buildOnSiteCompletionRowKey = (userId, moduleId) => `${String(userId || '').trim()}::${String(moduleId || '').trim()}`;
+
+	const resolveLinkedOnSiteModule = (tpaModuleId) => {
+		const normalizedTpaModuleId = String(tpaModuleId || '').trim();
+		if (!normalizedTpaModuleId) {
+			return null;
+		}
+
+		const explicitLinkedOnSiteModule = onSiteModules.find(
+			(module) => String(getLinkedTpaModuleId(module) || '') === normalizedTpaModuleId
+		);
+
+		if (explicitLinkedOnSiteModule) {
+			return explicitLinkedOnSiteModule;
+		}
+
+		const tpaModuleIndex = modules.findIndex(
+			(module) => String(getNumericModuleId(module) || '') === normalizedTpaModuleId
+		);
+
+		if (tpaModuleIndex >= 0) {
+			const fallbackOnSiteModule = modules.find((module, index) => {
+				if (index <= tpaModuleIndex) {
+					return false;
+				}
+
+				return normalizeModuleStage(module) === 'on-site';
+			});
+
+			if (fallbackOnSiteModule) {
+				return fallbackOnSiteModule;
+			}
+		}
+
+		return onSiteModules[0] || null;
+	};
 
 	const displayedRows = useMemo(() => {
 		const q = String(searchQuery || '').trim().toLowerCase();
@@ -519,6 +571,271 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		}
 	};
 
+	const loadOnSiteCompletions = async (moduleId, options = {}) => {
+		const { silent = false } = options;
+
+		if (!moduleId) {
+			setOnSiteCompletionMap({});
+			return;
+		}
+
+		try {
+			const token = await AsyncStorage.getItem('auth_token');
+
+			if (!token) {
+				throw new Error('Session expired. Please log in again.');
+			}
+
+			const response = await requestProfileApi(`/api/v1/admin/qualifications/on-site-completions?moduleId=${encodeURIComponent(moduleId)}`, token, {
+				method: 'GET',
+			});
+
+			const completionRows = Array.isArray(response.data) ? response.data : [];
+			const completionMap = completionRows.reduce((accumulator, row) => {
+				const onSiteKey = String(row?.userId || row?.UserID || row?.parkGuideName || row?.userName || '').trim();
+				if (onSiteKey) {
+					accumulator[onSiteKey] = String(row?.completionStatus || 'completed').toLowerCase();
+				}
+
+				return accumulator;
+			}, {});
+
+			setOnSiteCompletionMap(completionMap);
+		} catch (error) {
+			setOnSiteCompletionMap({});
+			if (!silent) {
+				setStatusType('error');
+				setStatusMessage(error?.message || 'Unable to load on-site completion status right now.');
+			}
+		}
+	};
+
+	const loadTpaOnSiteQueue = async () => {
+		if (!Array.isArray(modules) || modules.length === 0) {
+			setTpaOnSiteQueue([]);
+			return;
+		}
+
+		setLoadingTpaOnSiteQueue(true);
+
+		// Debug: capture runtime counts to help diagnose empty queue
+		if (typeof console !== 'undefined' && console.debug) {
+			console.debug('TPA queue loader started', { modulesCount: Array.isArray(modules) ? modules.length : 0 });
+		}
+
+		try {
+			const token = await AsyncStorage.getItem('auth_token');
+
+			if (!token) {
+				throw new Error('Session expired. Please log in again.');
+			}
+
+			const tpaModuleIdSet = new Set(
+				parkSpecificModules
+					.map((module) => String(getNumericModuleId(module) || '').trim())
+					.filter(Boolean)
+			);
+
+			if (typeof console !== 'undefined' && console.debug) {
+				console.debug('TPA modules (park-specific) found', { parkSpecificCount: parkSpecificModules.length, tpaModuleIds: Array.from(tpaModuleIdSet) });
+			}
+
+			if (tpaModuleIdSet.size === 0) {
+				setTpaOnSiteQueue([]);
+				return;
+			}
+
+			const { assessments, error: assessmentsError } = await fetchAllAssessments();
+			if (assessmentsError) {
+				throw new Error(assessmentsError);
+			}
+
+			const tpaAssessments = (Array.isArray(assessments) ? assessments : []).filter((assessment) =>
+				tpaModuleIdSet.has(String(assessment?.moduleId || '').trim())
+			);
+
+			if (tpaAssessments.length === 0) {
+				if (typeof console !== 'undefined' && console.debug) {
+					console.debug('No TPA assessments found for park-specific modules', { tpaModuleIdSet: Array.from(tpaModuleIdSet) });
+				}
+				setTpaOnSiteQueue([]);
+				return;
+			}
+
+			const completionResponse = await requestProfileApi('/api/v1/admin/qualifications/on-site-completions', token, {
+				method: 'GET',
+			});
+
+			if (typeof console !== 'undefined' && console.debug) {
+				console.debug('Loaded on-site completions', { count: Array.isArray(completionResponse?.data) ? completionResponse.data.length : 0 });
+			}
+			const completionRows = Array.isArray(completionResponse.data) ? completionResponse.data : [];
+			const completionKeySet = new Set(
+				completionRows.map((row) => buildOnSiteCompletionRowKey(row?.userId || row?.UserID, row?.moduleId || row?.ModuleID))
+			);
+
+			const attemptsByAssessment = await Promise.all(
+				tpaAssessments.map(async (assessment) => {
+					const { attempts, error } = await fetchAssessmentAttempts(assessment.id);
+					return {
+						assessment,
+						attempts: error ? [] : (Array.isArray(attempts) ? attempts : []),
+					};
+				})
+			);
+
+			const queueMap = new Map();
+
+			attemptsByAssessment.forEach(({ assessment, attempts }) => {
+				if (typeof console !== 'undefined' && console.debug) {
+					console.debug('Processing assessment attempts', { assessmentId: assessment?.id, moduleId: assessment?.moduleId, attemptsCount: Array.isArray(attempts) ? attempts.length : 0 });
+				}
+				const tpaModuleId = assessment?.moduleId;
+				const linkedOnSiteModule = resolveLinkedOnSiteModule(tpaModuleId);
+
+				if (!linkedOnSiteModule) {
+					return;
+				}
+
+				attempts.forEach((attempt) => {
+					const passed = attempt?.passed === true
+						|| String(attempt?.status || '').toLowerCase() === 'passed'
+						|| Number(attempt?.score || 0) >= Number(attempt?.passingScore || assessment?.passingScore || 60);
+
+					if (!passed) {
+						return;
+					}
+
+					const userId = Number(attempt?.userId || 0);
+					if (!Number.isFinite(userId) || userId <= 0) {
+						return;
+					}
+
+					const onSiteModuleId = getNumericModuleId(linkedOnSiteModule);
+					if (!Number.isFinite(onSiteModuleId) || onSiteModuleId <= 0) {
+						return;
+					}
+
+					const uniqueKey = `${userId}::${onSiteModuleId}`;
+					const completionKey = buildOnSiteCompletionRowKey(userId, onSiteModuleId);
+					const current = queueMap.get(uniqueKey);
+					const submittedAt = attempt?.submittedAt || null;
+					const currentTimestamp = submittedAt ? new Date(submittedAt).getTime() : 0;
+					const previousTimestamp = current?.lastPassedAt ? new Date(current.lastPassedAt).getTime() : 0;
+
+					if (current && currentTimestamp <= previousTimestamp) {
+						return;
+					}
+
+					queueMap.set(uniqueKey, {
+						id: uniqueKey,
+						userId,
+						parkGuideName: attempt?.userName || `Park Guide ${userId}`,
+						tpaModuleId: Number(tpaModuleId),
+						tpaModuleName: assessment?.title || `TPA Module ${tpaModuleId}`,
+						onSiteModuleId,
+						onSiteModuleName: linkedOnSiteModule?.title || `On-Site Module ${onSiteModuleId}`,
+						assessmentId: assessment?.id || attempt?.assessmentId || null,
+						lastPassedAt: submittedAt,
+						completionStatus: completionKeySet.has(completionKey) ? 'completed' : 'incomplete',
+					});
+				});
+			});
+
+			const queueItems = Array.from(queueMap.values()).sort((a, b) => {
+				if (a.completionStatus !== b.completionStatus) {
+					return a.completionStatus === 'completed' ? 1 : -1;
+				}
+				const aTime = a.lastPassedAt ? new Date(a.lastPassedAt).getTime() : 0;
+				const bTime = b.lastPassedAt ? new Date(b.lastPassedAt).getTime() : 0;
+				return bTime - aTime;
+			});
+
+			setTpaOnSiteQueue(queueItems);
+		} catch (error) {
+			setTpaOnSiteQueue([]);
+			setStatusType('error');
+			setStatusMessage(error?.message || 'Unable to load TPA to on-site verification queue right now.');
+		} finally {
+			setLoadingTpaOnSiteQueue(false);
+		}
+	};
+
+	const persistOnSiteCompletionForRow = async (row, completionStatus) => {
+		if (!row) {
+			return;
+		}
+
+		const onSiteKey = String(row.onSiteKey || row.userId || row.parkGuideName || '').trim();
+
+		if (completionStatus !== 'completed') {
+			if (onSiteKey) {
+				setOnSiteCompletionMap((previousMap) => ({
+					...previousMap,
+					[onSiteKey]: 'incomplete',
+				}));
+			}
+
+			setStatusType('success');
+			setStatusMessage(`On-site module for ${row.parkGuideName || onSiteKey} marked as incomplete.`);
+			return;
+		}
+
+		const targetModuleId = row.moduleId || row.onSiteModuleId || selectedOnSiteModule?.moduleId;
+		const targetUserId = row.userId;
+		const targetAssessmentId = row.assessmentId || selectedAssessment?.id || routeAssessmentId || selectedAssessmentId || null;
+
+		if (!targetModuleId || !targetUserId) {
+			Alert.alert('Missing data', 'The selected on-site row is missing a user or module id.');
+			return;
+		}
+
+		setQueueUpdatingKey(`${targetUserId}::${targetModuleId}`);
+
+		try {
+			const token = await AsyncStorage.getItem('auth_token');
+
+			if (!token) {
+				throw new Error('Session expired. Please log in again.');
+			}
+
+			await requestProfileApi(`/api/v1/admin/users/${targetUserId}/modules/${targetModuleId}/complete`, token, {
+				method: 'POST',
+				body: targetAssessmentId ? { assessmentId: targetAssessmentId } : {},
+			});
+
+			if (onSiteKey) {
+				setOnSiteCompletionMap((previousMap) => ({
+					...previousMap,
+					[onSiteKey]: 'completed',
+				}));
+			}
+
+			setTpaOnSiteQueue((previousQueue) => previousQueue.map((item) => {
+				if (Number(item.userId) === Number(targetUserId) && Number(item.onSiteModuleId) === Number(targetModuleId)) {
+					return {
+						...item,
+						completionStatus: 'completed',
+					};
+				}
+
+				return item;
+			}));
+
+			if (selectedOnSiteModule?.moduleId && Number(selectedOnSiteModule.moduleId) === Number(targetModuleId)) {
+				loadOnSiteCompletions(targetModuleId, { silent: true });
+			}
+
+			setStatusType('success');
+			setStatusMessage(`On-site module for ${row.parkGuideName || `User ${targetUserId}`} marked as completed.`);
+		} catch (error) {
+			setStatusType('error');
+			setStatusMessage(error?.message || 'Unable to mark the on-site module as completed right now.');
+		} finally {
+			setQueueUpdatingKey('');
+		}
+	};
+
 	const loadAssessments = async () => {
 		if (!isSidebarMode) {
 			setLoadingAssessments(false);
@@ -591,6 +908,35 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			loadAttempts(selectedAssessmentId);
 		}
 	}, [isSidebarMode, selectedAssessmentId]);
+
+	useEffect(() => {
+		if (selectedOnSiteModule?.moduleId) {
+			loadOnSiteCompletions(selectedOnSiteModule.moduleId);
+			return;
+		}
+
+		setOnSiteCompletionMap({});
+	}, [selectedOnSiteModule?.moduleId]);
+
+	useEffect(() => {
+		if (!loadingModules && modules.length > 0) {
+			loadTpaOnSiteQueue();
+			return;
+		}
+
+		if (!loadingModules) {
+			setTpaOnSiteQueue([]);
+		}
+	}, [loadingModules, modules]);
+
+	const markOnSiteCompletion = async (completionStatus) => {
+		if (!selectedResult) {
+			Alert.alert('Select a result', 'Please choose a row from the table first.');
+			return;
+		}
+
+		await persistOnSiteCompletionForRow(selectedResult, completionStatus);
+	};
 
 	const handleIssueBadge = async () => {
 		if (!selectedResult) {
@@ -722,6 +1068,11 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return;
 		}
 
+		if (completionStatus === 'completed') {
+			markOnSiteCompletion(completionStatus);
+			return;
+		}
+
 		setOnSiteCompletionMap((previousMap) => ({
 			...previousMap,
 			[selectedResult.onSiteKey]: completionStatus,
@@ -733,20 +1084,12 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		);
 	};
 
-	const updateOnSiteCompletionForKey = (onSiteKey, completionStatus, parkGuideName) => {
-		if (!onSiteKey) {
+	const updateOnSiteCompletionForKey = (row, completionStatus) => {
+		if (!row) {
 			return;
 		}
 
-		setOnSiteCompletionMap((previousMap) => ({
-			...previousMap,
-			[onSiteKey]: completionStatus,
-		}));
-
-		setStatusType('success');
-		setStatusMessage(
-			`On-site module for ${parkGuideName || onSiteKey} marked as ${completionStatus}.`
-		);
+		persistOnSiteCompletionForRow(row, completionStatus);
 	};
 
 	const headerPaddingTop = Platform.OS === 'android'
@@ -896,7 +1239,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 														style={[styles.inlineOnSiteButton, styles.inlineOnSiteButtonComplete]}
 														onPress={() => {
 															setSelectedResultId(item.id);
-															updateOnSiteCompletionForKey(item.onSiteKey, 'completed', item.parkGuideName);
+															updateOnSiteCompletionForKey(item, 'completed');
 														}}
 													>
 														<Text style={styles.inlineOnSiteButtonText}>Complete</Text>
@@ -905,7 +1248,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 														style={[styles.inlineOnSiteButton, styles.inlineOnSiteButtonIncomplete]}
 														onPress={() => {
 															setSelectedResultId(item.id);
-															updateOnSiteCompletionForKey(item.onSiteKey, 'incomplete', item.parkGuideName);
+															updateOnSiteCompletionForKey(item, 'incomplete');
 														}}
 													>
 														<Text style={styles.inlineOnSiteButtonText}>Incomplete</Text>
@@ -974,6 +1317,61 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 						</View>
 					</View>
 				) : null}
+
+				<View style={styles.card}>
+					<Text style={styles.cardTitle}>TPA Completed - On-Site Verification Queue</Text>
+					<Text style={styles.cardSubtitle}>
+						All users who passed a TPA assessment are listed here with their linked on-site module for admin completion.
+					</Text>
+
+					{loadingTpaOnSiteQueue ? (
+						<View style={styles.loadingWrap}>
+							<ActivityIndicator size="small" color={COLORS.olive} />
+							<Text style={styles.loadingText}>Loading TPA completion queue...</Text>
+						</View>
+					) : tpaOnSiteQueue.length === 0 ? (
+						<View style={styles.emptyBox}>
+							<Text style={styles.emptyText}>No completed TPA records with linked on-site modules were found yet.</Text>
+						</View>
+					) : (
+						<View style={styles.queueList}>
+							{tpaOnSiteQueue.map((queueItem) => {
+								const isCompleted = queueItem.completionStatus === 'completed';
+								const queueKey = `${queueItem.userId}::${queueItem.onSiteModuleId}`;
+								const isQueueUpdating = queueUpdatingKey === queueKey;
+
+								return (
+									<View key={queueItem.id} style={styles.queueItem}>
+										<View style={styles.queueItemTopRow}>
+											<Text style={styles.queueGuideName}>{queueItem.parkGuideName}</Text>
+											<View style={[styles.queueStatusPill, isCompleted ? styles.statusPillComplete : styles.statusPillIncomplete]}>
+												<Text style={styles.statusPillText}>{isCompleted ? 'Completed' : 'Pending'}</Text>
+											</View>
+										</View>
+										<Text style={styles.queueMetaText}>TPA: {queueItem.tpaModuleName}</Text>
+										<Text style={styles.queueMetaText}>On-Site: {queueItem.onSiteModuleName}</Text>
+										<Text style={styles.queueMetaText}>Latest pass: {formatDateTime(queueItem.lastPassedAt)}</Text>
+										<TouchableOpacity
+											style={[
+												styles.issueButton,
+												styles.queueCompleteButton,
+												(isCompleted || isQueueUpdating) && styles.issueButtonDisabled,
+											]}
+											onPress={() => persistOnSiteCompletionForRow(queueItem, 'completed')}
+											disabled={isCompleted || isQueueUpdating}
+										>
+											{isQueueUpdating ? (
+												<ActivityIndicator size="small" color="#FFFFFF" />
+											) : (
+												<Text style={styles.issueButtonText}>{isCompleted ? 'Already Completed' : 'Mark On-Site Completed'}</Text>
+											)}
+										</TouchableOpacity>
+									</View>
+								);
+							})}
+						</View>
+					)}
+				</View>
 
 				<View style={styles.card}>
 					<Text style={styles.cardTitle}>Issue Badge</Text>
@@ -1449,6 +1847,44 @@ const styles = StyleSheet.create({
 	tableBody: {
 		maxHeight: 360,
 		marginTop: 6,
+	},
+	queueList: {
+		gap: 10,
+		marginBottom: 6,
+	},
+	queueItem: {
+		backgroundColor: '#F9FBF7',
+		borderWidth: 1,
+		borderColor: COLORS.sageBorder,
+		borderRadius: 14,
+		padding: 12,
+	},
+	queueItemTopRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'space-between',
+		marginBottom: 8,
+		gap: 8,
+	},
+	queueGuideName: {
+		fontSize: 14,
+		fontWeight: '800',
+		color: COLORS.heading,
+		flex: 1,
+	},
+	queueStatusPill: {
+		borderRadius: 999,
+		paddingHorizontal: 10,
+		paddingVertical: 5,
+	},
+	queueMetaText: {
+		fontSize: 12,
+		fontWeight: '600',
+		color: COLORS.subHeading,
+		marginBottom: 4,
+	},
+	queueCompleteButton: {
+		marginTop: 8,
 	},
 	selectedBadgeBox: {
 		flexDirection: 'row',

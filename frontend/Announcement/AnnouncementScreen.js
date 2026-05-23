@@ -58,7 +58,7 @@ function AnnouncementCard({ item }) {
   );
 }
 
-function AnnouncementScreen({ navigation, useSharedChrome = false }) {
+export function AnnouncementScreen({ navigation, useSharedChrome = false }) {
   const insets = useSafeAreaInsets();
   const [announcements, setAnnouncements] = useState([]);
   const [loading, setLoading] = useState(true);

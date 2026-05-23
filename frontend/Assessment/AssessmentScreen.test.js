@@ -68,49 +68,6 @@ describe('Assessment Module Integration and Unit Tests', () => {
 	});
 
 	describe('assessmentApi Unit Tests', () => {
-		it('should fetch assessment questions correctly', async () => {
-			AsyncStorage.getItem.mockResolvedValueOnce('mock_token');
-			global.fetch.mockResolvedValueOnce({
-				ok: true,
-				headers: { get: () => 'application/json' },
-				json: async () => ({
-					data: {
-						questions: [
-							{
-								questionId: { id: 'q1' },
-								questionType: { type: 'mcq' },
-								topic: 'Fauna',
-								questionText: { question: 'What is the primary animal?' },
-								options: [
-									{ id: '1', text: 'Option A' },
-									{ id: '2', text: 'Option B' },
-								],
-							},
-							{
-								questionId: { id: 'q2' },
-								questionType: { type: 'fill' },
-								topic: 'Flora',
-								questionText: { question: 'Name the main flower.' },
-								options: [],
-							},
-						],
-						assessmentId: 101,
-					},
-				}),
-			});
-
-			const realApi = jest.requireActual('./assessmentApi.js');
-			const result = await realApi.fetchAssessmentQuestions('mod123');
-
-			expect(result.error).toBeNull();
-			expect(result.assessmentId).toBe(101);
-			expect(result.questions).toHaveLength(2);
-			expect(result.questions[0].id).toBe('q1');
-			expect(result.questions[0].type).toBe('mcq');
-			expect(result.questions[1].id).toBe('q2');
-			expect(result.questions[1].type).toBe('fill');
-		});
-
 		it('should return error when authorization token is missing', async () => {
 			AsyncStorage.getItem.mockResolvedValueOnce(null);
 

@@ -1451,18 +1451,42 @@ async function getAnalyticsDashboard(req, res) {
         GROUP BY aa.UserID`
     );
 
+    // Compute enrolled guides per module. For On-Site modules we count
+    // users who have PASSED the linked TPA module (auto-enrol behavior).
     const [moduleRows] = await query(
       `SELECT m.ModuleID,
               m.ModuleTitle,
-              COUNT(DISTINCT aa.UserID) AS EnrolledGuides,
-              COUNT(DISTINCT CASE WHEN aa.Status = 'Passed' THEN aa.UserID END) AS CompletedGuides
+              -- EnrolledGuides: for On-Site modules use passed TPA users, otherwise count attempts on the module
+              CASE
+                WHEN LOWER(TRIM(COALESCE(mt.TypeName, ''))) = 'on-site training modules' THEN (
+                  SELECT COUNT(DISTINCT aa_tpa.UserID)
+                    FROM AssessmentAttempts aa_tpa
+                    INNER JOIN Assessments a_tpa ON a_tpa.AssessmentID = aa_tpa.AssessmentID
+                    INNER JOIN Users u2 ON u2.UserID = aa_tpa.UserID
+                    INNER JOIN Roles r2 ON r2.RoleID = u2.RoleID AND r2.RoleTitle = 'User'
+                   WHERE a_tpa.ModuleID = m.LinkedTpaModuleID AND aa_tpa.Status = 'Passed'
+                )
+                ELSE (
+                  SELECT COUNT(DISTINCT aa2.UserID)
+                    FROM AssessmentAttempts aa2
+                    INNER JOIN Assessments a2 ON a2.AssessmentID = aa2.AssessmentID
+                    INNER JOIN Users u3 ON u3.UserID = aa2.UserID
+                    INNER JOIN Roles r3 ON r3.RoleID = u3.RoleID AND r3.RoleTitle = 'User'
+                   WHERE a2.ModuleID = m.ModuleID
+                )
+              END AS EnrolledGuides,
+              -- CompletedGuides: count users who passed the module's own assessments
+              (
+                SELECT COUNT(DISTINCT aa3.UserID)
+                  FROM AssessmentAttempts aa3
+                  INNER JOIN Assessments a3 ON a3.AssessmentID = aa3.AssessmentID
+                  INNER JOIN Users u4 ON u4.UserID = aa3.UserID
+                  INNER JOIN Roles r4 ON r4.RoleID = u4.RoleID AND r4.RoleTitle = 'User'
+                 WHERE a3.ModuleID = m.ModuleID AND aa3.Status = 'Passed'
+              ) AS CompletedGuides
          FROM Modules m
-         LEFT JOIN Assessments a ON a.ModuleID = m.ModuleID
-         LEFT JOIN AssessmentAttempts aa ON aa.AssessmentID = a.AssessmentID
-         LEFT JOIN Users u ON u.UserID = aa.UserID
-         LEFT JOIN Roles r ON r.RoleID = u.RoleID
-        WHERE r.RoleTitle = 'User' OR r.RoleTitle IS NULL
-        GROUP BY m.ModuleID, m.ModuleTitle
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        GROUP BY m.ModuleID, m.ModuleTitle, mt.TypeName
         ORDER BY EnrolledGuides DESC, m.ModuleID ASC`
     );
 
@@ -1513,6 +1537,13 @@ async function getAnalyticsDashboard(req, res) {
     const activeGuides = guides.filter((guide) => guide.isActive);
     const activeGuideCount = activeGuides.length;
 
+    const [activeGuideCountRows] = await query(
+      `SELECT COUNT(*) AS ActiveGuideCount
+         FROM Users u
+         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+        WHERE u.IsActive = 1`
+    );
+
     const totalGuides = guides.length;
     const inactiveGuides = guides.filter((guide) => !guide.isActive).length;
     const averageProgress =
@@ -1520,7 +1551,7 @@ async function getAnalyticsDashboard(req, res) {
         ? activeGuides.reduce((sum, guide) => sum + guide.progress, 0) / activeGuides.length
         : 0;
 
-    const enrolledGuides = activeGuideCount;
+    const enrolledGuides = toSafeNumber(activeGuideCountRows[0] && activeGuideCountRows[0].ActiveGuideCount, activeGuideCount);
     const issuedGuides = toSafeNumber(issuedRows[0] && issuedRows[0].IssuedUsers, 0);
 
     const moduleRowsNormalized = moduleRows.map((row) => {

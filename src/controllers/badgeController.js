@@ -74,6 +74,26 @@ async function addMissingBadgeColumns() {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
   );
 
+  // Create table to track badge issuance workflow/status separate from awarded UserBadges
+  await query(
+    `CREATE TABLE IF NOT EXISTS BadgeIssuances (
+      IssuanceID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+      UserID INT UNSIGNED NOT NULL,
+      BadgeID INT UNSIGNED NOT NULL,
+      AssessmentID INT UNSIGNED NULL,
+      Status ENUM('pending','issued','rejected') NOT NULL DEFAULT 'pending',
+      IssuedBy INT UNSIGNED NULL,
+      IssuedAt DATETIME NULL,
+      Note VARCHAR(1000) NULL,
+      CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+      UNIQUE KEY uq_issuance (UserID, AssessmentID, BadgeID),
+      CONSTRAINT fk_issuance_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
+      CONSTRAINT fk_issuance_badge FOREIGN KEY (BadgeID) REFERENCES Badges (BadgeID) ON DELETE CASCADE,
+      CONSTRAINT fk_issuance_issued_by FOREIGN KEY (IssuedBy) REFERENCES Users (UserID) ON DELETE SET NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci`
+  );
+
   if (existingColumns.has('LinkedModuleID')) {
     await query(
       `INSERT IGNORE INTO BadgeLinkedModules (BadgeID, ModuleID)

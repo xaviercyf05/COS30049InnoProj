@@ -2,6 +2,7 @@ const { query } = require("../config/db");
 const assessmentService = require("../services/assessmentService");
 const notificationService = require("../services/notificationService");
 const qualificationService = require("../services/qualificationService");
+const badgeService = require("../services/badgeService");
 
 /**
  * Controller for assessments - handles questions, submissions, and scoring.
@@ -638,10 +639,78 @@ async function issueBadgeToUser(req, res) {
       [targetUserId, badgeId, issuedBy, assessmentId, eligibility.assessment.ModuleID]
     );
 
+    try {
+      // Persist issuance record for frontend/admin audit
+      await badgeService.upsertIssuance({
+        userId: targetUserId,
+        assessmentId: assessmentId,
+        badgeId: badgeId,
+        status: 'issued',
+        byUserId: issuedBy,
+        note: req.body.note || null,
+      });
+    } catch (e) {
+      console.error('Failed to persist badge issuance record:', e);
+      // Do not block response to client if issuance persistence fails
+    }
+
     return res.json({ success: true, message: 'Badge issued to user.' });
   } catch (error) {
     console.error('Issue badge to user error:', error);
     return res.status(500).json({ success: false, message: error.message || 'Failed to issue badge.' });
+  }
+}
+
+/**
+ * Admin: mark a badge issuance as rejected (for a user and assessment)
+ * POST /admin/badges/reject
+ * Body: { userId, badgeId, assessmentId, note? }
+ */
+async function rejectBadgeIssuance(req, res) {
+  try {
+    const actedBy = req.user.userId;
+    const targetUserId = Number(req.body.userId ?? req.params.userId);
+    const badgeId = Number(req.body.badgeId);
+    const assessmentId = req.body.assessmentId ? Number(req.body.assessmentId) : null;
+    const note = req.body.note ? String(req.body.note).slice(0, 1000) : null;
+
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid target user ID.' });
+    }
+
+    if (!Number.isInteger(badgeId) || badgeId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid badge ID.' });
+    }
+
+    if (!Number.isInteger(assessmentId) || assessmentId <= 0) {
+      return res.status(400).json({ success: false, message: 'assessmentId is required.' });
+    }
+
+    // Ensure user exists
+    const [userRows] = await query('SELECT UserID FROM Users WHERE UserID = ? LIMIT 1', [targetUserId]);
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Target user not found.' });
+    }
+
+    // Ensure badge exists and is active
+    const [badgeRows] = await query('SELECT BadgeID FROM Badges WHERE BadgeID = ? AND IsActive = 1 LIMIT 1', [badgeId]);
+    if (badgeRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Badge not found or inactive.' });
+    }
+
+    const issuance = await badgeService.upsertIssuance({
+      userId: targetUserId,
+      assessmentId: assessmentId,
+      badgeId: badgeId,
+      status: 'rejected',
+      byUserId: actedBy,
+      note,
+    });
+
+    return res.json({ success: true, message: 'Badge issuance marked as rejected.', data: issuance });
+  } catch (error) {
+    console.error('Reject badge issuance error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to reject badge issuance.' });
   }
 }
 

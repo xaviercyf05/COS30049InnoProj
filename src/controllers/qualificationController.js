@@ -2,6 +2,7 @@ const { query } = require("../config/db");
 const qualificationService = require("../services/qualificationService");
 const notificationService = require("../services/notificationService");
 const asyncHandler = require("../utils/asyncHandler");
+const badgeService = require("../services/badgeService");
 
 /**
  * Controller for qualifications - handles enrollment, viewing, and progress tracking.
@@ -218,6 +219,39 @@ async function getOnSiteCompletions(req, res) {
     }
 
     const completions = await qualificationService.getModuleCompletions(moduleId);
+
+    // Attach persisted badge issuance status for rows that have an assessmentId
+    const pairs = completions
+      .filter((r) => r.assessmentId && Number.isInteger(Number(r.userId)))
+      .map((r) => ({ userId: Number(r.userId), assessmentId: Number(r.assessmentId) }));
+
+    const issuanceMap = await badgeService.listIssuancesForUserAssessmentPairs(pairs);
+
+    const augmented = completions.map((row) => {
+      if (row.assessmentId && Number.isInteger(Number(row.userId))) {
+        const key = `${row.userId}:${row.assessmentId}`;
+        const issuance = issuanceMap[key] || null;
+        return {
+          ...row,
+          badgeIssuanceStatus: issuance
+            ? {
+                status: issuance.status,
+                badgeId: issuance.badgeId,
+                issuedBy: issuance.issuedBy,
+                issuedAt: issuance.issuedAt,
+                note: issuance.note,
+              }
+            : { status: 'pending' },
+        };
+      }
+
+      return { ...row, badgeIssuanceStatus: null };
+    });
+
+    return res.json({
+      success: true,
+      data: augmented,
+    });
 
     return res.json({
       success: true,

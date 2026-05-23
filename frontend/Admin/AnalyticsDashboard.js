@@ -456,7 +456,7 @@ function SheetTable({ columns, rows, activeSheet }) {
               style={[
                 styles.tableCell,
                 cellIndex === 0 && styles.tableCellStrong,
-                activeSheet === 'progress' && cellIndex === 1 && styles.tableCellWrapped
+                activeSheet === 'progress' && (cellIndex === 1 || cellIndex === 3) && styles.tableCellWrapped
               ]}
             >
               {cell}

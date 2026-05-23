@@ -1911,8 +1911,8 @@ const styles = StyleSheet.create({
 		borderColor: COLORS.success,
 	},
 	inlineOnSiteButtonIncomplete: {
-		backgroundColor: COLORS.failBg,
-		borderColor: '#F1B9B9',
+		backgroundColor: COLORS.error,
+		borderColor: COLORS.error,
 	},
 	inlineOnSiteButtonText: {
 		fontSize: 10,
@@ -2269,7 +2269,7 @@ const styles = StyleSheet.create({
 		backgroundColor: COLORS.success,
 	},
 	onSiteIncompleteButton: {
-		backgroundColor: COLORS.failBg,
+		backgroundColor: COLORS.error,
 	},
 	issueButtonText: {
 		fontSize: 14,

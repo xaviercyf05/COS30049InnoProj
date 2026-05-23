@@ -245,7 +245,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const [results, setResults] = useState(initialResults);
 	const [selectedResultId, setSelectedResultId] = useState(routeSelectedResultId || initialResults[0]?.id || null);
 	const [assessments, setAssessments] = useState([]);
-	const [selectedAssessmentId, setSelectedAssessmentId] = useState(routeAssessmentId);
+	const [selectedAssessmentId, setSelectedAssessmentId] = useState(routeAssessmentId || 'all');
 	const [loadingAssessments, setLoadingAssessments] = useState(!hasRouteData);
 	const [loadingAttempts, setLoadingAttempts] = useState(false);
 	const [modules, setModules] = useState([]);
@@ -263,6 +263,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const [statusType, setStatusType] = useState('info');
 	const [note, setNote] = useState('');
 	const [selectedBadgeId, setSelectedBadgeId] = useState(null);
+	const isAllAssessmentsSelected = String(selectedAssessmentId || '').toLowerCase() === 'all';
 
 	const selectedResultBase = results.find((item) => item.id === selectedResultId) || results[0] || null;
 	const selectedAssessment = assessments.find((assessment) => String(assessment.id) === String(selectedAssessmentId))
@@ -283,14 +284,6 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			|| route?.params?.passingScore
 			|| 60
 	) || 60;
-	const selectedModuleIdForBadge = String(
-		selectedResultBase?.moduleId
-			|| selectedAssessmentModule?.moduleId
-			|| selectedAssessment?.moduleId
-			|| routeModuleId
-			|| ''
-	).trim();
-	const selectedModuleNameForBadge = resolvedModuleName;
 	const parkSpecificModules = useMemo(
 		() => modules.filter((module) => normalizeModuleStage(module) === 'park-specific'),
 		[modules]
@@ -301,6 +294,10 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	);
 	const selectedOnSiteModule = useMemo(() => {
 		if (!selectedAssessmentModule || normalizeModuleStage(selectedAssessmentModule) !== 'park-specific') {
+			if (isAllAssessmentsSelected) {
+				return onSiteModules[0] || null;
+			}
+
 			return null;
 		}
 
@@ -332,7 +329,25 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		}
 
 		return onSiteModules[0] || null;
-	}, [modules, onSiteModules, selectedAssessmentModule]);
+	}, [isAllAssessmentsSelected, modules, onSiteModules, selectedAssessmentModule]);
+	const onSiteModuleByTpaModuleId = useMemo(() => {
+		const mapping = new Map();
+
+		onSiteModules.forEach((module) => {
+			const linkedTpaModuleId = String(getLinkedTpaModuleId(module) || '').trim();
+			const moduleId = String(getNumericModuleId(module) || '').trim();
+
+			if (linkedTpaModuleId) {
+				mapping.set(linkedTpaModuleId, module);
+			}
+
+			if (moduleId && !mapping.has(moduleId)) {
+				mapping.set(moduleId, module);
+			}
+		});
+
+		return mapping;
+	}, [onSiteModules]);
 	const verificationRows = useMemo(() => {
 		const baseRows = results.map((item) => ({
 			...item,
@@ -341,7 +356,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			completionStatus: item.passed || Number(item.finalScore) >= Number(item.passingScore || resolvedPassingScore) ? 'completed' : 'incomplete',
 		}));
 
-		if (!selectedOnSiteModule) {
+		if (!selectedOnSiteModule && !isAllAssessmentsSelected) {
 			return baseRows;
 		}
 
@@ -349,6 +364,14 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			const passed = item.passed || Number(item.finalScore) >= Number(item.passingScore || resolvedPassingScore);
 
 			if (!passed) {
+				return [item];
+			}
+
+		const linkedOnSiteModule = isAllAssessmentsSelected
+			? onSiteModuleByTpaModuleId.get(String(item.moduleId || '').trim()) || selectedOnSiteModule
+			: selectedOnSiteModule;
+
+			if (!linkedOnSiteModule) {
 				return [item];
 			}
 
@@ -361,15 +384,57 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 					...item,
 					id: `onsite-${item.id}`,
 					rowType: 'on-site',
-					moduleName: selectedOnSiteModule.title || `Module ${selectedOnSiteModule.moduleId}`,
-					moduleId: selectedOnSiteModule.moduleId,
+					moduleName: linkedOnSiteModule.title || `Module ${linkedOnSiteModule.moduleId}`,
+					moduleId: linkedOnSiteModule.moduleId,
+					tpaModuleId: item.moduleId,
+					tpaModuleName: item.moduleName,
 					completionStatus,
 					onSiteKey,
 				},
 			];
 		});
-	}, [onSiteCompletionMap, results, resolvedModuleName, resolvedPassingScore, selectedOnSiteModule]);
+	}, [isAllAssessmentsSelected, onSiteCompletionMap, onSiteModuleByTpaModuleId, results, resolvedModuleName, resolvedPassingScore, selectedOnSiteModule]);
 	const selectedResult = verificationRows.find((item) => item.id === selectedResultId) || verificationRows[0] || selectedResultBase;
+	const selectedIssuanceResult = useMemo(() => {
+		if (!selectedResult) {
+			return null;
+		}
+
+		if (selectedResult.rowType !== 'on-site') {
+			return selectedResult;
+		}
+
+		return verificationRows.find(
+			(item) =>
+				item.rowType === 'assessment' &&
+				String(item.userId || '').trim() === String(selectedResult.userId || '').trim() &&
+				String(item.moduleId || '').trim() === String(selectedResult.tpaModuleId || selectedResult.moduleId || '').trim()
+		) || null;
+	}, [selectedResult, verificationRows]);
+	const selectedModuleCandidatesForBadge = useMemo(() => {
+		const candidates = [
+			{ moduleId: selectedResult?.moduleId, moduleName: selectedResult?.moduleName },
+			{ moduleId: selectedResult?.tpaModuleId, moduleName: selectedResult?.tpaModuleName },
+			{ moduleId: selectedAssessmentModule?.moduleId, moduleName: selectedAssessmentModule?.title },
+			{ moduleId: selectedAssessment?.moduleId, moduleName: selectedAssessment?.title },
+			{ moduleId: routeModuleId, moduleName: selectedAssessmentModule?.title || selectedAssessment?.title || selectedResult?.moduleName },
+		];
+
+		const seen = new Set();
+		return candidates.filter((candidate) => {
+			const key = `${String(candidate.moduleId || '').trim()}::${String(candidate.moduleName || '').trim().toLowerCase()}`;
+			if (key === '::') {
+				return false;
+			}
+
+			if (seen.has(key)) {
+				return false;
+			}
+
+			seen.add(key);
+			return true;
+		});
+	}, [routeModuleId, selectedAssessment, selectedAssessmentModule, selectedResult]);
 	const selectedGuideOnSiteKey = selectedResult
 		? String(selectedResult.onSiteKey || selectedResult.userId || selectedResult.parkGuideName || selectedResult.id || '').trim()
 		: '';
@@ -466,12 +531,123 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return [];
 		}
 
-		return badges.filter((badge) => badgeMatchesModule(badge, selectedModuleIdForBadge, selectedModuleNameForBadge));
-	}, [badges, selectedModuleIdForBadge, selectedModuleNameForBadge, selectedResult]);
+		return badges.filter((badge) => selectedModuleCandidatesForBadge.some((candidate) => badgeMatchesModule(badge, candidate.moduleId, candidate.moduleName)));
+	}, [badges, selectedModuleCandidatesForBadge, selectedResult]);
 	const selectedBadge = useMemo(
 		() => eligibleBadges.find((badge) => String(badge.id) === String(selectedBadgeId)) || eligibleBadges[0] || null,
 		[eligibleBadges, selectedBadgeId]
 	);
+	const tableColumns = [
+		{
+			key: 'guide',
+			label: 'Park Guide',
+			headerStyle: styles.colGuide,
+			headerTextStyle: styles.headerCellLeft,
+			cellStyle: styles.rowGuide,
+			renderCell: (item, isSelected) => (
+				<Text style={[styles.rowCell, styles.rowGuide, isSelected && styles.rowCellSelected]} numberOfLines={2}>
+					{item.parkGuideName}
+				</Text>
+			),
+		},
+		{
+			key: 'module',
+			label: 'Module',
+			headerStyle: styles.colModule,
+			headerTextStyle: styles.headerCellLeft,
+			cellStyle: styles.rowModule,
+			renderCell: (item) => (
+				<Text style={[styles.rowCell, styles.rowModule]} numberOfLines={2}>
+					{item.moduleName}
+				</Text>
+			),
+		},
+		{
+			key: 'date',
+			label: 'Date Attempt',
+			headerStyle: styles.colDate,
+			headerTextStyle: styles.headerCellLeft,
+			cellStyle: styles.rowDate,
+			renderCell: (item) => (
+				<Text style={[styles.rowCell, styles.rowDate, item.rowType === 'on-site' && styles.rowDashCell]} numberOfLines={2}>
+					{item.rowType === 'on-site' ? '-' : formatDateTime(item.dateAttempt)}
+				</Text>
+			),
+		},
+		{
+			key: 'time',
+			label: 'Time Used',
+			headerStyle: styles.colTime,
+			headerTextStyle: styles.headerCellCenterFull,
+			cellStyle: styles.rowTime,
+			renderCell: (item) => (
+				<Text style={[styles.rowCell, styles.rowTime, item.rowType === 'on-site' && styles.rowDashCell]}>{item.rowType === 'on-site' ? '-' : formatDuration(item.timeUsedSeconds)}</Text>
+			),
+		},
+		{
+			key: 'score',
+			label: 'Final Score',
+			headerStyle: styles.colScore,
+			headerTextStyle: styles.headerCellCenterFull,
+			cellStyle: styles.rowScore,
+			renderCell: (item, _isSelected, passed) => (
+				item.rowType === 'on-site' ? (
+					<Text style={[styles.rowCell, styles.rowScoreDash]} numberOfLines={1}>-</Text>
+				) : (
+					<View style={[styles.scorePill, passed ? styles.scorePillPass : styles.scorePillFail]}>
+						<Text style={[styles.scorePillText, passed ? styles.scorePillTextPass : styles.scorePillTextFail]}>
+							{Number.isFinite(Number(item.finalScore)) ? `${Number(item.finalScore)}%` : String(item.finalScore || 'N/A')}
+						</Text>
+					</View>
+				)
+			),
+		},
+		{
+			key: 'status',
+			label: 'Status',
+			headerStyle: styles.colStatus,
+			headerTextStyle: styles.headerCellCenterFull,
+			cellStyle: styles.rowStatus,
+			renderCell: (item, _isSelected, _passed, statusLabel, statusStyle) => (
+				<View style={[styles.statusPill, statusStyle]}>
+					<Text style={styles.statusPillText}>{statusLabel}</Text>
+				</View>
+			),
+		},
+		{
+			key: 'action',
+			label: 'Action',
+			headerStyle: styles.colAction,
+			headerTextStyle: styles.headerCellCenterFull,
+			cellStyle: styles.rowActionCell,
+			renderCell: (item) => (
+				item.rowType === 'on-site' ? (
+					<View style={styles.inlineOnSiteActions}>
+						<TouchableOpacity
+							style={[styles.inlineOnSiteButton, styles.inlineOnSiteButtonComplete]}
+							onPress={() => {
+								setSelectedResultId(item.id);
+								updateOnSiteCompletionForKey(item, 'completed');
+							}}
+						>
+							<Text style={styles.inlineOnSiteButtonText}>Complete</Text>
+						</TouchableOpacity>
+						<TouchableOpacity
+							style={[styles.inlineOnSiteButton, styles.inlineOnSiteButtonIncomplete]}
+							onPress={() => {
+								setSelectedResultId(item.id);
+								updateOnSiteCompletionForKey(item, 'incomplete');
+							}}
+						>
+							<Text style={styles.inlineOnSiteButtonText}>Incomplete</Text>
+						</TouchableOpacity>
+					</View>
+				) : (
+					<Text style={styles.rowActionPlaceholder}>—</Text>
+				)
+			),
+		},
+	];
 
 	useEffect(() => {
 		if (eligibleBadges.length === 0) {
@@ -485,10 +661,10 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		}
 	}, [eligibleBadges, selectedBadgeId]);
 	const canIssueBadge = Boolean(
-		selectedResult?.userId &&
+		selectedIssuanceResult?.userId &&
 		selectedBadge &&
-		selectedResult.rowType === 'assessment' &&
-		selectedResult.passed &&
+		selectedIssuanceResult.rowType === 'assessment' &&
+		selectedIssuanceResult.passed &&
 		(!selectedOnSiteModule || selectedGuideOnSiteCompletion === 'completed') &&
 		(selectedResult.rowType !== 'on-site' || selectedResult.completionStatus === 'completed')
 	);
@@ -851,7 +1027,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			setAssessments(normalizedAssessments);
 
 			if (!selectedAssessmentId && normalizedAssessments.length > 0) {
-				setSelectedAssessmentId(String(normalizedAssessments[0].id));
+				setSelectedAssessmentId('all');
 			}
 		} catch (error) {
 			setAssessments([]);
@@ -887,6 +1063,60 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		}
 	};
 
+	const loadAllAttempts = async () => {
+		if (!isSidebarMode) {
+			return;
+		}
+
+		setLoadingAttempts(true);
+		try {
+			const { assessments: fetchedAssessments, error } = await fetchAllAssessments();
+			if (error) throw new Error(error);
+
+			const allAssessments = Array.isArray(fetchedAssessments) ? fetchedAssessments : [];
+			if (allAssessments.length === 0) {
+				setResults([]);
+				setSelectedResultId(null);
+				return;
+			}
+
+			const attemptsByAssessment = await Promise.all(
+				allAssessments.map(async (assessment) => {
+					const { attempts, error: attemptsError } = await fetchAssessmentAttempts(assessment.id);
+					return {
+						assessment,
+						attempts: attemptsError ? [] : (Array.isArray(attempts) ? attempts : []),
+					};
+				})
+			);
+
+			const mergedAttempts = attemptsByAssessment.flatMap(({ assessment, attempts }) =>
+				attempts.map((attempt, index) => normalizeResult({
+					...attempt,
+					assessmentId: attempt.assessmentId || assessment.id,
+					moduleId: attempt.moduleId || assessment.moduleId,
+					moduleName: attempt.moduleName || assessment.title,
+				}, index))
+			);
+
+			const sortedAttempts = mergedAttempts.sort((a, b) => {
+				const aTime = a.dateAttempt ? new Date(a.dateAttempt).getTime() : 0;
+				const bTime = b.dateAttempt ? new Date(b.dateAttempt).getTime() : 0;
+				return bTime - aTime;
+			});
+
+			setResults(sortedAttempts);
+			setSelectedResultId(sortedAttempts[0]?.id || null);
+		} catch (error) {
+			setResults([]);
+			setSelectedResultId(null);
+			setStatusType('error');
+			setStatusMessage(error?.message || 'Unable to load all attempts right now.');
+		} finally {
+			setLoadingAttempts(false);
+		}
+	};
+
 	useEffect(() => {
 		loadBadges();
 		loadModules();
@@ -905,9 +1135,14 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 	useEffect(() => {
 		if (isSidebarMode && selectedAssessmentId) {
+			if (isAllAssessmentsSelected) {
+				loadAllAttempts();
+				return;
+			}
+
 			loadAttempts(selectedAssessmentId);
 		}
-	}, [isSidebarMode, selectedAssessmentId]);
+	}, [isSidebarMode, selectedAssessmentId, isAllAssessmentsSelected]);
 
 	useEffect(() => {
 		if (selectedOnSiteModule?.moduleId) {
@@ -939,12 +1174,12 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	};
 
 	const handleIssueBadge = async () => {
-		if (!selectedResult) {
+		if (!selectedIssuanceResult) {
 			Alert.alert('Select a result', 'Please choose a row from the table first.');
 			return;
 		}
 
-		if (selectedResult.rowType !== 'assessment') {
+		if (selectedIssuanceResult.rowType !== 'assessment') {
 			Alert.alert(
 				'Select assessment result',
 				'Issue the badge from the passed TPA assessment row after the linked on-site module is marked completed.'
@@ -976,7 +1211,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		// Never replace it with a linked on-site assessment id, because issuance
 		// is performed against the passed assessment row selected by admin.
 		const resolvedAssessmentId =
-			selectedResult?.assessmentId ||
+			selectedIssuanceResult?.assessmentId ||
 			selectedAssessment?.id ||
 			routeAssessmentId ||
 			selectedAssessmentId ||
@@ -999,9 +1234,9 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 						const payload = {
 							badgeId: selectedBadge.id,
-							userId: selectedResult.userId,
+							userId: selectedIssuanceResult.userId,
 							assessmentId: resolvedAssessmentId,
-							attemptId: selectedResult.attemptId,
+							attemptId: selectedIssuanceResult.attemptId,
 							note: note.trim(),
 						};
 
@@ -1020,7 +1255,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 							}
 
 							setStatusType('success');
-							setStatusMessage(`${selectedBadge.name} has been issued to ${selectedResult.parkGuideName}.`);
+							setStatusMessage(`${selectedBadge.name} has been issued to ${selectedIssuanceResult.parkGuideName}.`);
 						} catch (err) {
 							// Re-throw to outer catch handler for unified handling, but attach payload for debugging
 							err.requestPayload = payload;
@@ -1121,7 +1356,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 					<Text style={styles.heroKicker}>Park Guide Result Table</Text>
 					<Text style={styles.heroTitleSmall}>{summaryCount} {summaryCount === 1 ? 'entry' : 'entries'} ready for review</Text>
 					<Text style={styles.heroSubtitle}>
-						Select an assessment row to review the result. When it passes, an on-site row appears below it for manual completion before issuing the badge.
+						Select an assessment row to review the result.
 					</Text>
 				</View>
 
@@ -1139,6 +1374,14 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 							</View>
 						) : (
 							<ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.assessmentList}>
+								<TouchableOpacity
+									style={[styles.assessmentChip, isAllAssessmentsSelected && styles.assessmentChipActive]}
+									onPress={() => setSelectedAssessmentId('all')}
+								>
+									<Text style={[styles.assessmentChipText, isAllAssessmentsSelected && styles.assessmentChipTextActive]}>
+										All
+									</Text>
+								</TouchableOpacity>
 								{assessments.map((assessment) => {
 									const isSelectedAssessment = String(assessment.id) === String(selectedAssessmentId);
 
@@ -1179,206 +1422,124 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 							})}
 						</View>
 					</View>
-					<View style={styles.tableHeader}>
-						<Text style={[styles.headerCell, styles.colGuide]}>Park Guide</Text>
-						<Text style={[styles.headerCell, styles.colModule]}>Module</Text>
-						<Text style={[styles.headerCell, styles.colDate]}>Date Attempt</Text>
-						<Text style={[styles.headerCell, styles.colTime]}>Time Used</Text>
-						<Text style={[styles.headerCell, styles.colScore]}>Final Score</Text>
-						<Text style={[styles.headerCell, styles.colStatus]}>Status</Text>
-
-					</View>
-
-					{loadingAttempts ? (
-						<View style={styles.emptyBox}>
-							<Text style={styles.emptyText}>Loading attempts...</Text>
-						</View>
-					) : verificationRows.length === 0 ? (
-						<View style={styles.emptyBox}>
-							<Text style={styles.emptyText}>
-								{isSidebarMode ? 'Select an assessment to view attempts.' : 'No result entries available yet.'}
-							</Text>
-						</View>
-					) : (
-						<ScrollView style={styles.tableBody} showsVerticalScrollIndicator={true}>
-							{displayedRows.map((item) => {
-								const isSelected = item.id === selectedResult?.id;
-								const itemPassingScore = Number(item.passingScore || resolvedPassingScore);
-								const passed = item.passed || Number(item.finalScore) >= itemPassingScore;
-								const statusLabel = item.rowType === 'on-site'
-									? item.completionStatus === 'completed' ? 'Completed' : 'Incomplete'
-									: passed ? 'Passed' : 'Failed';
-								const statusStyle = item.rowType === 'on-site'
-									? item.completionStatus === 'completed' ? styles.statusPillComplete : styles.statusPillIncomplete
-									: passed ? styles.statusPillComplete : styles.statusPillIncomplete;
-
-								return (
-									<TouchableOpacity
-										key={item.id}
-										style={[styles.tableRow, isSelected && styles.tableRowSelected]}
-										onPress={() => setSelectedResultId(item.id)}
-									>
-										<Text style={[styles.rowCell, styles.rowGuide, isSelected && styles.rowCellSelected]} numberOfLines={2}>
-											{item.parkGuideName}
-										</Text>
-										<Text style={[styles.rowCell, styles.rowModule]} numberOfLines={2}>{item.moduleName}</Text>
-										<Text style={[styles.rowCell, styles.rowDate]} numberOfLines={2}>{formatDateTime(item.dateAttempt)}</Text>
-										<Text style={[styles.rowCell, styles.rowTime]}>{formatDuration(item.timeUsedSeconds)}</Text>
-										<View style={[styles.scorePill, passed ? styles.scorePillPass : styles.scorePillFail]}>
-											<Text style={[styles.scorePillText, passed ? styles.scorePillTextPass : styles.scorePillTextFail]}>
-												{Number.isFinite(Number(item.finalScore)) ? `${Number(item.finalScore)}%` : String(item.finalScore || 'N/A')}
-											</Text>
-										</View>
-											<View style={[styles.statusPill, statusStyle]}>
-												<Text style={styles.statusPillText}>{statusLabel}</Text>
-										</View>
-
-											{item.rowType === 'on-site' ? (
-												<View style={styles.inlineOnSiteActions}>
-													<TouchableOpacity
-														style={[styles.inlineOnSiteButton, styles.inlineOnSiteButtonComplete]}
-														onPress={() => {
-															setSelectedResultId(item.id);
-															updateOnSiteCompletionForKey(item, 'completed');
-														}}
-													>
-														<Text style={styles.inlineOnSiteButtonText}>Complete</Text>
-													</TouchableOpacity>
-													<TouchableOpacity
-														style={[styles.inlineOnSiteButton, styles.inlineOnSiteButtonIncomplete]}
-														onPress={() => {
-															setSelectedResultId(item.id);
-															updateOnSiteCompletionForKey(item, 'incomplete');
-														}}
-													>
-														<Text style={styles.inlineOnSiteButtonText}>Incomplete</Text>
-													</TouchableOpacity>
-												</View>
-											) : null}
-
-									</TouchableOpacity>
-								);
-							})}
-						</ScrollView>
-					)}
-				</View>
-
-				{selectedResult ? (
-					<View style={styles.detailCard}>
-						<Text style={styles.cardTitle}>Selected Result</Text>
-						<View style={styles.detailGrid}>
-							<View style={styles.detailItem}>
-								<Text style={styles.detailLabel}>Park Guide Name</Text>
-								<Text style={styles.detailValue}>{selectedResult.parkGuideName}</Text>
-							</View>
-							<View style={styles.detailItem}>
-								<Text style={styles.detailLabel}>Module Name</Text>
-								<Text style={styles.detailValue}>{selectedResult.moduleName}</Text>
-							</View>
-							<View style={styles.detailItem}>
-								<Text style={styles.detailLabel}>Date Attempt</Text>
-								<Text style={styles.detailValue}>{formatDateTime(selectedResult.dateAttempt)}</Text>
-							</View>
-							<View style={styles.detailItem}>
-								<Text style={styles.detailLabel}>Status</Text>
-								<Text style={styles.detailValue}>{selectedResultStatus}</Text>
-							</View>
-							<View style={styles.detailItem}>
-								<Text style={styles.detailLabel}>Final Score</Text>
-								<Text style={styles.detailValue}>{Number.isFinite(Number(selectedResult.finalScore)) ? `${Number(selectedResult.finalScore)}%` : String(selectedResult.finalScore || 'N/A')}</Text>
-							</View>
-						</View>
-					</View>
-				) : null}
-
-				{selectedResult?.rowType === 'on-site' ? (
-					<View style={styles.card}>
-						<Text style={styles.cardTitle}>On-Site Module Review</Text>
-						<Text style={styles.cardSubtitle}>
-							Mark this on-site module as completed or incomplete before issuing the badge.
-						</Text>
-						<View style={styles.statusSummaryRow}>
-							<Text style={styles.fieldLabel}>Current Status</Text>
-							<Text style={styles.fieldValue}>{selectedResult.completionStatus === 'completed' ? 'Completed' : 'Incomplete'}</Text>
-						</View>
-						<View style={styles.actionRow}>
-							<TouchableOpacity
-								style={[styles.issueButton, styles.onSiteCompleteButton]}
-								onPress={() => updateOnSiteCompletion('completed')}
-							>
-								<Text style={styles.issueButtonText}>Mark Completed</Text>
-							</TouchableOpacity>
-							<TouchableOpacity
-								style={[styles.rejectButton, styles.onSiteIncompleteButton]}
-								onPress={() => updateOnSiteCompletion('incomplete')}
-							>
-								<Text style={styles.rejectButtonText}>Mark Incomplete</Text>
-							</TouchableOpacity>
-						</View>
-					</View>
-				) : null}
-
-				<View style={styles.card}>
-					<Text style={styles.cardTitle}>TPA Completed - On-Site Verification Queue</Text>
-					<Text style={styles.cardSubtitle}>
-						All users who passed a TPA assessment are listed here with their linked on-site module for admin completion.
-					</Text>
-
-					{loadingTpaOnSiteQueue ? (
-						<View style={styles.loadingWrap}>
-							<ActivityIndicator size="small" color={COLORS.olive} />
-							<Text style={styles.loadingText}>Loading TPA completion queue...</Text>
-						</View>
-					) : tpaOnSiteQueue.length === 0 ? (
-						<View style={styles.emptyBox}>
-							<Text style={styles.emptyText}>No completed TPA records with linked on-site modules were found yet.</Text>
-						</View>
-					) : (
-						<View style={styles.queueList}>
-							{tpaOnSiteQueue.map((queueItem) => {
-								const isCompleted = queueItem.completionStatus === 'completed';
-								const queueKey = `${queueItem.userId}::${queueItem.onSiteModuleId}`;
-								const isQueueUpdating = queueUpdatingKey === queueKey;
-
-								return (
-									<View key={queueItem.id} style={styles.queueItem}>
-										<View style={styles.queueItemTopRow}>
-											<Text style={styles.queueGuideName}>{queueItem.parkGuideName}</Text>
-											<View style={[styles.queueStatusPill, isCompleted ? styles.statusPillComplete : styles.statusPillIncomplete]}>
-												<Text style={styles.statusPillText}>{isCompleted ? 'Completed' : 'Pending'}</Text>
+						<View style={styles.tableSurface}>
+							{loadingAttempts ? (
+								<View style={styles.emptyBox}>
+									<Text style={styles.emptyText}>Loading attempts...</Text>
+								</View>
+							) : verificationRows.length === 0 ? (
+								<View style={styles.emptyBox}>
+									<Text style={styles.emptyText}>
+										{isSidebarMode ? 'Select an assessment to view attempts.' : 'No result entries available yet.'}
+									</Text>
+								</View>
+							) : (
+								<ScrollView
+									style={styles.tableSurfaceScroll}
+									contentContainerStyle={styles.tableSurfaceContent}
+									showsVerticalScrollIndicator={true}
+									stickyHeaderIndices={[0]}
+								>
+									<View style={styles.tableHeader}>
+										{tableColumns.map((column) => (
+											<View key={column.key} style={[styles.tableCell, styles.tableHeaderCell, column.headerStyle]}>
+												<Text style={[styles.headerCell, column.headerTextStyle, styles.headerCellFull]} numberOfLines={1}>
+													{column.label}
+												</Text>
 											</View>
-										</View>
-										<Text style={styles.queueMetaText}>TPA: {queueItem.tpaModuleName}</Text>
-										<Text style={styles.queueMetaText}>On-Site: {queueItem.onSiteModuleName}</Text>
-										<Text style={styles.queueMetaText}>Latest pass: {formatDateTime(queueItem.lastPassedAt)}</Text>
-										<TouchableOpacity
-											style={[
-												styles.issueButton,
-												styles.queueCompleteButton,
-												(isCompleted || isQueueUpdating) && styles.issueButtonDisabled,
-											]}
-											onPress={() => persistOnSiteCompletionForRow(queueItem, 'completed')}
-											disabled={isCompleted || isQueueUpdating}
-										>
-											{isQueueUpdating ? (
-												<ActivityIndicator size="small" color="#FFFFFF" />
-											) : (
-												<Text style={styles.issueButtonText}>{isCompleted ? 'Already Completed' : 'Mark On-Site Completed'}</Text>
-											)}
-										</TouchableOpacity>
+										))}
 									</View>
-								);
-							})}
+
+									{displayedRows.map((item) => {
+										const isSelected = item.id === selectedResult?.id;
+										const itemPassingScore = Number(item.passingScore || resolvedPassingScore);
+										const passed = item.passed || Number(item.finalScore) >= itemPassingScore;
+										const statusLabel = item.rowType === 'on-site'
+											? item.completionStatus === 'completed' ? 'Completed' : 'Incomplete'
+											: passed ? 'Passed' : 'Failed';
+										const statusStyle = item.rowType === 'on-site'
+											? item.completionStatus === 'completed' ? styles.statusPillComplete : styles.statusPillIncomplete
+											: passed ? styles.statusPillComplete : styles.statusPillIncomplete;
+
+										return (
+											<TouchableOpacity
+												key={item.id}
+												style={[styles.tableRow, isSelected && styles.tableRowSelected]}
+												onPress={() => setSelectedResultId(item.id)}
+											>
+												{tableColumns.map((column) => (
+													<View key={`${item.id}-${column.key}`} style={[styles.tableCell, column.cellStyle]}>
+														{item.rowType === 'on-site' && (column.key === 'date' || column.key === 'time' || column.key === 'score')
+															? (
+																<Text style={[styles.rowCell, column.key === 'score' ? styles.rowScoreDash : styles.rowTime]} numberOfLines={1}>-</Text>
+															)
+															: column.renderCell(item, isSelected, passed, statusLabel, statusStyle)}
+													</View>
+												))}
+											</TouchableOpacity>
+										);
+									})}
+								</ScrollView>
+							)}
 						</View>
-					)}
 				</View>
 
 				<View style={styles.card}>
-					<Text style={styles.cardTitle}>Issue Badge</Text>
+					<Text style={styles.cardTitle}>Badge Issuance Review</Text>
 					<Text style={styles.cardSubtitle}>
-						Below are the badges linked to this module. Admin only needs to issue or reject the result.
+						Review the selected result, linked on-site module, and available badge before issuing.
 					</Text>
+					{selectedResult ? (
+						<View style={styles.issueSummaryCard}>
+							<Text style={styles.issueSummaryTitle}>Selected Result Details</Text>
+							<View style={styles.reviewSection}>
+								<Text style={styles.reviewSectionTitle}>User</Text>
+								<View style={styles.detailGrid}>
+									<View style={styles.detailItem}>
+										<Text style={styles.detailLabel}>Park Guide</Text>
+										<Text style={styles.detailValue}>{selectedResult.parkGuideName}</Text>
+									</View>
+									<View style={styles.detailItem}>
+										<Text style={styles.detailLabel}>User ID</Text>
+										<Text style={styles.detailValue}>{selectedResult.userId || 'N/A'}</Text>
+									</View>
+								</View>
+							</View>
+							<View style={styles.reviewSection}>
+								<Text style={styles.reviewSectionTitle}>Assessment</Text>
+								<View style={styles.detailGrid}>
+									<View style={styles.detailItem}>
+										<Text style={styles.detailLabel}>Module</Text>
+										<Text style={styles.detailValue}>{selectedResult.moduleName}</Text>
+									</View>
+									<View style={styles.detailItem}>
+										<Text style={styles.detailLabel}>Status</Text>
+										<Text style={styles.detailValue}>{selectedResultStatus}</Text>
+									</View>
+									<View style={styles.detailItem}>
+										<Text style={styles.detailLabel}>Final Score</Text>
+										<Text style={styles.detailValue}>{Number.isFinite(Number(selectedResult.finalScore)) ? `${Number(selectedResult.finalScore)}%` : String(selectedResult.finalScore || 'N/A')}</Text>
+									</View>
+								</View>
+							</View>
+							<View style={styles.reviewSection}>
+								<Text style={styles.reviewSectionTitle}>Linked On-Site Module</Text>
+								<View style={styles.detailGrid}>
+									<View style={styles.detailItem}>
+										<Text style={styles.detailLabel}>On-Site Module</Text>
+										<Text style={styles.detailValue}>{selectedOnSiteModule?.title || selectedResult.onSiteModuleName || 'None linked'}</Text>
+									</View>
+									<View style={styles.detailItem}>
+										<Text style={styles.detailLabel}>On-Site Completion</Text>
+										<Text style={styles.detailValue}>{selectedGuideOnSiteCompletion === 'completed' ? 'Completed' : 'Incomplete'}</Text>
+									</View>
+								</View>
+							</View>
+						</View>
+					) : null}
 
+					<View style={styles.reviewSection}>
+						<Text style={styles.reviewSectionTitle}>Badge Selection</Text>
 					{loadingBadges ? (
 						<View style={styles.loadingWrap}>
 							<ActivityIndicator size="small" color={COLORS.olive} />
@@ -1427,6 +1588,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 							)}
 						</>
 					)}
+					</View>
 
 					<Text style={styles.label}>Issue Note</Text>
 					<TextInput
@@ -1566,13 +1728,27 @@ const styles = StyleSheet.create({
 		padding: 14,
 		marginBottom: 14,
 	},
+	tableSurface: {
+		borderRadius: 14,
+		overflow: 'hidden',
+	},
+	tableSurfaceScroll: {
+		maxHeight: 360,
+	},
+	tableSurfaceContent: {
+		paddingBottom: 2,
+	},
 	tableHeader: {
 		flexDirection: 'row',
 		alignItems: 'center',
+		backgroundColor: COLORS.white,
+		paddingHorizontal: 10,
 		paddingBottom: 10,
 		borderBottomWidth: 1,
 		borderBottomColor: COLORS.sageBorder,
 		marginBottom: 8,
+		width: '100%',
+		zIndex: 1,
 	},
 	headerCell: {
 		fontSize: 11,
@@ -1581,15 +1757,28 @@ const styles = StyleSheet.create({
 		letterSpacing: 0.5,
 		color: COLORS.muted,
 	},
-	colGuide: { flex: 1.25 },
-	colModule: { flex: 1.05 },
-	colDate: { flex: 1.25 },
-	colTime: { flex: 0.8 },
-	colScore: { flex: 0.75, textAlign: 'center' },
-	colStatus: { flex: 0.9, textAlign: 'center' },
+		headerCellLeft: {
+			textAlign: 'left',
+		},
+		headerCellCenter: {
+			textAlign: 'center',
+		},
+		headerCellCenterFull: {
+			flex: 1,
+			width: '100%',
+			textAlign: 'center',
+		},
+	colGuide: { flex: 1.2 },
+	colModule: { flex: 1.0 },
+	colDate: { flex: 0.9 },
+	colTime: { flex: 0.7 },
+	colScore: { flex: 0.7, textAlign: 'center' },
+	colStatus: { flex: 0.85, textAlign: 'center' },
+	colAction: { flex: 0.9, textAlign: 'center' },
 	tableRow: {
 		flexDirection: 'row',
 		alignItems: 'center',
+			width: '100%',
 		paddingVertical: 12,
 		paddingHorizontal: 10,
 		borderRadius: 14,
@@ -1597,6 +1786,29 @@ const styles = StyleSheet.create({
 		backgroundColor: '#FAFBF8',
 		borderWidth: 1,
 		borderColor: COLORS.sageBorder,
+	},
+	tableCell: {
+			flexBasis: 0,
+			minWidth: 0,
+		justifyContent: 'center',
+			paddingRight: 8,
+	},
+		tableHeaderCell: {
+			paddingRight: 8,
+			justifyContent: 'center',
+			paddingVertical: 12,
+			alignItems: 'flex-start',
+		},
+		headerCellFull: {
+			flex: 1,
+		},
+	rowScore: {
+		flex: 0.7,
+		alignItems: 'center',
+	},
+	rowStatus: {
+		flex: 0.85,
+		alignItems: 'center',
 	},
 	tableRowSelected: {
 		backgroundColor: '#EEF5E7',
@@ -1611,12 +1823,19 @@ const styles = StyleSheet.create({
 	rowCellSelected: {
 		fontWeight: '800',
 	},
-	rowGuide: { flex: 1.25 },
-	rowModule: { flex: 1.05 },
-	rowDate: { flex: 1.25 },
-	rowTime: { flex: 0.8 },
+	rowGuide: { flex: 1.2, flexShrink: 1 },
+	rowModule: { flex: 1.0, flexShrink: 1 },
+	rowDate: { flex: 0.9, flexShrink: 1 },
+	rowTime: { flex: 0.7, flexShrink: 1, textAlign: 'center' },
+	rowDashCell: {
+		textAlign: 'center',
+	},
+	rowScoreDash: {
+		width: '100%',
+		textAlign: 'center',
+	},
 	scorePill: {
-		flex: 0.75,
+		flex: 0.7,
 		borderRadius: 999,
 		paddingVertical: 6,
 		paddingHorizontal: 8,
@@ -1640,7 +1859,7 @@ const styles = StyleSheet.create({
 		color: COLORS.error,
 	},
 	statusPill: {
-		flex: 0.9,
+		flex: 0.85,
 		borderRadius: 999,
 		paddingVertical: 6,
 		paddingHorizontal: 8,
@@ -1658,17 +1877,34 @@ const styles = StyleSheet.create({
 		fontWeight: '800',
 		color: COLORS.heading,
 	},
+	rowActionCell: {
+		flex: 0.9,
+		minWidth: 0,
+		justifyContent: 'center',
+		alignItems: 'center',
+	},
+	rowActionPlaceholder: {
+		fontSize: 13,
+		fontWeight: '700',
+		color: COLORS.muted,
+		textAlign: 'center',
+	},
+	tableRowWrapper: {
+		marginBottom: 8,
+	},
 	inlineOnSiteActions: {
-		flexDirection: 'row',
+		flexDirection: 'column',
 		gap: 6,
-		marginLeft: 10,
-		flexWrap: 'wrap',
+		alignItems: 'center',
 	},
 	inlineOnSiteButton: {
-		paddingHorizontal: 10,
+		paddingHorizontal: 14,
 		paddingVertical: 8,
 		borderRadius: 999,
 		borderWidth: 1,
+		minWidth: 120,
+		alignItems: 'center',
+		justifyContent: 'center',
 	},
 	inlineOnSiteButtonComplete: {
 		backgroundColor: COLORS.success,
@@ -1679,7 +1915,7 @@ const styles = StyleSheet.create({
 		borderColor: '#F1B9B9',
 	},
 	inlineOnSiteButtonText: {
-		fontSize: 11,
+		fontSize: 10,
 		fontWeight: '800',
 		color: COLORS.white,
 	},
@@ -1706,6 +1942,46 @@ const styles = StyleSheet.create({
 		padding: 16,
 		marginBottom: 14,
 	},
+	issueSummaryCard: {
+		backgroundColor: COLORS.white,
+		borderRadius: 16,
+		borderWidth: 1.5,
+		borderColor: '#C6D7B4',
+		borderLeftWidth: 6,
+		borderLeftColor: COLORS.olive,
+		padding: 14,
+		marginBottom: 12,
+		shadowColor: '#20372A',
+		shadowOpacity: 0.08,
+		shadowRadius: 10,
+		shadowOffset: { width: 0, height: 4 },
+		elevation: 3,
+	},
+	issueSummaryTitle: {
+		fontSize: 16,
+		fontWeight: '800',
+		color: COLORS.heading,
+		marginBottom: 10,
+	},
+	reviewSection: {
+		marginBottom: 12,
+		paddingTop: 10,
+		borderTopWidth: 1,
+		borderTopColor: COLORS.sageBorder,
+	},
+	reviewSectionTitle: {
+		fontSize: 11,
+		fontWeight: '800',
+		letterSpacing: 0.5,
+		textTransform: 'uppercase',
+		color: COLORS.olive,
+		backgroundColor: '#EEF5E7',
+		paddingHorizontal: 10,
+		paddingVertical: 6,
+		borderRadius: 999,
+		alignSelf: 'flex-start',
+		marginBottom: 8,
+	},
 	cardTitle: {
 		fontSize: 17,
 		fontWeight: '800',
@@ -1714,15 +1990,20 @@ const styles = StyleSheet.create({
 	},
 	detailGrid: {
 		gap: 10,
-		marginTop: 8,
+		marginTop: 10,
 	},
 	detailItem: {
-		backgroundColor: COLORS.infoBg,
+		backgroundColor: '#FAFBF8',
 		borderRadius: 12,
 		paddingVertical: 12,
 		paddingHorizontal: 12,
 		borderWidth: 1,
-		borderColor: COLORS.sageBorder,
+		borderColor: '#D9E2D1',
+		shadowColor: '#20372A',
+		shadowOpacity: 0.04,
+		shadowRadius: 6,
+		shadowOffset: { width: 0, height: 2 },
+		elevation: 1,
 	},
 	detailLabel: {
 		fontSize: 11,
@@ -1843,10 +2124,6 @@ const styles = StyleSheet.create({
 	},
 	filterChipTextActive: {
 		color: COLORS.white,
-	},
-	tableBody: {
-		maxHeight: 360,
-		marginTop: 6,
 	},
 	queueList: {
 		gap: 10,

@@ -7,6 +7,7 @@ const emailVerificationService = require("../services/emailVerificationService")
 const { createAuthTokenService } = require("../services/authTokenService");
 const mfaService = require("../services/mfaService");
 const progressService = require("../services/progressService");
+const qualificationService = require("../services/qualificationService");
 
 const profileImagePrefix = "/uploads/profile-images/";
 const profileImageStorageDir = path.join(__dirname, "..", "..", "uploads", "profile-images");
@@ -28,6 +29,7 @@ async function getUserProfileRow(userId) {
             u.ProfileImageUrl,
             u.Status,
             u.IsActive,
+            u.QualificationID,
             COALESCE((SELECT ROUND(AVG(up.progressPercent)) FROM user_progress up WHERE up.userId = u.UserID), u.Progress) AS Progress,
             u.CreatedAt,
             r.RoleTitle,
@@ -65,6 +67,7 @@ function buildRoleAwareProfile(user, viewerRole) {
     viewerRole: normalizedViewerRole,
     accountRole: user.RoleTitle,
     profileType,
+    qualificationId: user.QualificationID || null,
     status: user.Status,
     isActive: user.IsActive === 1,
     progress: progressValue,
@@ -545,9 +548,58 @@ async function getUserProfile(req, res) {
       });
     }
 
+    const profile = buildRoleAwareProfile(user, role);
+
+    if (user.QualificationID && role !== "Admin") {
+      const [moduleRows] = await query(
+        `SELECT m.ModuleID,
+                m.ModuleTitle,
+                m.ModuleTypeID,
+                mt.TypeName
+           FROM Modules m
+           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+          WHERE m.QualificationID = ?
+          ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC`,
+        [user.QualificationID]
+      );
+
+      const moduleIds = moduleRows.map((moduleRow) => Number(moduleRow.ModuleID)).filter((value) => Number.isInteger(value) && value > 0);
+      const completionByModuleId = await qualificationService.getUserModuleCompletionStatuses(userId, moduleIds);
+
+      const moduleCompletionStatuses = moduleRows.map((moduleRow) => {
+        const completion = completionByModuleId.get(Number(moduleRow.ModuleID)) || {
+          completionStatus: 'incomplete',
+          completedAt: null,
+          updatedAt: null,
+        };
+
+        return {
+          moduleId: moduleRow.ModuleID,
+          moduleTitle: moduleRow.ModuleTitle,
+          moduleTypeId: moduleRow.ModuleTypeID,
+          moduleType: moduleRow.TypeName || 'Unassigned',
+          completionStatus: completion.completionStatus,
+          completedAt: completion.completedAt,
+          updatedAt: completion.updatedAt,
+        };
+      });
+
+      const onSiteModules = moduleCompletionStatuses.filter((moduleRow) => String(moduleRow.moduleType || '').toLowerCase().includes('on-site'));
+      const onSiteCompleted = onSiteModules.length > 0 && onSiteModules.every((moduleRow) => moduleRow.completionStatus === 'completed');
+
+      profile.moduleCompletionStatuses = moduleCompletionStatuses;
+      profile.onSiteTrainingStatus = onSiteCompleted ? 'completed' : 'incomplete';
+      profile.chapterStatus = profile.chapterStatus
+        ? {
+            ...profile.chapterStatus,
+            onSiteTraining: onSiteCompleted ? 'Completed' : 'Incomplete',
+          }
+        : profile.chapterStatus;
+    }
+
     return res.json({
       success: true,
-      data: buildRoleAwareProfile(user, role),
+      data: profile,
     });
   } catch (error) {
     console.error("Get profile error:", error);

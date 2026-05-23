@@ -97,7 +97,7 @@ function AnnouncementScreen({ navigation, useSharedChrome = false }) {
             title: item.title || 'Announcement',
             teaser: item.teaser || item.content || '',
             fullDesc: item.fullDesc || item.content || item.teaser || '',
-            posted: item.posted || item.createdAt || created_At(),
+            posted: item.posted || item.createdAt || 'Unknown date',
             avatarLabel: item.avatarLabel || 'AN',
           }))
         );

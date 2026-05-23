@@ -740,7 +740,7 @@ export function withSidebarChrome(WrappedComponent, chromeOptions = {}) {
 
   return ScreenWithSidebarChrome;
 }
-
+export default AppSidebarChrome;
 const styles = StyleSheet.create({
   root: {
     flex: 1,

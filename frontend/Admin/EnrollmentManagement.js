@@ -15,7 +15,29 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import withRoleGuard from '../auth/withRoleGuard.js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { requestProfileApi, resolveApiAssetUri } from '../Profile/profileApi.js';
+import { API_ORIGIN, getApiBaseUrls, requestProfileApi, resolveApiAssetUri } from '../Profile/profileApi.js';
+
+function parseModulePrice(value) {
+	if (value === null || value === undefined || value === '') {
+		return null;
+	}
+
+	const normalized = String(value).replace(/,/g, '').trim();
+	const parsed = Number.parseFloat(normalized);
+	return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatModulePrice(value) {
+	const parsed = parseModulePrice(value);
+	if (parsed === null) {
+		return '-';
+	}
+
+	return parsed.toLocaleString('en-MY', {
+		minimumFractionDigits: 2,
+		maximumFractionDigits: 2,
+	});
+}
 
 const COLORS = {
 	bg: '#F7F5EF',
@@ -82,9 +104,10 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 				paymentId: r.paymentId,
 				guideName: r.userName || 'Unknown',
 				guideId: r.userId,
+				moduleId: r.moduleId || r.module_id || null,
 				park: r.moduleTitle || '-',
 				module: r.moduleTitle || '-',
-				fee: '-',
+				fee: formatModulePrice(r.modulePrice ?? r.price ?? r.moduleFee ?? r.module_fee ?? r.amount ?? r.paymentAmount ?? r.totalAmount ?? r.total),
 				paymentMethod: '-',
 				paymentReference: r.reference || '-',
 				evidenceLabel: r.evidenceName || (r.evidenceFile || '').split('/').pop() || '-',
@@ -138,6 +161,62 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 	const openEvidence = (request) => {
 		setSelectedRequest(request);
 		setModalVisible(true);
+	};
+
+	const openEvidenceFile = async (request) => {
+		try {
+			const token = await getAuthToken();
+			const evidenceUrl = request?.evidenceUrl;
+
+			if (!evidenceUrl) {
+				throw new Error('Evidence file is unavailable.');
+			}
+
+			const baseUrls = Platform.OS === 'web' ? getApiBaseUrls() : [API_ORIGIN];
+			let lastError = null;
+
+			for (const baseUrl of baseUrls) {
+				try {
+					const response = await fetch(evidenceUrl.startsWith('http') ? evidenceUrl : `${baseUrl}${evidenceUrl}`, {
+						method: 'GET',
+						headers: {
+							Authorization: `Bearer ${token}`,
+						},
+					});
+
+					if (!response.ok) {
+						const contentType = response.headers.get('content-type') || '';
+						const payload = contentType.toLowerCase().includes('application/json')
+							? await response.json()
+							: { message: await response.text() };
+
+						throw new Error(payload?.message || `Request failed with status ${response.status}`);
+					}
+
+					if (Platform.OS === 'web') {
+						const evidenceBlob = await response.blob();
+						const evidenceBlobUrl = URL.createObjectURL(evidenceBlob);
+						const link = document.createElement('a');
+						link.href = evidenceBlobUrl;
+						link.download = request.evidenceLabel || 'evidence.pdf';
+						document.body.appendChild(link);
+						link.click();
+						document.body.removeChild(link);
+						setTimeout(() => URL.revokeObjectURL(evidenceBlobUrl), 60000);
+					} else {
+						Linking.openURL(evidenceUrl);
+					}
+
+					return;
+				} catch (error) {
+					lastError = error;
+				}
+			}
+
+			throw lastError || new Error('Unable to retrieve evidence file.');
+		} catch (error) {
+			Alert.alert('Evidence unavailable', error?.message || 'Unable to open evidence right now.');
+		}
 	};
 
 	const updateRequest = (requestId, updater, successMessage) => {
@@ -316,8 +395,8 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 								<Text style={styles.modalDetail}>Reference: {selectedRequest.paymentReference}</Text>
 								<Text style={styles.modalDetail}>File: {selectedRequest.evidenceLabel}</Text>
 								{selectedRequest.evidenceUrl ? (
-									<TouchableOpacity onPress={() => Linking.openURL(selectedRequest.evidenceUrl)} style={{ marginTop: 8 }}>
-										<Text style={{ color: '#2563EB', fontWeight: '700' }}>Open evidence</Text>
+									<TouchableOpacity onPress={() => openEvidenceFile(selectedRequest)} style={{ marginTop: 8 }}>
+										<Text style={{ color: '#2563EB', fontWeight: '700' }}>Download evidence</Text>
 									</TouchableOpacity>
 								) : null}
 								<Text style={styles.modalDetail}>

@@ -615,6 +615,7 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 						id: String(module.moduleId || module.id || index + 1),
 						moduleId: module.moduleId || module.id,
 						title: module.title || module.name || `Module ${index + 1}`,
+						modulePrice: module.modulePrice ?? module.price ?? module.moduleFee ?? null,
 						moduleType: moduleTypeValue,
 						moduleTypeId: parseModuleTypeId(module) || normalizeModuleTypeId(getModuleTypeValue(module)),
 						image: resolveApiAssetUri(module.moduleImageUrl || module.image) || module.moduleImageUrl || module.image,

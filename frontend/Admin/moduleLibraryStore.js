@@ -33,6 +33,7 @@ function normalizeSection(section, index = 0) {
 function normalizeModule(moduleEntry) {
   return {
     ...moduleEntry,
+    modulePrice: moduleEntry?.modulePrice ?? moduleEntry?.price ?? null,
     sections: Array.isArray(moduleEntry?.sections)
       ? moduleEntry.sections.map((section, index) => normalizeSection(section, index))
       : [],

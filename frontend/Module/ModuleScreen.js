@@ -61,6 +61,29 @@ function normalizeModuleCompletionStatus(value) {
   return 'incomplete';
 }
 
+function parseModulePrice(value) {
+  if (value === null || value === undefined || value === '') {
+    return null;
+  }
+
+  const normalized = String(value).replace(/,/g, '').trim();
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function formatModulePrice(value) {
+  const parsed = parseModulePrice(value);
+
+  if (parsed === null) {
+    return null;
+  }
+
+  return parsed.toLocaleString('en-MY', {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
 function buildRichContentDocument(title, contentHtml) {
   const normalizedTitle = String(title || "Section").trim();
   const safeHtml = sanitizeRichHtml(contentHtml).trim();
@@ -150,6 +173,7 @@ function ModuleScreen({
 
   const [moduleDisplayName, setModuleDisplayName] = useState(routeModuleName);
   const [moduleSummary, setModuleSummary] = useState(route?.params?.moduleSummary || '');
+  const [modulePrice, setModulePrice] = useState(route?.params?.modulePrice ?? route?.params?.price ?? route?.params?.moduleFee ?? null);
   const [moduleCompletionStatus, setModuleCompletionStatus] = useState(
     normalizeModuleCompletionStatus(routeCompletionStatus),
   );
@@ -477,6 +501,19 @@ function ModuleScreen({
           String(response?.data?.summary || response?.data?.Summary || '') || '';
         if (active) {
           setModuleSummary(resolvedSummary);
+        }
+
+        const resolvedPrice =
+          response?.data?.modulePrice ??
+          response?.data?.price ??
+          response?.data?.moduleFee ??
+          response?.data?.module_fee ??
+          route?.params?.modulePrice ??
+          route?.params?.price ??
+          route?.params?.moduleFee ??
+          null;
+        if (active) {
+          setModulePrice(resolvedPrice);
         }
 
         const resolvedCompletionStatus =
@@ -1339,6 +1376,9 @@ function ModuleScreen({
               </Text>
               <Text style={styles.bankText}>
                 Reference: {BANK_DETAILS.referenceFormat}
+              </Text>
+              <Text style={styles.bankText}>
+                Fee: {formatModulePrice(modulePrice) ? `RM ${formatModulePrice(modulePrice)}` : 'Not set'}
               </Text>
             </View>
 

@@ -263,6 +263,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const [statusType, setStatusType] = useState('info');
 	const [note, setNote] = useState('');
 	const [selectedBadgeId, setSelectedBadgeId] = useState(null);
+	const [badgeIssuanceStatusMap, setBadgeIssuanceStatusMap] = useState({});
 	const isAllAssessmentsSelected = String(selectedAssessmentId || '').toLowerCase() === 'all';
 
 	const selectedResultBase = results.find((item) => item.id === selectedResultId) || results[0] || null;
@@ -292,16 +293,24 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		() => modules.filter((module) => normalizeModuleStage(module) === 'on-site'),
 		[modules]
 	);
-	const selectedOnSiteModule = useMemo(() => {
-		if (!selectedAssessmentModule || normalizeModuleStage(selectedAssessmentModule) !== 'park-specific') {
-			if (isAllAssessmentsSelected) {
-				return onSiteModules[0] || null;
-			}
+	const selectedModuleForOnSiteResolution = useMemo(() => {
+		if (!isAllAssessmentsSelected) {
+			return selectedAssessmentModule || null;
+		}
 
+		const selectedResultModuleId = String(selectedResultBase?.moduleId || '').trim();
+		if (!selectedResultModuleId) {
 			return null;
 		}
 
-		const selectedAssessmentModuleId = String(getNumericModuleId(selectedAssessmentModule) || '').trim();
+		return modules.find((module) => String(getNumericModuleId(module) || '').trim() === selectedResultModuleId) || null;
+	}, [isAllAssessmentsSelected, modules, selectedAssessmentModule, selectedResultBase?.moduleId]);
+	const selectedOnSiteModule = useMemo(() => {
+		if (!selectedModuleForOnSiteResolution || normalizeModuleStage(selectedModuleForOnSiteResolution) !== 'park-specific') {
+			return null;
+		}
+
+		const selectedAssessmentModuleId = String(getNumericModuleId(selectedModuleForOnSiteResolution) || '').trim();
 		const explicitLinkedOnSiteModule = selectedAssessmentModuleId
 			? onSiteModules.find((module) => String(getLinkedTpaModuleId(module) || '') === selectedAssessmentModuleId)
 			: null;
@@ -328,8 +337,8 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			}
 		}
 
-		return onSiteModules[0] || null;
-	}, [isAllAssessmentsSelected, modules, onSiteModules, selectedAssessmentModule]);
+		return null;
+	}, [modules, onSiteModules, selectedModuleForOnSiteResolution]);
 	const onSiteModuleByTpaModuleId = useMemo(() => {
 		const mapping = new Map();
 
@@ -356,8 +365,42 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			completionStatus: item.passed || Number(item.finalScore) >= Number(item.passingScore || resolvedPassingScore) ? 'completed' : 'incomplete',
 		}));
 
-		if (!selectedOnSiteModule && !isAllAssessmentsSelected) {
+		if (!isAllAssessmentsSelected && !selectedOnSiteModule) {
 			return baseRows;
+		}
+
+		if (isAllAssessmentsSelected) {
+			return baseRows.flatMap((item) => {
+				const passed = item.passed || Number(item.finalScore) >= Number(item.passingScore || resolvedPassingScore);
+
+				if (!passed) {
+					return [item];
+				}
+
+				const linkedOnSiteModule = onSiteModuleByTpaModuleId.get(String(item.moduleId || '').trim()) || null;
+
+				if (!linkedOnSiteModule) {
+					return [item];
+				}
+
+				const onSiteKey = String(item.userId || item.parkGuideName || item.id || '').trim();
+				const completionStatus = onSiteCompletionMap[onSiteKey] || 'incomplete';
+
+				return [
+					item,
+					{
+						...item,
+						id: `onsite-${item.id}`,
+						rowType: 'on-site',
+						moduleName: linkedOnSiteModule.title || `Module ${linkedOnSiteModule.moduleId}`,
+						moduleId: linkedOnSiteModule.moduleId,
+						tpaModuleId: item.moduleId,
+						tpaModuleName: item.moduleName,
+						completionStatus,
+						onSiteKey,
+					},
+				];
+			});
 		}
 
 		return baseRows.flatMap((item) => {
@@ -367,9 +410,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				return [item];
 			}
 
-		const linkedOnSiteModule = isAllAssessmentsSelected
-			? onSiteModuleByTpaModuleId.get(String(item.moduleId || '').trim()) || selectedOnSiteModule
-			: selectedOnSiteModule;
+			const linkedOnSiteModule = selectedOnSiteModule;
 
 			if (!linkedOnSiteModule) {
 				return [item];
@@ -451,6 +492,14 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		const passed = selectedResult.passed || Number(selectedResult.finalScore) >= itemPassingScore;
 		return passed ? 'Passed' : 'Failed';
 	})();
+	const selectedAssessmentDetailResult = selectedIssuanceResult || selectedResult;
+	const selectedAssessmentDetailStatus = (() => {
+		if (!selectedAssessmentDetailResult) return '';
+		const itemPassingScore = Number(selectedAssessmentDetailResult.passingScore || resolvedPassingScore);
+		const passed = selectedAssessmentDetailResult.passed || Number(selectedAssessmentDetailResult.finalScore) >= itemPassingScore;
+		return passed ? 'Passed' : 'Failed';
+	})();
+	const selectedAssessmentDetailFinalScore = selectedAssessmentDetailResult?.finalScore ?? selectedResult?.finalScore;
 
 	const buildOnSiteCompletionRowKey = (userId, moduleId) => `${String(userId || '').trim()}::${String(moduleId || '').trim()}`;
 
@@ -512,10 +561,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 			if (statusFilter === 'completed' || statusFilter === 'incomplete') {
 				if (item.rowType !== 'on-site') {
-					// For assessment rows, map completed -> passed, incomplete -> failed
-					const itemPassingScore = Number(item.passingScore || resolvedPassingScore);
-					const passed = item.passed || Number(item.finalScore) >= itemPassingScore;
-					return statusFilter === 'completed' ? passed : !passed;
+					return false;
 				}
 
 				return statusFilter === 'completed'
@@ -537,6 +583,29 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		() => eligibleBadges.find((badge) => String(badge.id) === String(selectedBadgeId)) || eligibleBadges[0] || null,
 		[eligibleBadges, selectedBadgeId]
 	);
+	const selectedIssuanceStatusKey = useMemo(() => {
+		if (!selectedIssuanceResult) {
+			return '';
+		}
+
+		return [selectedIssuanceResult.userId, selectedIssuanceResult.assessmentId || selectedAssessmentId, selectedBadge?.id]
+			.map((value) => String(value || '').trim())
+			.filter(Boolean)
+			.join('::');
+	}, [selectedAssessmentId, selectedBadge?.id, selectedIssuanceResult]);
+	const selectedIssuanceStatus = selectedIssuanceStatusKey
+		? badgeIssuanceStatusMap[selectedIssuanceStatusKey] || 'pending'
+		: 'pending';
+	const selectedIssuanceStatusLabel = selectedIssuanceStatus === 'issued'
+		? 'Issued'
+		: selectedIssuanceStatus === 'rejected'
+			? 'Rejected'
+			: 'Pending';
+	const selectedIssuanceStatusStyle = selectedIssuanceStatus === 'issued'
+		? styles.issuanceStatusIssued
+		: selectedIssuanceStatus === 'rejected'
+			? styles.issuanceStatusRejected
+			: styles.issuanceStatusPending;
 	const tableColumns = [
 		{
 			key: 'guide',
@@ -1224,6 +1293,10 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 		setIssuing(true);
 		setStatusMessage('');
+			const issuanceStatusKey = [selectedIssuanceResult.userId, resolvedAssessmentId, selectedBadge?.id]
+				.map((value) => String(value || '').trim())
+				.filter(Boolean)
+				.join('::');
 
 		try {
 			const token = await AsyncStorage.getItem('auth_token');
@@ -1253,6 +1326,11 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 							if (typeof console !== 'undefined' && console.debug) {
 								console.debug('Badge issue response:', resp);
 							}
+
+							setBadgeIssuanceStatusMap((previousMap) => ({
+								...previousMap,
+								[issuanceStatusKey]: 'issued',
+							}));
 
 							setStatusType('success');
 							setStatusMessage(`${selectedBadge.name} has been issued to ${selectedIssuanceResult.parkGuideName}.`);
@@ -1295,6 +1373,12 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		}
 
 		setStatusType('info');
+			if (selectedIssuanceStatusKey) {
+				setBadgeIssuanceStatusMap((previousMap) => ({
+					...previousMap,
+					[selectedIssuanceStatusKey]: 'rejected',
+				}));
+			}
 		setStatusMessage(`Result for ${selectedResult.parkGuideName} was marked as rejected.`);
 	};
 
@@ -1493,6 +1577,12 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 						<View style={styles.issueSummaryCard}>
 							<Text style={styles.issueSummaryTitle}>Selected Result Details</Text>
 							<View style={styles.reviewSection}>
+								<Text style={styles.reviewSectionTitle}>Issuance Status</Text>
+								<View style={[styles.issuanceStatusPill, selectedIssuanceStatusStyle]}>
+									<Text style={styles.issuanceStatusText}>{selectedIssuanceStatusLabel}</Text>
+								</View>
+							</View>
+							<View style={styles.reviewSection}>
 								<Text style={styles.reviewSectionTitle}>User</Text>
 								<View style={styles.detailGrid}>
 									<View style={styles.detailItem}>
@@ -1510,15 +1600,15 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 								<View style={styles.detailGrid}>
 									<View style={styles.detailItem}>
 										<Text style={styles.detailLabel}>Module</Text>
-										<Text style={styles.detailValue}>{selectedResult.moduleName}</Text>
+										<Text style={styles.detailValue}>{selectedAssessmentDetailResult?.moduleName || selectedResult.moduleName}</Text>
 									</View>
 									<View style={styles.detailItem}>
 										<Text style={styles.detailLabel}>Status</Text>
-										<Text style={styles.detailValue}>{selectedResultStatus}</Text>
+										<Text style={styles.detailValue}>{selectedAssessmentDetailStatus || selectedResultStatus}</Text>
 									</View>
 									<View style={styles.detailItem}>
 										<Text style={styles.detailLabel}>Final Score</Text>
-										<Text style={styles.detailValue}>{Number.isFinite(Number(selectedResult.finalScore)) ? `${Number(selectedResult.finalScore)}%` : String(selectedResult.finalScore || 'N/A')}</Text>
+										<Text style={styles.detailValue}>{Number.isFinite(Number(selectedAssessmentDetailFinalScore)) ? `${Number(selectedAssessmentDetailFinalScore)}%` : String(selectedAssessmentDetailFinalScore || 'N/A')}</Text>
 									</View>
 								</View>
 							</View>
@@ -1962,6 +2052,30 @@ const styles = StyleSheet.create({
 		fontWeight: '800',
 		color: COLORS.heading,
 		marginBottom: 10,
+	},
+	issuanceStatusPill: {
+		alignSelf: 'flex-start',
+		borderRadius: 999,
+		paddingHorizontal: 12,
+		paddingVertical: 7,
+		borderWidth: 1,
+	},
+	issuanceStatusPending: {
+		backgroundColor: '#FFF5DB',
+		borderColor: '#F1C76A',
+	},
+	issuanceStatusIssued: {
+		backgroundColor: COLORS.passBg,
+		borderColor: COLORS.success,
+	},
+	issuanceStatusRejected: {
+		backgroundColor: COLORS.failBg,
+		borderColor: COLORS.error,
+	},
+	issuanceStatusText: {
+		fontSize: 12,
+		fontWeight: '800',
+		color: COLORS.heading,
 	},
 	reviewSection: {
 		marginBottom: 12,

@@ -1452,32 +1452,40 @@ async function getAnalyticsDashboard(req, res) {
     );
 
       const [userModuleRows] = await query(
-        `SELECT u.UserID,
-                GROUP_CONCAT(
-                  DISTINCT CONCAT(m.ModuleTitle, ' [', COALESCE(mt.TypeName, 'Unassigned'), ']')
-                  ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC
-                  SEPARATOR ', '
-                ) AS EnrolledModules
-           FROM Users u
-           INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
-           LEFT JOIN Modules m ON m.QualificationID = u.QualificationID
-           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-          WHERE u.QualificationID IS NOT NULL
-          GROUP BY u.UserID`
+        `SELECT c.UserID,
+            GROUP_CONCAT(DISTINCT m.ModuleTitle ORDER BY m.ModuleTypeID ASC, m.ModuleID ASC SEPARATOR ', ') AS EnrolledModules
+         FROM Certificates c
+         INNER JOIN Users u ON u.UserID = c.UserID
+         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+         INNER JOIN Modules m ON m.QualificationID = c.QualificationID
+        GROUP BY c.UserID`
       );
 
     const [moduleRows] = await query(
       `SELECT m.ModuleID,
               m.ModuleTitle,
-              COUNT(DISTINCT aa.UserID) AS EnrolledGuides,
-              COUNT(DISTINCT CASE WHEN aa.Status = 'Passed' THEN aa.UserID END) AS CompletedGuides
+              m.QualificationID,
+              m.ModuleTypeID,
+              mt.TypeName,
+              COUNT(DISTINCT c.UserID) AS EnrolledGuides,
+              COUNT(DISTINCT CASE
+                WHEN LOWER(TRIM(COALESCE(mt.TypeName, ''))) = 'on-site training modules'
+                 AND mc.CompletionStatus = 'completed'
+                THEN mc.UserID
+                WHEN LOWER(TRIM(COALESCE(mt.TypeName, ''))) <> 'on-site training modules'
+                 AND aa.Status = 'Passed'
+                THEN aa.UserID
+              END) AS CompletedGuides
          FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+         LEFT JOIN Certificates c ON c.QualificationID = m.QualificationID
+         LEFT JOIN Users u ON u.UserID = c.UserID
+         LEFT JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
          LEFT JOIN Assessments a ON a.ModuleID = m.ModuleID
-         LEFT JOIN AssessmentAttempts aa ON aa.AssessmentID = a.AssessmentID
-         LEFT JOIN Users u ON u.UserID = aa.UserID
-         LEFT JOIN Roles r ON r.RoleID = u.RoleID
+         LEFT JOIN AssessmentAttempts aa ON aa.AssessmentID = a.AssessmentID AND aa.UserID = c.UserID
+         LEFT JOIN ModuleCompletions mc ON mc.ModuleID = m.ModuleID AND mc.UserID = c.UserID
         WHERE r.RoleTitle = 'User' OR r.RoleTitle IS NULL
-        GROUP BY m.ModuleID, m.ModuleTitle
+        GROUP BY m.ModuleID, m.ModuleTitle, m.QualificationID, m.ModuleTypeID, mt.TypeName
         ORDER BY EnrolledGuides DESC, m.ModuleID ASC`
     );
 
@@ -1485,10 +1493,11 @@ async function getAnalyticsDashboard(req, res) {
       `SELECT b.BadgeID,
               b.BadgeName,
               b.UnlockThreshold,
-              COUNT(DISTINCT CASE WHEN bi.Status = 'issued' THEN bi.UserID END) AS AwardedCount
+              COUNT(DISTINCT CASE WHEN aa.Status = 'Passed' THEN aa.UserID END) AS AwardedCount
          FROM Badges b
-         LEFT JOIN BadgeIssuances bi ON bi.BadgeID = b.BadgeID
-         LEFT JOIN Users u ON u.UserID = bi.UserID
+         LEFT JOIN Assessments a ON a.BadgeID = b.BadgeID
+         LEFT JOIN AssessmentAttempts aa ON aa.AssessmentID = a.AssessmentID
+         LEFT JOIN Users u ON u.UserID = aa.UserID
          LEFT JOIN Roles r ON r.RoleID = u.RoleID
         WHERE b.IsActive = 1 AND (r.RoleTitle = 'User' OR r.RoleTitle IS NULL)
         GROUP BY b.BadgeID, b.BadgeName, b.UnlockThreshold
@@ -1513,7 +1522,6 @@ async function getAnalyticsDashboard(req, res) {
         guideId: row.UserID,
         fullName: row.FullName || row.Username || `Guide ${row.UserID}`,
         assignedPark: enrolledModulesByUser[row.UserID] || row.AssignedPark || 'Unassigned',
-        currentModules: enrolledModulesByUser[row.UserID] || row.AssignedPark || 'Unassigned',
         contact: row.Email || '-',
         isActive,
         activeStatus: isActive ? 'Active' : 'Inactive',
@@ -1545,17 +1553,16 @@ async function getAnalyticsDashboard(req, res) {
     const moduleRowsNormalized = moduleRows.map((row) => {
       const enrolled = toSafeNumber(row.EnrolledGuides, 0);
       const completed = toSafeNumber(row.CompletedGuides, 0);
-      const incomplete = Math.max(enrolled - completed, 0);
-      const training = incomplete;
+      const training = Math.max(enrolled - completed, 0);
+      const moduleTypeName = String(row.TypeName || '').trim().toLowerCase();
       const completion = enrolled > 0 ? (completed / enrolled) * 100 : 0;
 
       return {
         moduleTitle: row.ModuleTitle || `Module ${row.ModuleID}`,
         moduleType: row.TypeName || 'Unassigned',
-        isOnSite: false,
+        isOnSite: moduleTypeName === 'on-site training modules',
         enrolled,
         completed,
-        incomplete,
         training,
         completion,
       };
@@ -1659,7 +1666,7 @@ async function getAnalyticsDashboard(req, res) {
           chartType: 'pie',
           kpis: [
             { label: 'Total badge types', value: String(badgeRowsNormalized.length), note: 'Active badge definitions' },
-            { label: 'Awarded badges', value: String(totalAwardedBadges), note: 'From admin badge issuances' },
+            { label: 'Awarded badges', value: String(totalAwardedBadges), note: 'From passed linked assessments' },
             { label: 'Total Eligible badges', value: String(totalEligibleGuides), note: 'Based on unlock threshold' },
             { label: 'Pending', value: String(totalPendingBadges), note: 'Eligible not yet awarded' },
           ],

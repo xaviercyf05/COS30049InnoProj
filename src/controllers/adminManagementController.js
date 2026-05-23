@@ -1469,47 +1469,15 @@ async function getAnalyticsDashboard(req, res) {
     const [moduleRows] = await query(
       `SELECT m.ModuleID,
               m.ModuleTitle,
-              m.QualificationID,
-              m.ModuleTypeID,
-              mt.TypeName,
-              COUNT(DISTINCT CASE
-                WHEN LOWER(TRIM(COALESCE(mt.TypeName, ''))) = 'on-site training modules'
-                 AND (tpaPassed.UserID IS NOT NULL OR tpaFallback.UserID IS NOT NULL)
-                THEN COALESCE(tpaPassed.UserID, tpaFallback.UserID)
-                WHEN LOWER(TRIM(COALESCE(mt.TypeName, ''))) <> 'on-site training modules'
-                 AND c.UserID IS NOT NULL
-                THEN c.UserID
-              END) AS EnrolledGuides,
-              COUNT(DISTINCT CASE
-                WHEN LOWER(TRIM(COALESCE(mt.TypeName, ''))) = 'on-site training modules'
-                 AND mc.CompletionStatus = 'completed'
-                THEN mc.UserID
-                WHEN LOWER(TRIM(COALESCE(mt.TypeName, ''))) <> 'on-site training modules'
-                 AND aa.Status = 'Passed'
-                THEN aa.UserID
-              END) AS CompletedGuides
+              COUNT(DISTINCT aa.UserID) AS EnrolledGuides,
+              COUNT(DISTINCT CASE WHEN aa.Status = 'Passed' THEN aa.UserID END) AS CompletedGuides
          FROM Modules m
-         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-         LEFT JOIN Certificates c ON c.QualificationID = m.QualificationID
-         LEFT JOIN Users u ON u.UserID = c.UserID
-         LEFT JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
          LEFT JOIN Assessments a ON a.ModuleID = m.ModuleID
-         LEFT JOIN AssessmentAttempts aa ON aa.AssessmentID = a.AssessmentID AND aa.UserID = c.UserID
-         LEFT JOIN ModuleCompletions mc ON mc.ModuleID = m.ModuleID AND mc.UserID = c.UserID
-         LEFT JOIN Assessments tpaAssessment ON tpaAssessment.ModuleID = m.LinkedTpaModuleID
-         LEFT JOIN AssessmentAttempts tpaPassed ON tpaPassed.AssessmentID = tpaAssessment.AssessmentID AND tpaPassed.UserID = c.UserID AND tpaPassed.Status = 'Passed'
-         LEFT JOIN Assessments tpaFallbackAssessment ON tpaFallbackAssessment.ModuleID IN (
-              SELECT m2.ModuleID
-                FROM Modules m2
-                INNER JOIN ModuleTypes mt2 ON mt2.ModuleTypeID = m2.ModuleTypeID
-               WHERE m2.QualificationID = m.QualificationID
-                 AND LOWER(TRIM(COALESCE(mt2.TypeName, ''))) = 'total protected area modules'
-          )
-         LEFT JOIN AssessmentAttempts tpaFallback ON tpaFallback.AssessmentID = tpaFallbackAssessment.AssessmentID
-            AND tpaFallback.UserID = c.UserID
-            AND tpaFallback.Status = 'Passed'
+         LEFT JOIN AssessmentAttempts aa ON aa.AssessmentID = a.AssessmentID
+         LEFT JOIN Users u ON u.UserID = aa.UserID
+         LEFT JOIN Roles r ON r.RoleID = u.RoleID
         WHERE r.RoleTitle = 'User' OR r.RoleTitle IS NULL
-        GROUP BY m.ModuleID, m.ModuleTitle, m.QualificationID, m.ModuleTypeID, mt.TypeName
+        GROUP BY m.ModuleID, m.ModuleTitle
         ORDER BY EnrolledGuides DESC, m.ModuleID ASC`
     );
 
@@ -1577,15 +1545,14 @@ async function getAnalyticsDashboard(req, res) {
     const moduleRowsNormalized = moduleRows.map((row) => {
       const enrolled = toSafeNumber(row.EnrolledGuides, 0);
       const completed = toSafeNumber(row.CompletedGuides, 0);
-      const moduleTypeName = String(row.TypeName || '').trim().toLowerCase();
       const incomplete = Math.max(enrolled - completed, 0);
-      const training = moduleTypeName === 'on-site training modules' ? incomplete : incomplete;
+      const training = incomplete;
       const completion = enrolled > 0 ? (completed / enrolled) * 100 : 0;
 
       return {
         moduleTitle: row.ModuleTitle || `Module ${row.ModuleID}`,
         moduleType: row.TypeName || 'Unassigned',
-        isOnSite: moduleTypeName === 'on-site training modules',
+        isOnSite: false,
         enrolled,
         completed,
         incomplete,

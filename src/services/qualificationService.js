@@ -254,6 +254,21 @@ async function isAssessmentPassed(userId, assessmentId) {
   return rows.length > 0;
 }
 
+async function hasPassedAssessmentForModule(userId, moduleId) {
+  const [rows] = await query(
+    `SELECT 1
+       FROM AssessmentAttempts aa
+       INNER JOIN Assessments a ON a.AssessmentID = aa.AssessmentID
+      WHERE aa.UserID = ?
+        AND a.ModuleID = ?
+        AND aa.Status = 'Passed'
+      LIMIT 1`,
+    [userId, moduleId]
+  );
+
+  return rows.length > 0;
+}
+
 async function isModuleCompleted(userId, moduleId) {
   await ensureManualCompletionSchema();
 
@@ -337,6 +352,7 @@ async function canIssueBadgeForAssessment(userId, assessmentId) {
     `SELECT a.AssessmentID,
             a.ModuleID,
             m.ModuleTitle,
+            m.LinkedTpaModuleID,
             mt.TypeName
        FROM Assessments a
        INNER JOIN Modules m ON m.ModuleID = a.ModuleID
@@ -355,6 +371,7 @@ async function canIssueBadgeForAssessment(userId, assessmentId) {
 
   const assessment = assessmentRows[0];
   const normalizedTypeName = String(assessment.TypeName || '').trim().toLowerCase();
+  const isTpaModule = normalizedTypeName === 'total protected area modules';
   const isOnsiteModule = normalizedTypeName === 'on-site training modules';
 
   const passedAssessment = await isAssessmentPassed(userId, assessmentId);
@@ -372,6 +389,59 @@ async function canIssueBadgeForAssessment(userId, assessmentId) {
       return {
         allowed: false,
         reason: 'On-site module must be marked as completed by admin',
+        assessment,
+      };
+    }
+
+    const linkedTpaModuleId = Number(assessment.LinkedTpaModuleID || 0);
+    if (linkedTpaModuleId > 0) {
+      const passedLinkedTpaModule = await hasPassedAssessmentForModule(userId, linkedTpaModuleId);
+      if (!passedLinkedTpaModule) {
+        return {
+          allowed: false,
+          reason: 'User must pass the linked TPA module assessment before badge issue',
+          assessment,
+        };
+      }
+    }
+  }
+
+  if (isTpaModule) {
+    const [linkedOnsiteRows] = await query(
+      `SELECT m.ModuleID, m.ModuleTitle
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.LinkedTpaModuleID = ?
+          AND LOWER(TRIM(COALESCE(mt.TypeName, ''))) = 'on-site training modules'`,
+      [assessment.ModuleID]
+    );
+
+    if (linkedOnsiteRows.length === 0) {
+      return {
+        allowed: false,
+        reason: 'No linked on-site modules are configured for this TPA module',
+        assessment,
+      };
+    }
+
+    const completionChecks = await Promise.all(
+      linkedOnsiteRows.map(async (moduleRow) => {
+        const completed = await isModuleCompleted(userId, moduleRow.ModuleID);
+        return {
+          moduleId: moduleRow.ModuleID,
+          moduleTitle: moduleRow.ModuleTitle,
+          completed,
+        };
+      })
+    );
+
+    const incompleteOnsiteModules = completionChecks.filter((item) => !item.completed);
+    if (incompleteOnsiteModules.length > 0) {
+      return {
+        allowed: false,
+        reason: `On-site module completion required before badge issue: ${incompleteOnsiteModules
+          .map((item) => item.moduleTitle || `Module ${item.moduleId}`)
+          .join(', ')}`,
         assessment,
       };
     }

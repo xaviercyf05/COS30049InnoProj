@@ -85,17 +85,12 @@ async function autoIssueAssessmentBadgeIfEligible(userId, assessmentId) {
   }
 
   const assessment = assessmentRows[0];
-  const normalizedTypeName = String(assessment.TypeName || "").trim().toLowerCase();
-  const isOnsiteModule = normalizedTypeName === "on-site training modules";
-
-  if (isOnsiteModule) {
-    const completedModule = await qualificationService.isModuleCompleted(userId, assessment.ModuleID);
-    if (!completedModule) {
-      return {
-        issued: false,
-        reason: "On-site module completion required before badge issue",
-      };
-    }
+  const eligibility = await qualificationService.canIssueBadgeForAssessment(userId, assessmentId);
+  if (!eligibility.allowed) {
+    return {
+      issued: false,
+      reason: eligibility.reason || "Eligibility requirements not met",
+    };
   }
 
   await query(

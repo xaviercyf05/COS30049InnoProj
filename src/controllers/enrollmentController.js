@@ -122,13 +122,26 @@ async function getModulePaymentStatus(req, res) {
     );
 
     if (!rows || rows.length === 0) {
-      return res.json({ success: true, data: { status: 'unpaid', modulePrice: null } });
+      return res.json({
+        success: true,
+        data: {
+          status: 'unpaid',
+          modulePrice: null,
+          price: null,
+          fee: null,
+          module_fee: null,
+          modulePriceRaw: null,
+        },
+      });
     }
 
     const statusRow = rows[0];
     const status = (statusRow.Status || 'unpaid').toString().toLowerCase();
     const submission = {
       modulePrice: statusRow.ModulePrice === null || statusRow.ModulePrice === undefined ? null : Number(statusRow.ModulePrice),
+      price: statusRow.ModulePrice === null || statusRow.ModulePrice === undefined ? null : Number(statusRow.ModulePrice),
+      fee: statusRow.ModulePrice === null || statusRow.ModulePrice === undefined ? null : Number(statusRow.ModulePrice),
+      module_fee: statusRow.ModulePrice === null || statusRow.ModulePrice === undefined ? null : Number(statusRow.ModulePrice),
       reference: statusRow.Reference || null,
       evidenceFileName: statusRow.EvidenceFileName || null,
       evidenceFilePath: statusRow.EvidenceFilePath || null,
@@ -138,10 +151,10 @@ async function getModulePaymentStatus(req, res) {
     };
 
     // Map DB status to frontend-friendly values
-    if (status === 'approved') return res.json({ success: true, data: { status: 'paid', modulePrice: submission.modulePrice, submission } });
-    if (status === 'rejected') return res.json({ success: true, data: { status: 'rejected', modulePrice: submission.modulePrice, submission } });
-    if (status === 'pending') return res.json({ success: true, data: { status: 'pending', modulePrice: submission.modulePrice, submission } });
-    return res.json({ success: true, data: { status: 'unpaid', modulePrice: submission.modulePrice, submission } });
+    if (status === 'approved') return res.json({ success: true, data: { status: 'paid', modulePrice: submission.modulePrice, price: submission.price, fee: submission.fee, module_fee: submission.module_fee, submission } });
+    if (status === 'rejected') return res.json({ success: true, data: { status: 'rejected', modulePrice: submission.modulePrice, price: submission.price, fee: submission.fee, module_fee: submission.module_fee, submission } });
+    if (status === 'pending') return res.json({ success: true, data: { status: 'pending', modulePrice: submission.modulePrice, price: submission.price, fee: submission.fee, module_fee: submission.module_fee, submission } });
+    return res.json({ success: true, data: { status: 'unpaid', modulePrice: submission.modulePrice, price: submission.price, fee: submission.fee, module_fee: submission.module_fee, submission } });
   } catch (error) {
     console.error('Get payment status error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch payment status.' });

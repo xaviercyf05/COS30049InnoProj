@@ -1528,14 +1528,40 @@ async function getAnalyticsDashboard(req, res) {
       `SELECT b.BadgeID,
               b.BadgeName,
               b.UnlockThreshold,
-              COUNT(DISTINCT CASE WHEN aa.Status = 'Passed' THEN aa.UserID END) AS AwardedCount
+              COALESCE((
+                SELECT COUNT(DISTINCT bi.UserID)
+                  FROM BadgeIssuances bi
+                 WHERE bi.BadgeID = b.BadgeID
+                   AND LOWER(TRIM(COALESCE(bi.Status, ''))) = 'issued'
+              ), 0) AS AwardedCount,
+              COALESCE((
+                SELECT COUNT(DISTINCT aa_user.UserID)
+                  FROM Assessments a_user
+                  INNER JOIN AssessmentAttempts aa_user
+                    ON aa_user.AssessmentID = a_user.AssessmentID
+                   AND aa_user.Status = 'Passed'
+                  INNER JOIN Users u_user ON u_user.UserID = aa_user.UserID
+                  INNER JOIN Roles r_user ON r_user.RoleID = u_user.RoleID AND r_user.RoleTitle = 'User'
+                 WHERE a_user.BadgeID = b.BadgeID
+                   AND (
+                     LOWER(TRIM(COALESCE((
+                       SELECT mt.TypeName
+                         FROM Modules m
+                         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+                        WHERE m.ModuleID = a_user.ModuleID
+                        LIMIT 1
+                     ), ''))) <> 'on-site training modules'
+                     OR EXISTS (
+                       SELECT 1
+                         FROM ModuleCompletions mc
+                        WHERE mc.UserID = aa_user.UserID
+                          AND mc.ModuleID = a_user.ModuleID
+                          AND mc.CompletionStatus = 'completed'
+                     )
+                   )
+              ), 0) AS EligibleCount
          FROM Badges b
-         LEFT JOIN Assessments a ON a.BadgeID = b.BadgeID
-         LEFT JOIN AssessmentAttempts aa ON aa.AssessmentID = a.AssessmentID
-         LEFT JOIN Users u ON u.UserID = aa.UserID
-         LEFT JOIN Roles r ON r.RoleID = u.RoleID
-        WHERE b.IsActive = 1 AND (r.RoleTitle = 'User' OR r.RoleTitle IS NULL)
-        GROUP BY b.BadgeID, b.BadgeName, b.UnlockThreshold
+        WHERE b.IsActive = 1
         ORDER BY AwardedCount DESC, b.BadgeID ASC`
     );
 
@@ -1623,8 +1649,7 @@ async function getAnalyticsDashboard(req, res) {
 
     const badgeRowsNormalized = badgeRows.map((row) => {
       const awarded = toSafeNumber(row.AwardedCount, 0);
-      const unlockThreshold = toSafeNumber(row.UnlockThreshold, 0);
-      const eligible = activeGuides.filter((guide) => guide.progress >= unlockThreshold).length;
+      const eligible = toSafeNumber(row.EligibleCount, 0);
 
       return {
         badgeName: row.BadgeName || `Badge ${row.BadgeID}`,

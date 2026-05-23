@@ -708,7 +708,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 								updateOnSiteCompletionForKey(item, 'incomplete');
 							}}
 						>
-							<Text style={styles.inlineOnSiteButtonText}>Incomplete</Text>
+							<Text style={[styles.inlineOnSiteButtonText, styles.inlineOnSiteButtonTextIncomplete]}>Incomplete</Text>
 						</TouchableOpacity>
 					</View>
 				) : (
@@ -2008,6 +2008,9 @@ const styles = StyleSheet.create({
 		fontSize: 10,
 		fontWeight: '800',
 		color: COLORS.white,
+	},
+	inlineOnSiteButtonTextIncomplete: {
+		color: COLORS.error,
 	},
 
 	emptyBox: {

@@ -792,6 +792,9 @@ function HomeScreen({ navigation, useSharedChrome = false }) {
 					navigation.navigate('Module', {
 						moduleName: module.title,
 						moduleId: module.moduleId,
+							modulePrice: module.modulePrice,
+							price: module.modulePrice,
+							moduleFee: module.modulePrice,
 						moduleOrder: moduleIndex + 1,
 						totalModules: userModules.length,
 						moduleProgressPercent: module.progressPercent,

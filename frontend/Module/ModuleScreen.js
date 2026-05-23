@@ -84,6 +84,41 @@ function formatModulePrice(value) {
   });
 }
 
+function resolveModulePrice(...sources) {
+  for (const source of sources) {
+    if (!source) {
+      continue;
+    }
+
+    const nested = source.data && source.data !== source ? source.data : null;
+
+    const candidate =
+      source.modulePrice ??
+      source.price ??
+      source.fee ??
+      source.module_fee ??
+      source.amount ??
+      source.paymentAmount ??
+      source.totalAmount ??
+      source.total ??
+      nested?.modulePrice ??
+      nested?.price ??
+      nested?.fee ??
+      nested?.module_fee ??
+      nested?.amount ??
+      nested?.paymentAmount ??
+      nested?.totalAmount ??
+      nested?.total ??
+      null;
+
+    if (candidate !== null && candidate !== undefined && candidate !== '') {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function buildRichContentDocument(title, contentHtml) {
   const normalizedTitle = String(title || "Section").trim();
   const safeHtml = sanitizeRichHtml(contentHtml).trim();
@@ -173,7 +208,9 @@ function ModuleScreen({
 
   const [moduleDisplayName, setModuleDisplayName] = useState(routeModuleName);
   const [moduleSummary, setModuleSummary] = useState(route?.params?.moduleSummary || '');
-  const [modulePrice, setModulePrice] = useState(route?.params?.modulePrice ?? route?.params?.price ?? route?.params?.moduleFee ?? null);
+  const [modulePrice, setModulePrice] = useState(
+    resolveModulePrice(route?.params) ?? null,
+  );
   const [moduleCompletionStatus, setModuleCompletionStatus] = useState(
     normalizeModuleCompletionStatus(routeCompletionStatus),
   );
@@ -503,17 +540,9 @@ function ModuleScreen({
           setModuleSummary(resolvedSummary);
         }
 
-        const resolvedPrice =
-          response?.data?.modulePrice ??
-          response?.data?.price ??
-          response?.data?.moduleFee ??
-          response?.data?.module_fee ??
-          route?.params?.modulePrice ??
-          route?.params?.price ??
-          route?.params?.moduleFee ??
-          null;
+        const resolvedPrice = resolveModulePrice(response, response?.data, route?.params);
         if (active) {
-          setModulePrice(resolvedPrice);
+          setModulePrice((previous) => resolvedPrice ?? previous);
         }
 
         const resolvedCompletionStatus =

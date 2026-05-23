@@ -1511,6 +1511,7 @@ async function getAnalyticsDashboard(req, res) {
     });
 
     const activeGuides = guides.filter((guide) => guide.isActive);
+    const activeGuideCount = activeGuides.length;
 
     const totalGuides = guides.length;
     const inactiveGuides = guides.filter((guide) => !guide.isActive).length;
@@ -1519,7 +1520,7 @@ async function getAnalyticsDashboard(req, res) {
         ? activeGuides.reduce((sum, guide) => sum + guide.progress, 0) / activeGuides.length
         : 0;
 
-    const enrolledGuides = toSafeNumber(enrollmentRows[0] && enrollmentRows[0].EnrolledUsers, 0);
+    const enrolledGuides = activeGuideCount;
     const issuedGuides = toSafeNumber(issuedRows[0] && issuedRows[0].IssuedUsers, 0);
 
     const moduleRowsNormalized = moduleRows.map((row) => {
@@ -1589,7 +1590,7 @@ async function getAnalyticsDashboard(req, res) {
           subtitle: 'Track individual training completion on current modules.',
           chartType: 'bar',
           kpis: [
-            { label: 'Guides enrolled', value: String(enrolledGuides), note: 'Users with certificate records' },
+            { label: 'Guides enrolled', value: String(enrolledGuides), note: 'Active park guides' },
             { label: 'Avg. progress', value: formatPercentage(averageProgress), note: 'Across active park guides' }
           ],
           chartTitle: 'Average progress by module',

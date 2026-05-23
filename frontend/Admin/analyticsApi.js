@@ -1,4 +1,5 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { requestProfileApi } from '../Profile/profileApi.js';
 
 const API_ORIGIN = process.env.EXPO_PUBLIC_API_BASE_URL || 'https://api.innopappserver.xyz';
 
@@ -6,7 +7,7 @@ export const workbookSheets = [
   {
     key: 'parkGuides',
     title: 'Park Guides',
-    subtitle: 'Guide roster, park assignment, and active guide coverage',
+    subtitle: 'Guide roster, park assignment, active guide coverage, and account management',
     accent: '#6E815D'
   },
   {
@@ -47,12 +48,46 @@ export function createEmptyAnalyticsData() {
 export function normalizePieSlices(slices) {
   return (slices || []).map((slice, index) => ({
     ...slice,
+    value: Number(slice.value) || 0,
     color: slice.color || PIE_COLORS[index % PIE_COLORS.length]
   }));
 }
 
+export function normalizeAdminUser(user, index = 0) {
+  const userId = user?.userId ?? user?.UserID ?? user?.id ?? user?.ID ?? null;
+  const status = String(user?.status || user?.Status || (user?.isActive === false ? 'Inactive' : 'Active')).trim() || 'Active';
+  const role = String(user?.role || user?.Role || user?.roleName || '').trim() || 'User';
+
+  return {
+    id: String(userId || index),
+    userId: userId !== null && userId !== undefined && userId !== '' ? Number(userId) || userId : null,
+    username: String(user?.username || user?.Username || '').trim(),
+    fullName: String(user?.fullName || user?.FullName || user?.name || '').trim() || 'Unnamed Park Guide',
+    email: String(user?.email || user?.Email || '').trim(),
+    role,
+    status,
+    isActive: status.toLowerCase() === 'active',
+    joinDate: user?.joinDate || user?.createdAt || user?.CreatedAt || null,
+  };
+}
+
 export async function fetchAnalyticsDashboardData() {
-  const token = await AsyncStorage.getItem('auth_token');
+  let token = null;
+  try {
+    token = await AsyncStorage.getItem('auth_token');
+  } catch (e) {
+    token = null;
+  }
+
+  // Web builds using Expo may not use AsyncStorage; fallback to localStorage
+  if (!token && typeof window !== 'undefined' && window.localStorage) {
+    try {
+      token = window.localStorage.getItem('auth_token');
+    } catch (e) {
+      // ignore
+    }
+  }
+
   if (!token) {
     throw new Error('Authentication required');
   }
@@ -78,19 +113,67 @@ export async function fetchAnalyticsDashboardData() {
 
   const normalized = { ...createEmptyAnalyticsData(), ...payload.data };
 
-  if (normalized.modules) {
-    normalized.modules = {
-      ...normalized.modules,
-      pieSlices: normalizePieSlices(normalized.modules.pieSlices)
-    };
-  }
-
-  if (normalized.badges) {
-    normalized.badges = {
-      ...normalized.badges,
-      pieSlices: normalizePieSlices(normalized.badges.pieSlices)
-    };
-  }
+  // Ensure pie slices have numeric values and consistent coloring across sheets
+  workbookSheets.forEach((sheet) => {
+    if (normalized[sheet.key] && normalized[sheet.key].pieSlices) {
+      normalized[sheet.key] = {
+        ...normalized[sheet.key],
+        pieSlices: normalizePieSlices(normalized[sheet.key].pieSlices)
+      };
+    }
+  });
 
   return normalized;
+}
+
+export async function fetchAdminParkGuideAccounts() {
+  const token = await getStoredAuthToken();
+
+  const response = await requestProfileApi('/api/v1/admin/users', token, {
+    method: 'GET'
+  });
+
+  const users = Array.isArray(response.data) ? response.data : [];
+
+  return users
+    .map((user, index) => normalizeAdminUser(user, index))
+    .filter((user) => {
+      const normalizedRole = String(user.role || '').toLowerCase();
+      return normalizedRole !== 'admin' && !normalizedRole.includes('administrator');
+    });
+}
+
+export async function updateAdminUserStatus(userId, status) {
+  const token = await getStoredAuthToken();
+
+  return requestProfileApi(`/api/v1/admin/users/${userId}/status`, token, {
+    method: 'PUT',
+    body: {
+      status,
+    }
+  });
+}
+
+async function getStoredAuthToken() {
+  let token = null;
+
+  try {
+    token = await AsyncStorage.getItem('auth_token');
+  } catch (error) {
+    token = null;
+  }
+
+  if (!token && typeof window !== 'undefined' && window.localStorage) {
+    try {
+      token = window.localStorage.getItem('auth_token');
+    } catch (error) {
+      token = null;
+    }
+  }
+
+  if (!token) {
+    throw new Error('Authentication required');
+  }
+
+  return token;
 }

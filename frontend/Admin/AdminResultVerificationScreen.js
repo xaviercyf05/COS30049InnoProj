@@ -461,7 +461,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				return [item];
 			}
 
-			const onSiteKey = String(item.userId || item.parkGuideName || item.id || '').trim();
+			const onSiteKey = buildOnSiteCompletionRowKey(item.userId, linkedOnSiteModule.moduleId);
 			const completionStatus = onSiteCompletionMap[onSiteKey] || 'incomplete';
 
 			return [
@@ -522,7 +522,15 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		});
 	}, [routeModuleId, selectedAssessment, selectedAssessmentModule, selectedResult]);
 	const selectedGuideOnSiteKey = selectedResult
-		? String(selectedResult.onSiteKey || selectedResult.userId || selectedResult.parkGuideName || selectedResult.id || '').trim()
+		? String(
+			selectedResult.onSiteKey
+				|| buildOnSiteCompletionRowKey(selectedResult.userId, selectedResult.moduleId)
+				|| buildOnSiteCompletionRowKey(selectedResult.userId, selectedResult.tpaModuleId)
+				|| selectedResult.userId
+				|| selectedResult.parkGuideName
+				|| selectedResult.id
+				|| ''
+		).trim()
 		: '';
 	const selectedGuideOnSiteCompletion = selectedGuideOnSiteKey
 		? onSiteCompletionMap[selectedGuideOnSiteKey] || 'incomplete'
@@ -898,8 +906,8 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			const storedCompletionMap = await readStoredOnSiteCompletionMap();
 
 			setOnSiteCompletionMap({
-				...completionMap,
 				...storedCompletionMap,
+				...completionMap,
 			});
 		} catch (error) {
 			setOnSiteCompletionMap(await readStoredOnSiteCompletionMap());

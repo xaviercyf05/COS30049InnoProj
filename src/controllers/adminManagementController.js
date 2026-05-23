@@ -1536,10 +1536,29 @@ async function getAnalyticsDashboard(req, res) {
                    AND LOWER(TRIM(COALESCE(bi.Status, ''))) = 'issued'
               ), 0) AS AwardedCount,
               COALESCE((
-                SELECT COUNT(DISTINCT bi_pending.UserID)
-                  FROM BadgeIssuances bi_pending
-                 WHERE bi_pending.BadgeID = b.BadgeID
-                   AND LOWER(TRIM(COALESCE(bi_pending.Status, ''))) = 'pending'
+                SELECT COUNT(DISTINCT mc.UserID)
+                  FROM (
+                    SELECT blm.BadgeID, m.ModuleID AS OnSiteModuleID
+                      FROM BadgeLinkedModules blm
+                      INNER JOIN Modules m ON m.ModuleID = blm.ModuleID
+                      INNER JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+                     WHERE LOWER(TRIM(COALESCE(mt.TypeName, ''))) = 'on-site training modules'
+                    UNION
+                    SELECT blm.BadgeID, onsite_module.ModuleID AS OnSiteModuleID
+                      FROM BadgeLinkedModules blm
+                      INNER JOIN Modules tpa_module ON tpa_module.ModuleID = blm.ModuleID
+                      INNER JOIN Modules onsite_module ON onsite_module.LinkedTpaModuleID = tpa_module.ModuleID
+                      INNER JOIN ModuleTypes onsite_type ON onsite_type.ModuleTypeID = onsite_module.ModuleTypeID
+                     WHERE LOWER(TRIM(COALESCE(onsite_type.TypeName, ''))) = 'on-site training modules'
+                  ) badgeTargetModules
+                  INNER JOIN ModuleCompletions mc
+                    ON mc.ModuleID = badgeTargetModules.OnSiteModuleID
+                   AND mc.CompletionStatus = 'completed'
+                  LEFT JOIN UserBadges ub
+                    ON ub.UserID = mc.UserID
+                   AND ub.BadgeID = badgeTargetModules.BadgeID
+                 WHERE badgeTargetModules.BadgeID = b.BadgeID
+                   AND ub.UserID IS NULL
               ), 0) AS PendingCount
          FROM Badges b
         WHERE b.IsActive = 1

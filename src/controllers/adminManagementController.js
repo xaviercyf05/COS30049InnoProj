@@ -1451,6 +1451,30 @@ async function getAnalyticsDashboard(req, res) {
         GROUP BY aa.UserID`
     );
 
+        const [userModuleEnrollmentRows] = await query(
+       `SELECT enrolled.UserID,
+            GROUP_CONCAT(DISTINCT enrolled.ModuleTitle ORDER BY enrolled.ModuleTitle SEPARATOR ', ') AS EnrolledModules
+          FROM (
+          SELECT aa.UserID,
+              m.ModuleTitle
+            FROM AssessmentAttempts aa
+            INNER JOIN Assessments a ON a.AssessmentID = aa.AssessmentID
+            INNER JOIN Modules m ON m.ModuleID = a.ModuleID
+            INNER JOIN Users u ON u.UserID = aa.UserID
+            INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+           WHERE aa.Status = 'Passed'
+          UNION
+          SELECT mc.UserID,
+              m.ModuleTitle
+            FROM ModuleCompletions mc
+            INNER JOIN Modules m ON m.ModuleID = mc.ModuleID
+            INNER JOIN Users u ON u.UserID = mc.UserID
+            INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
+           WHERE mc.CompletionStatus = 'completed'
+            ) AS enrolled
+         GROUP BY enrolled.UserID`
+        );
+
     // Compute enrolled guides per module. For On-Site modules we count
     // users who have PASSED the linked TPA module (auto-enrol behavior).
     const [moduleRows] = await query(
@@ -1520,6 +1544,11 @@ async function getAnalyticsDashboard(req, res) {
       return accumulator;
     }, {});
 
+    const enrolledModulesByUser = userModuleEnrollmentRows.reduce((accumulator, row) => {
+      accumulator[row.UserID] = row.EnrolledModules || '-';
+      return accumulator;
+    }, {});
+
     const guides = guideRows.map((row) => {
       const progress = toSafeNumber(row.Progress, 0);
       const isActive = Number(row.IsActive) === 1;
@@ -1533,6 +1562,7 @@ async function getAnalyticsDashboard(req, res) {
         activeStatus: isActive ? 'Active' : 'Inactive',
         progress,
         earnedBadges: earnedBadgesByUser[row.UserID] || '-',
+        enrolledModules: enrolledModulesByUser[row.UserID] || '-',
       };
     });
 
@@ -1640,7 +1670,7 @@ async function getAnalyticsDashboard(req, res) {
           columns: ['Guide Name', 'Current Module', 'Progress %', 'Earned Park Badges'],
           rows: guides.map((guide) => [
             guide.fullName,
-            guide.assignedPark,
+            guide.enrolledModules,
             formatPercentage(guide.progress),
             guide.earnedBadges,
           ]),

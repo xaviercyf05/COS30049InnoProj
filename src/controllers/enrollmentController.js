@@ -23,12 +23,34 @@ async function submitPaymentEvidence(req, res) {
     const evidenceName = file ? file.originalname || file.filename : null;
     const evidenceMime = file ? file.mimetype : null;
 
+    const [moduleRows] = await query(
+      `SELECT m.ModulePrice, mt.TypeName
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.ModuleID = ?
+        LIMIT 1`,
+      [moduleId]
+    );
+
+    if (!moduleRows || moduleRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Module not found.' });
+    }
+
+    const moduleTypeName = String(moduleRows[0].TypeName || '').trim().toLowerCase();
+    const modulePrice = moduleRows[0].ModulePrice === null || moduleRows[0].ModulePrice === undefined
+      ? null
+      : Number(moduleRows[0].ModulePrice);
+
+    if (moduleTypeName !== 'on-site training modules' && modulePrice === null) {
+      return res.status(400).json({ success: false, message: 'Module price is not configured.' });
+    }
+
     console.log('[submitPaymentEvidence] Inserting payment record:', { userId, moduleId, reference, evidencePath, evidenceName, evidenceMime });
 
     const [result] = await query(
-      `INSERT INTO Payments (UserID, ModuleID, Reference, EvidenceFilePath, EvidenceFileName, EvidenceMimeType, Status)
-         VALUES (?, ?, ?, ?, ?, ?, 'pending')`,
-      [userId, moduleId, reference || null, evidencePath, evidenceName, evidenceMime]
+      `INSERT INTO Payments (UserID, ModuleID, ModulePrice, Reference, EvidenceFilePath, EvidenceFileName, EvidenceMimeType, Status)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'pending')`,
+      [userId, moduleId, modulePrice, reference || null, evidencePath, evidenceName, evidenceMime]
     );
 
     console.log('[submitPaymentEvidence] Insert successful, insertId:', result.insertId);
@@ -54,7 +76,14 @@ async function submitPaymentEvidence(req, res) {
       console.warn('Failed to notify admins about payment evidence', _err);
     }
 
-    return res.status(201).json({ success: true, message: 'Payment evidence submitted.', data: { paymentId: result.insertId } });
+    return res.status(201).json({
+      success: true,
+      message: 'Payment evidence submitted.',
+      data: {
+        paymentId: result.insertId,
+        modulePrice: modulePrice === null ? null : Number(modulePrice),
+      },
+    });
   } catch (error) {
     console.error('Submit payment evidence error:', error.message, error.code);
     return res.status(500).json({ success: false, message: `Failed to submit payment evidence: ${error.message}` });
@@ -76,27 +105,30 @@ async function getModulePaymentStatus(req, res) {
 
     const [rows] = await query(
       `SELECT
-         Status,
-         Reference,
-         EvidenceFileName,
-         EvidenceFilePath,
-         ReviewRemark,
-         CreatedAt,
-         ReviewedAt
-       FROM Payments
-       WHERE UserID = ? AND ModuleID = ?
-       ORDER BY CreatedAt DESC
+         p.Status,
+         COALESCE(p.ModulePrice, m.ModulePrice) AS ModulePrice,
+         p.Reference,
+         p.EvidenceFileName,
+         p.EvidenceFilePath,
+         p.ReviewRemark,
+         p.CreatedAt,
+         p.ReviewedAt
+       FROM Modules m
+       LEFT JOIN Payments p ON p.ModuleID = m.ModuleID AND p.UserID = ?
+       WHERE m.ModuleID = ?
+       ORDER BY p.CreatedAt DESC
        LIMIT 1`,
       [userId, moduleId]
     );
 
     if (!rows || rows.length === 0) {
-      return res.json({ success: true, data: { status: 'unpaid' } });
+      return res.json({ success: true, data: { status: 'unpaid', modulePrice: null } });
     }
 
     const statusRow = rows[0];
-    const status = (statusRow.Status || 'pending').toString().toLowerCase();
+    const status = (statusRow.Status || 'unpaid').toString().toLowerCase();
     const submission = {
+      modulePrice: statusRow.ModulePrice === null || statusRow.ModulePrice === undefined ? null : Number(statusRow.ModulePrice),
       reference: statusRow.Reference || null,
       evidenceFileName: statusRow.EvidenceFileName || null,
       evidenceFilePath: statusRow.EvidenceFilePath || null,
@@ -106,9 +138,10 @@ async function getModulePaymentStatus(req, res) {
     };
 
     // Map DB status to frontend-friendly values
-    if (status === 'approved') return res.json({ success: true, data: { status: 'paid', submission } });
-    if (status === 'rejected') return res.json({ success: true, data: { status: 'rejected', submission } });
-    return res.json({ success: true, data: { status: 'pending', submission } });
+    if (status === 'approved') return res.json({ success: true, data: { status: 'paid', modulePrice: submission.modulePrice, submission } });
+    if (status === 'rejected') return res.json({ success: true, data: { status: 'rejected', modulePrice: submission.modulePrice, submission } });
+    if (status === 'pending') return res.json({ success: true, data: { status: 'pending', modulePrice: submission.modulePrice, submission } });
+    return res.json({ success: true, data: { status: 'unpaid', modulePrice: submission.modulePrice, submission } });
   } catch (error) {
     console.error('Get payment status error:', error);
     return res.status(500).json({ success: false, message: 'Failed to fetch payment status.' });

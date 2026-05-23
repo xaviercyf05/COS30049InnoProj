@@ -81,6 +81,7 @@ async function getDashboardModules(req, res) {
                 m.QualificationID,
                 m.ModuleTitle,
                 m.ModuleTypeID,
+          m.ModulePrice,
                 mt.TypeName,
                  meta.CoverImageUrl,
                  meta.Summary,
@@ -103,6 +104,7 @@ async function getDashboardModules(req, res) {
                 m.QualificationID,
                 m.ModuleTitle,
                 m.ModuleTypeID,
+          m.ModulePrice,
                 mt.TypeName,
                  meta.CoverImageUrl,
                  meta.Summary,
@@ -134,6 +136,7 @@ async function getDashboardModules(req, res) {
                 m.QualificationID,
                 m.ModuleTitle,
                 m.ModuleTypeID,
+          m.ModulePrice,
                 mt.TypeName,
                  meta.CoverImageUrl,
                  meta.Summary,
@@ -224,6 +227,7 @@ async function getDashboardModules(req, res) {
         qualificationId: row.QualificationID,
         moduleTypeId: row.ModuleTypeID,
         moduleType: row.TypeName || "Unassigned",
+        modulePrice: row.ModulePrice === null || row.ModulePrice === undefined ? null : Number(row.ModulePrice),
         image: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
           summary: row.Summary || '',
           linkedTpaModuleId: row.LinkedTpaModuleID || null,
@@ -266,6 +270,7 @@ async function getQualificationModules(req, res) {
       `SELECT m.ModuleID,
               m.ModuleTitle,
               m.ModuleTypeID,
+              m.ModulePrice,
               mt.TypeName
          FROM Modules m
          LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
@@ -291,6 +296,7 @@ async function getQualificationModules(req, res) {
       modulesByType[typeName].modules.push({
         moduleId: m.ModuleID,
         title: m.ModuleTitle,
+        modulePrice: m.ModulePrice === null || m.ModulePrice === undefined ? null : Number(m.ModulePrice),
       });
     }
 
@@ -321,6 +327,7 @@ async function getModuleDetails(req, res) {
               m.QualificationID,
               m.ModuleTitle,
               m.ModuleTypeID,
+              m.ModulePrice,
             mt.TypeName,
             meta.Summary
          FROM Modules m
@@ -354,6 +361,7 @@ async function getModuleDetails(req, res) {
         title: module.ModuleTitle,
         moduleTypeId: module.ModuleTypeID,
         moduleType: module.TypeName || "Unassigned",
+        modulePrice: module.ModulePrice === null || module.ModulePrice === undefined ? null : Number(module.ModulePrice),
         summary: module.Summary || "",
         sections: chapters,
         chapters,

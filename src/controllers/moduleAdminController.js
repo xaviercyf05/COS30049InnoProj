@@ -11,6 +11,28 @@ const moduleCoverPathPrefix = "/uploads/module-covers/";
 const ONSITE_MODULE_TYPE_NAME = "On-Site Training Modules";
 const TPA_MODULE_TYPE_NAME = "Total Protected Area Modules";
 
+function parseOptionalDecimal(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const numericValue = Number.parseFloat(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function getIncomingModulePrice(body) {
+  return parseOptionalDecimal(body.modulePrice ?? body.price ?? body.module_fee ?? body.module_price);
+}
+
+function normalizeModulePriceForType(moduleTypeName, incomingPrice) {
+  const normalizedTypeName = String(moduleTypeName || "").trim().toLowerCase();
+  if (normalizedTypeName === ONSITE_MODULE_TYPE_NAME.toLowerCase()) {
+    return null;
+  }
+
+  return incomingPrice;
+}
+
 function createModuleCoverImageUrl(fileName) {
   return `${moduleCoverPathPrefix}${fileName}`;
 }
@@ -160,6 +182,7 @@ async function readModuleById(moduleId) {
             m.QualificationID,
             m.ModuleTitle,
             m.ModuleTypeID,
+            m.ModulePrice,
             m.LinkedTpaModuleID,
             m.LinkedOnsiteModuleID,
             mt.TypeName,
@@ -205,6 +228,7 @@ async function readModuleById(moduleId) {
     title: moduleRow.ModuleTitle,
     moduleTypeId: moduleRow.ModuleTypeID,
     moduleType: moduleRow.TypeName || 'General Modules',
+    modulePrice: moduleRow.ModulePrice === null || moduleRow.ModulePrice === undefined ? null : Number(moduleRow.ModulePrice),
     linkedTpaModuleId: moduleRow.LinkedTpaModuleID || null,
     linkedOnsiteModuleId: moduleRow.LinkedOnsiteModuleID || null,
     moduleImageUrl: resolveModuleCoverImage(moduleRow.ModuleID, moduleRow.CoverImageUrl),
@@ -226,6 +250,7 @@ async function listModules(req, res) {
               m.QualificationID,
               m.ModuleTitle,
               m.ModuleTypeID,
+              m.ModulePrice,
               m.LinkedTpaModuleID,
               m.LinkedOnsiteModuleID,
               mt.TypeName,
@@ -249,6 +274,7 @@ async function listModules(req, res) {
       title: row.ModuleTitle,
       moduleTypeId: row.ModuleTypeID,
       moduleType: row.TypeName || 'Theory',
+      modulePrice: row.ModulePrice === null || row.ModulePrice === undefined ? null : Number(row.ModulePrice),
       linkedTpaModuleId: row.LinkedTpaModuleID || null,
       linkedOnsiteModuleId: row.LinkedOnsiteModuleID || null,
       moduleImageUrl: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
@@ -353,6 +379,7 @@ async function createModule(req, res) {
   const requestedQualificationId = Number.parseInt(req.body.qualificationId, 10);
   const requestedModuleTypeId = Number.parseInt(req.body.moduleTypeId, 10);
   const requestedLinkedTpaModuleId = Number.parseInt(req.body.linkedTpaModuleId, 10);
+  const requestedModulePrice = getIncomingModulePrice(req.body);
   const sections = normalizeSectionsInput(req.body.sections);
 
   // Debug logging to verify incoming payload
@@ -410,6 +437,16 @@ async function createModule(req, res) {
     }
 
     const moduleTypeId = await resolveModuleTypeId(connection.execute.bind(connection), requestedModuleTypeId);
+    const moduleTypeName = await getModuleTypeNameById(connection.execute.bind(connection), moduleTypeId);
+    const modulePrice = normalizeModulePriceForType(moduleTypeName, requestedModulePrice);
+
+    if (moduleTypeName !== ONSITE_MODULE_TYPE_NAME && modulePrice === null) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Module price is required and must be numeric for non-on-site modules.",
+      });
+    }
 
     console.debug('createModule resolved moduleTypeId:', { requestedModuleTypeId, resolvedModuleTypeId: moduleTypeId });
 
@@ -458,8 +495,8 @@ async function createModule(req, res) {
     }
 
     const [moduleInsert] = await connection.execute(
-      "INSERT INTO Modules (QualificationID, ModuleTitle, ModuleTypeID, LinkedTpaModuleID) VALUES (?, ?, ?, ?)",
-      [qualificationId, title, moduleTypeId, linkedTpaModuleId]
+      "INSERT INTO Modules (QualificationID, ModuleTitle, ModuleTypeID, ModulePrice, LinkedTpaModuleID) VALUES (?, ?, ?, ?, ?)",
+      [qualificationId, title, moduleTypeId, modulePrice, linkedTpaModuleId]
     );
 
     const moduleId = moduleInsert.insertId;
@@ -539,6 +576,7 @@ async function updateModule(req, res) {
   const moduleImageUrl = normalizeModuleCoverImageUrl(req.body.moduleImageUrl);
   const requestedModuleTypeId = Number.parseInt(req.body.moduleTypeId, 10);
   const requestedLinkedTpaModuleId = Number.parseInt(req.body.linkedTpaModuleId, 10);
+  const requestedModulePrice = getIncomingModulePrice(req.body);
   const sections = normalizeSectionsInput(req.body.sections);
 
   if (!title) {
@@ -577,7 +615,7 @@ async function updateModule(req, res) {
     }
 
     const [currentModuleRows] = await connection.execute(
-      "SELECT ModuleTypeID, LinkedTpaModuleID FROM Modules WHERE ModuleID = ? LIMIT 1",
+      "SELECT ModuleTypeID, LinkedTpaModuleID, ModulePrice FROM Modules WHERE ModuleID = ? LIMIT 1",
       [moduleId]
     );
 
@@ -588,6 +626,16 @@ async function updateModule(req, res) {
       requestedModuleTypeId,
       currentModuleTypeId
     );
+    const moduleTypeName = await getModuleTypeNameById(connection.execute.bind(connection), moduleTypeId);
+    const modulePrice = normalizeModulePriceForType(moduleTypeName, requestedModulePrice);
+
+    if (moduleTypeName !== ONSITE_MODULE_TYPE_NAME && modulePrice === null) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Module price is required and must be numeric for non-on-site modules.",
+      });
+    }
 
     // Validate linked TPA relationship if provided
     let linkedTpaModuleId = currentLinkedTpaModuleId;
@@ -658,8 +706,8 @@ async function updateModule(req, res) {
     }
 
     await connection.execute(
-      "UPDATE Modules SET ModuleTitle = ?, ModuleTypeID = ?, LinkedTpaModuleID = ? WHERE ModuleID = ?",
-      [title, moduleTypeId, linkedTpaModuleId, moduleId]
+      "UPDATE Modules SET ModuleTitle = ?, ModuleTypeID = ?, ModulePrice = ?, LinkedTpaModuleID = ? WHERE ModuleID = ?",
+      [title, moduleTypeId, modulePrice, linkedTpaModuleId, moduleId]
     );
 
     await connection.execute(

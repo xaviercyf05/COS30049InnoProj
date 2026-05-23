@@ -883,8 +883,7 @@ async function createSchedule(req, res) {
     ) {
       return res.status(400).json({
         success: false,
-        message:
-          "User ID, qualification ID, title, date, and times are required.",
+        message: "User ID, qualification ID, title, date, and times are required.",
       });
     }
 
@@ -1026,8 +1025,17 @@ async function getUserEnrollmentDetails(req, res) {
 
     // Get enrollments
     const [enrollments] = await query(
-      `SELECT c.CertificateID, c.QualificationID, c.QualificationName, c.Status
+      `SELECT c.CertificateID,
+              c.QualificationID,
+              c.QualificationName,
+              c.Status,
+              m.ModuleID,
+              m.ModuleTitle,
+              m.ModulePrice,
+              mt.TypeName
        FROM Certificates c
+       LEFT JOIN Modules m ON m.QualificationID = c.QualificationID
+       LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
        WHERE c.UserID = ?`,
       [userId]
     );
@@ -1044,6 +1052,10 @@ async function getUserEnrollmentDetails(req, res) {
           qualificationId: e.QualificationID,
           qualificationName: e.QualificationName,
           status: e.Status,
+          moduleId: e.ModuleID || null,
+          moduleTitle: e.ModuleTitle || null,
+          moduleType: e.TypeName || null,
+          modulePrice: e.ModulePrice === null || e.ModulePrice === undefined ? null : Number(e.ModulePrice),
         })),
       },
     });
@@ -1215,6 +1227,7 @@ async function listPayments(req, res) {
     let sql = `SELECT p.PaymentID,
                       p.UserID,
                       p.ModuleID,
+                      COALESCE(p.ModulePrice, m.ModulePrice) AS ModulePrice,
                       p.Reference,
                       p.EvidenceFilePath,
                       p.EvidenceFileName,
@@ -1248,6 +1261,7 @@ async function listPayments(req, res) {
       userId: r.UserID,
       moduleId: r.ModuleID,
       moduleTitle: r.ModuleTitle,
+      modulePrice: r.ModulePrice === null || r.ModulePrice === undefined ? null : Number(r.ModulePrice),
       userName: r.FullName || r.Username,
       reference: r.Reference,
       evidenceFile: r.EvidenceFilePath,

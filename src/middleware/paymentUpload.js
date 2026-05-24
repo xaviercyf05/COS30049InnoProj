@@ -12,7 +12,22 @@ const storage = multer.diskStorage({
   },
   filename(req, file, callback) {
     const safeId = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const ext = (file.originalname && file.originalname.split('.').pop()) || 'pdf';
+    const mimeExtMap = {
+      'application/pdf': 'pdf',
+      'application/x-pdf': 'pdf',
+      'image/jpeg': 'jpg',
+      'image/jpg': 'jpg',
+      'image/png': 'png',
+      'image/gif': 'gif',
+      'image/webp': 'webp',
+      'image/heic': 'heic',
+      'image/heif': 'heif',
+    };
+
+    const originalExt = file.originalname && file.originalname.includes('.')
+      ? file.originalname.split('.').pop()
+      : null;
+    const ext = originalExt || mimeExtMap[file.mimetype] || 'pdf';
     callback(null, `payment-${safeId}.${ext}`);
   },
 });
@@ -23,17 +38,13 @@ const paymentUpload = multer({
     fileSize: 10 * 1024 * 1024,
   },
   fileFilter(req, file, callback) {
-    // Accept PDFs and common image types for receipts
-    const allowed = [
-      'application/pdf',
-      'application/x-pdf',
-      'image/jpeg',
-      'image/png',
-      'image/jpg',
-    ];
+    const allowed =
+      file.mimetype === 'application/pdf' ||
+      file.mimetype === 'application/x-pdf' ||
+      String(file.mimetype || '').startsWith('image/');
 
-    if (!allowed.includes(file.mimetype)) {
-      const error = new Error('Only PDF, JPG or PNG files are allowed for payment evidence.');
+    if (!allowed) {
+      const error = new Error('Only PDF or image files are allowed for payment evidence.');
       error.statusCode = 400;
       return callback(error);
     }

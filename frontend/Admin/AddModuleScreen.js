@@ -20,10 +20,7 @@ import {
   uploadModuleCoverImage,
 } from '../Profile/profileApi.js';
 
-const Editor =
-  Platform.OS === 'web'
-    ? require('./RichEditor.web').default
-    : require('./RichEditor').default;
+import Editor from './RichEditor';
 
 const PLACEHOLDER_COLOR = '#A8ADA3';
 const MODULE_TYPE_OPTIONS = [

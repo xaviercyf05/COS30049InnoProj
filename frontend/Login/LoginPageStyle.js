@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 
 export const styles = StyleSheet.create({
   mainContainer: {
@@ -214,6 +214,13 @@ export const styles = StyleSheet.create({
     flex: 1,
     color: '#21311F',
     fontSize: 16,
+    ...(Platform.OS === 'web'
+      ? {
+          appearance: 'none',
+          outlineStyle: 'none',
+          outlineWidth: 0,
+        }
+      : null),
   },
   otherMethodsDisclosure: {
     marginTop: 2,

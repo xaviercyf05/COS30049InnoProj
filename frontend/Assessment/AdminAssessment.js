@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
 	ActivityIndicator,
 	Alert,
-	Platform,
 	ScrollView,
 	StyleSheet,
 	Text,
@@ -140,19 +139,6 @@ function AdminAssessment({ route, navigation }) {
 	};
 
 	const confirmDestructiveAction = (title, message, onConfirm) => {
-		if (Platform.OS === 'web') {
-			const confirmed =
-				typeof globalThis !== 'undefined' && typeof globalThis.confirm === 'function'
-					? globalThis.confirm(`${title}\n\n${message}`)
-					: true;
-
-			if (confirmed) {
-				onConfirm();
-			}
-
-			return;
-		}
-
 		Alert.alert(title, message, [
 			{ text: 'Cancel', style: 'cancel' },
 			{ text: 'Delete', style: 'destructive', onPress: onConfirm },

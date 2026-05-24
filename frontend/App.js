@@ -148,51 +148,50 @@ function WebAlertHost() {
 		return null;
 	}
 
+	if (!activeAlert) {
+		return null;
+	}
+
 	return (
-		<Modal
-			transparent
-			animationType="fade"
-			visible={Boolean(activeAlert)}
-			onRequestClose={() => resolveAlert(0)}
+		<View
+			style={styles.webAlertOverlay}
 		>
-			<View style={styles.webAlertOverlay}>
-				<View style={styles.webAlertCard}>
-					<Text style={styles.webAlertTitle}>{activeAlert?.title}</Text>
-					{activeAlert?.message ? (
-						<Text style={styles.webAlertMessage}>{activeAlert.message}</Text>
-					) : null}
+			<View style={styles.webAlertCard}>
+				<Text style={styles.webAlertTitle}>{activeAlert.title}</Text>
+				{activeAlert.message ? (
+					<Text style={styles.webAlertMessage}>{activeAlert.message}</Text>
+				) : null}
 
-					<View style={styles.webAlertActions}>
-						{(activeAlert?.buttons || []).map((button, index) => {
-							const isCancel = button?.style === 'cancel';
-							const isDestructive = button?.style === 'destructive';
+				<View style={styles.webAlertActions}>
+					{(activeAlert.buttons || []).map((button, index) => {
+						const isCancel = button?.style === 'cancel';
+						const isDestructive = button?.style === 'destructive';
 
-							return (
-								<TouchableOpacity
-									key={`${String(button?.text || 'OK')}-${index}`}
+						return (
+							<TouchableOpacity
+								key={`${String(button?.text || 'OK')}-${index}`}
+								style={[
+									styles.webAlertButton,
+									isCancel && styles.webAlertButtonSecondary,
+									isDestructive && styles.webAlertButtonDestructive,
+								]}
+								onPress={() => resolveAlert(index)}
+							>
+								<Text
 									style={[
-										styles.webAlertButton,
-										isCancel && styles.webAlertButtonSecondary,
-										isDestructive && styles.webAlertButtonDestructive,
+										styles.webAlertButtonText,
+										isCancel && styles.webAlertButtonTextSecondary,
+										isDestructive && styles.webAlertButtonTextDestructive,
 									]}
-									onPress={() => resolveAlert(index)}
 								>
-									<Text
-										style={[
-											styles.webAlertButtonText,
-											isCancel && styles.webAlertButtonTextSecondary,
-											isDestructive && styles.webAlertButtonTextDestructive,
-										]}
-									>
-										{button?.text || 'OK'}
-									</Text>
-								</TouchableOpacity>
-							);
-						})}
-					</View>
+									{button?.text || 'OK'}
+								</Text>
+							</TouchableOpacity>
+						);
+					})}
 				</View>
 			</View>
-		</Modal>
+		</View>
 	);
 }
 
@@ -1204,6 +1203,37 @@ function usePeriodicTokenRefresh() {
 }
 
 export default function App() {
+	useEffect(() => {
+		if (Platform.OS !== 'web' || typeof document === 'undefined') {
+			return undefined;
+		}
+
+		const styleId = 'innopapp-web-input-focus-reset';
+		let styleEl = document.getElementById(styleId);
+
+		if (!styleEl) {
+			styleEl = document.createElement('style');
+			styleEl.id = styleId;
+			styleEl.textContent = `
+				input:not([type]),
+				input[type='text'],
+				input[type='password'],
+				input[type='email'],
+				input[type='search'],
+				input[type='number'],
+				textarea {
+					appearance: none;
+					-webkit-appearance: none;
+					outline-style: none !important;
+					outline-width: 0 !important;
+				}
+			`;
+			document.head.appendChild(styleEl);
+		}
+
+		return undefined;
+	}, []);
+
 	return (
 		<>
 			<NavigationContainer>
@@ -1923,11 +1953,17 @@ const styles = StyleSheet.create({
 		fontSize: 14,
 	},
 	webAlertOverlay: {
-		flex: 1,
+		position: 'fixed',
+		top: 0,
+		right: 0,
+		bottom: 0,
+		left: 0,
+		zIndex: 9999,
 		backgroundColor: 'rgba(20, 31, 24, 0.5)',
 		justifyContent: 'center',
 		alignItems: 'center',
 		padding: 20,
+		pointerEvents: 'auto',
 	},
 	webAlertCard: {
 		width: '50%',

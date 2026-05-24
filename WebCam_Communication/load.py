@@ -21,7 +21,7 @@ except ImportError:
 # =========================
 # SETTINGS
 # =========================
-MODEL_PATH = "best5.pt"
+MODEL_PATH = "best6.pt"
 CAMERA_SOURCE = 0
 CONFIDENCE_THRESHOLD = 0.45
 SAVE_FOLDER = "evidence"

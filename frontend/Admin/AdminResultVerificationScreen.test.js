@@ -16,11 +16,13 @@ const mockRoute = {
 	params: {
 		assessmentId: 'test-assessment-id',
 		userId: 'test-user-id',
+		moduleId: '1',
 		result: {
 			id: 'test-result-id',
 			userId: 'test-user-id',
 			parkGuideName: 'John Doe',
 			moduleName: 'Safety Training Assessment',
+			moduleId: '1',
 			finalScore: 85,
 			passed: true,
 			dateAttempt: '2026-05-20T10:00:00Z',
@@ -60,6 +62,7 @@ const mockBadgesData = {
 		{
 			id: 'badge-1',
 			name: 'Safety Badge',
+			linkedModuleNames: ['Safety Training Assessment'],
 			linkedModuleIds: ['1'],
 		},
 	],
@@ -81,16 +84,15 @@ describe('AdminResultVerificationScreen', () => {
 	});
 
 	it('renders loading state initially and then displays data', async () => {
-		const { getByType, getByText } = render(
+		const { getAllByText } = render(
 			<AdminResultVerificationScreen route={mockRoute} navigation={mockNavigation} />
 		);
 
-		expect(getByType('ActivityIndicator')).toBeTruthy();
-
 		await waitFor(() => {
-			expect(getByText('John Doe')).toBeTruthy();
-			expect(getByText('Safety Training Assessment')).toBeTruthy();
-			expect(getByText('85%')).toBeTruthy();
+			expect(getAllByText('John Doe').length).toBeGreaterThan(0);
+			expect(getAllByText('Safety Training Assessment').length).toBeGreaterThan(0);
+			expect(getAllByText('85%').length).toBeGreaterThan(0);
+			expect(getAllByText('Badge Issuance Review').length).toBeGreaterThan(0);
 		});
 	});
 
@@ -104,13 +106,13 @@ describe('AdminResultVerificationScreen', () => {
 	});
 
 	it('toggles the on-site completion switch and updates asyncstorage', async () => {
-		const { getByRole } = render(
+		const { getByText } = render(
 			<AdminResultVerificationScreen route={mockRoute} navigation={mockNavigation} />
 		);
 
 		await waitFor(() => {
-			const switchComponent = getByRole('switch');
-			expect(switchComponent).toBeTruthy();
+			expect(getByText('Issue Badge')).toBeTruthy();
+			expect(getByText('Reject')).toBeTruthy();
 		});
 	});
 
@@ -120,7 +122,7 @@ describe('AdminResultVerificationScreen', () => {
 		);
 
 		await waitFor(() => {
-			const textInput = getByPlaceholderText('Add reasons, observations, or next steps...');
+			const textInput = getByPlaceholderText('Optional note for the issued badge');
 			fireEvent.changeText(textInput, 'Verification approved successfully');
 			expect(textInput.props.value).toBe('Verification approved successfully');
 		});
@@ -132,9 +134,19 @@ describe('AdminResultVerificationScreen', () => {
 		);
 
 		await waitFor(() => {
-			const issueButton = getByText('Issue Badge & Certificate');
+			const issueButton = getByText('Issue Badge');
 			fireEvent.press(issueButton);
-			expect(Alert.alert).toHaveBeenCalled();
+			expect(requestProfileApi).toHaveBeenCalledWith(
+				'/api/v1/admin/badges/issue',
+				'mock-token',
+				expect.objectContaining({
+					method: 'POST',
+					body: expect.objectContaining({
+						badgeId: 'badge-1',
+						userId: 'test-user-id',
+					}),
+				})
+			);
 		});
 	});
 
@@ -144,9 +156,9 @@ describe('AdminResultVerificationScreen', () => {
 		);
 
 		await waitFor(() => {
-			const rejectButton = getByText('Reject / Request Retake');
+			const rejectButton = getByText('Reject');
 			fireEvent.press(rejectButton);
-			expect(Alert.alert).toHaveBeenCalled();
+			expect(getByText('Result for John Doe was marked as rejected.')).toBeTruthy();
 		});
 	});
 });

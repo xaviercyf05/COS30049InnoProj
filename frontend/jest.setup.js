@@ -18,3 +18,9 @@ jest.mock('@react-navigation/native', () => ({
     addListener: jest.fn(() => jest.fn()),
   }),
 }));
+
+jest.mock('react-native-safe-area-context', () => ({
+  SafeAreaView: ({ children }) => children,
+  SafeAreaProvider: ({ children }) => children,
+  useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }),
+}));

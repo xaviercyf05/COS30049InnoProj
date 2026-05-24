@@ -199,16 +199,31 @@ const normalizeStoredOnSiteCompletionMap = (value) => {
 		return {};
 	}
 
-	return Object.entries(value).reduce((accumulator, [key, status]) => {
+	if (typeof console !== 'undefined' && console.debug) {
+		console.debug('normalizeStoredOnSiteCompletionMap input', value);
+	}
+
+	const result = Object.entries(value).reduce((accumulator, [key, status]) => {
 		const normalizedKey = String(key || '').trim();
 		const normalizedStatus = String(status || '').trim().toLowerCase();
 
-		if (normalizedKey && normalizedStatus) {
-			accumulator[normalizedKey] = normalizedStatus;
-		}
+		if (!normalizedKey || !normalizedStatus) return accumulator;
 
+		// Expect keys in the format 'userId::moduleId' — ignore malformed keys
+		const parts = normalizedKey.split('::');
+		if (parts.length !== 2) return accumulator;
+		const [userPart, modulePart] = parts.map((p) => String(p || '').trim());
+		if (!userPart || !modulePart) return accumulator;
+
+		accumulator[`${userPart}::${modulePart}`] = normalizedStatus;
 		return accumulator;
 	}, {});
+
+	if (typeof console !== 'undefined' && console.debug) {
+		console.debug('normalizeStoredOnSiteCompletionMap result', result);
+	}
+
+	return result;
 };
 
 const readStoredOnSiteCompletionMap = async () => {
@@ -218,7 +233,10 @@ const readStoredOnSiteCompletionMap = async () => {
 			return {};
 		}
 
-		return normalizeStoredOnSiteCompletionMap(JSON.parse(storedValue));
+		const parsed = JSON.parse(storedValue);
+		const normalized = normalizeStoredOnSiteCompletionMap(parsed);
+		if (typeof console !== 'undefined' && console.debug) console.debug('readStoredOnSiteCompletionMap parsed', parsed, 'normalized', normalized);
+		return normalized;
 	} catch (_error) {
 		return {};
 	}
@@ -226,13 +244,27 @@ const readStoredOnSiteCompletionMap = async () => {
 
 const writeStoredOnSiteCompletionMap = async (completionMap) => {
 	try {
-		const normalizedMap = normalizeStoredOnSiteCompletionMap(completionMap);
-		if (Object.keys(normalizedMap).length === 0) {
+		// Treat the provided map as a delta of changes to apply to existing stored map.
+		const delta = normalizeStoredOnSiteCompletionMap(completionMap);
+		const rawExisting = await AsyncStorage.getItem(ON_SITE_COMPLETION_STORAGE_KEY);
+		const existing = rawExisting ? normalizeStoredOnSiteCompletionMap(JSON.parse(rawExisting)) : {};
+
+		const merged = {
+			...existing,
+			...delta,
+		};
+
+		// Remove any keys with falsy/empty values (normalizeStoredOnSiteCompletionMap already filters them out)
+		const finalMap = Object.keys(merged).length === 0 ? {} : merged;
+
+		if (Object.keys(finalMap).length === 0) {
+			if (typeof console !== 'undefined' && console.debug) console.debug('writeStoredOnSiteCompletionMap removing item due to empty final map');
 			await AsyncStorage.removeItem(ON_SITE_COMPLETION_STORAGE_KEY);
 			return;
 		}
 
-		await AsyncStorage.setItem(ON_SITE_COMPLETION_STORAGE_KEY, JSON.stringify(normalizedMap));
+		if (typeof console !== 'undefined' && console.debug) console.debug('writeStoredOnSiteCompletionMap write merged', finalMap, 'delta', delta, 'existing', existing);
+		await AsyncStorage.setItem(ON_SITE_COMPLETION_STORAGE_KEY, JSON.stringify(finalMap));
 	} catch (_error) {
 		// Best-effort cache only.
 	}
@@ -301,6 +333,12 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const [queueUpdatingKey, setQueueUpdatingKey] = useState('');
 	const [badges, setBadges] = useState([]);
 	const [loadingBadges, setLoadingBadges] = useState(true);
+	const [debugMode, setDebugMode] = useState(true);
+	const [debugStorageRaw, setDebugStorageRaw] = useState(null);
+	const [debugMergedMap, setDebugMergedMap] = useState({});
+	const [debugLastAction, setDebugLastAction] = useState(null);
+	const [debugFetchedRows, setDebugFetchedRows] = useState(null);
+	const [debugComputedCompletionMap, setDebugComputedCompletionMap] = useState(null);
 	const [searchQuery, setSearchQuery] = useState('');
 	const [statusFilter, setStatusFilter] = useState('all');
 	const [issuing, setIssuing] = useState(false);
@@ -555,7 +593,16 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	const selectedAssessmentDetailFinalScore = selectedAssessmentDetailResult?.finalScore ?? selectedResult?.finalScore;
 
 	function buildOnSiteCompletionRowKey(userId, moduleId) {
-		return `${String(userId || '').trim()}::${String(moduleId || '').trim()}`;
+		const u = String(userId || '').trim();
+		const m = String(moduleId || '').trim();
+		if (!u || !m) {
+			if (typeof console !== 'undefined' && console.debug) console.debug('buildOnSiteCompletionRowKey produced empty key', { userId, moduleId });
+			return '';
+		}
+
+		const key = `${u}::${m}`;
+		if (typeof console !== 'undefined' && console.debug) console.debug('buildOnSiteCompletionRowKey', { userId: u, moduleId: m, key });
+		return key;
 	}
 
 	function buildBadgeIssuanceStatusKey(userId, assessmentId, badgeId) {
@@ -876,8 +923,9 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		}
 	};
 
+
 	const loadOnSiteCompletions = async (moduleId, options = {}) => {
-		const { silent = false } = options;
+		const { silent = false, writeBack = false } = options;
 
 		try {
 			const token = await AsyncStorage.getItem('auth_token');
@@ -903,12 +951,45 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 				return accumulator;
 			}, {});
+
+			if (typeof console !== 'undefined' && console.debug) {
+				console.debug('loadOnSiteCompletions fetched rows', completionRows);
+				console.debug('loadOnSiteCompletions computed completionMap', completionMap);
+			}
+			setDebugFetchedRows(completionRows);
+			setDebugComputedCompletionMap(completionMap);
 			const storedCompletionMap = await readStoredOnSiteCompletionMap();
 
-			setOnSiteCompletionMap({
-				...storedCompletionMap,
+			// capture raw storage for debug visibility
+			try {
+				const raw = await AsyncStorage.getItem(ON_SITE_COMPLETION_STORAGE_KEY);
+				setDebugStorageRaw(raw);
+			} catch (_e) {
+				setDebugStorageRaw(null);
+			}
+
+			// Merge server-provided completion rows with locally stored overrides.
+			// Local stored entries should take precedence (user/admin may have toggled
+			// completion state locally) so spread server map first, then stored map.
+			const merged = {
 				...completionMap,
-			});
+				...storedCompletionMap,
+			};
+
+			if (typeof console !== 'undefined' && console.debug) console.debug('loadOnSiteCompletions mergedCompletionMap', merged);
+			setOnSiteCompletionMap(merged);
+			setDebugMergedMap(merged);
+
+			// Optionally persist the cleaned/merged map back to storage so malformed keys are removed.
+			// Do NOT write back by default to avoid overwriting the stored map with server-side data
+			// on routine refreshes triggered after a single admin action.
+			if (writeBack) {
+				try {
+					await writeStoredOnSiteCompletionMap(merged);
+				} catch (_e) {
+					// Best-effort only; ignore storage errors
+				}
+			}
 		} catch (error) {
 			setOnSiteCompletionMap(await readStoredOnSiteCompletionMap());
 			if (!silent) {
@@ -1115,11 +1196,21 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		const targetUserId = row.userId;
 
 		const targetOnSiteKey = buildOnSiteCompletionRowKey(targetUserId, targetModuleId);
+
+		if (typeof console !== 'undefined' && console.debug) {
+			console.debug('persistOnSiteCompletionForRow start', { row, completionStatus, targetUserId, targetModuleId, targetOnSiteKey, targetAssessmentId });
+		}
+		if (typeof setDebugLastAction === 'function') {
+			setDebugLastAction({ stage: 'start', row, completionStatus, targetUserId, targetModuleId, targetOnSiteKey });
+		}
 		const currentStoredCompletionMap = await readStoredOnSiteCompletionMap();
+		// Use the stored map as the authoritative baseline when persisting changes
+		// to avoid writing accidental in-memory state that may be stale.
 		const currentCompletionMap = {
 			...currentStoredCompletionMap,
-			...onSiteCompletionMap,
 		};
+
+		if (typeof console !== 'undefined' && console.debug) console.debug('persistOnSiteCompletionForRow currentStoredCompletionMap', currentStoredCompletionMap, 'inMemoryMap', onSiteCompletionMap);
 		const nextCompletionMap = targetOnSiteKey
 			? {
 				...currentCompletionMap,
@@ -1129,8 +1220,14 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 		if (completionStatus !== 'completed') {
 			if (targetOnSiteKey) {
-				setOnSiteCompletionMap(nextCompletionMap);
-				await writeStoredOnSiteCompletionMap(nextCompletionMap);
+				if (typeof console !== 'undefined' && console.debug) console.debug('persistOnSiteCompletionForRow marking incomplete', { targetOnSiteKey, nextCompletionMap });
+				if (typeof setDebugLastAction === 'function') setDebugLastAction({ action: 'incomplete', targetOnSiteKey, nextCompletionMap });
+				// Update in-memory merged map so server-provided entries are preserved
+				setOnSiteCompletionMap((previous) => ({
+					...previous,
+					[targetOnSiteKey]: completionStatus,
+				}));
+				await writeStoredOnSiteCompletionMap({ [targetOnSiteKey]: completionStatus });
 			}
 
 			setStatusType('success');
@@ -1164,8 +1261,14 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 					...currentCompletionMap,
 					[targetOnSiteKey]: 'completed',
 				};
-				setOnSiteCompletionMap(completedCompletionMap);
-				await writeStoredOnSiteCompletionMap(completedCompletionMap);
+				if (typeof console !== 'undefined' && console.debug) console.debug('persistOnSiteCompletionForRow marking completed', { targetOnSiteKey, completedCompletionMap });
+				if (typeof setDebugLastAction === 'function') setDebugLastAction({ action: 'completed', targetOnSiteKey, completedCompletionMap });
+				// Update in-memory merged map so server-provided entries are preserved
+				setOnSiteCompletionMap((previous) => ({
+					...previous,
+					[targetOnSiteKey]: 'completed',
+				}));
+				await writeStoredOnSiteCompletionMap({ [targetOnSiteKey]: 'completed' });
 			}
 
 			setTpaOnSiteQueue((previousQueue) => previousQueue.map((item) => {
@@ -1179,7 +1282,9 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 				return item;
 			}));
 
-			await loadOnSiteCompletions(undefined, { silent: true });
+			// Refresh completions from server for UI, but don't write server results back to storage
+			// to avoid overwriting the authoritative stored map.
+			await loadOnSiteCompletions(undefined, { silent: true, writeBack: false });
 
 			setStatusType('success');
 			setStatusMessage(`On-site module for ${row.parkGuideName || `User ${targetUserId}`} marked as completed.`);
@@ -1539,6 +1644,31 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 						Select an assessment row to review the result.
 					</Text>
 				</View>
+
+				{debugMode ? (
+					<View style={[styles.card, { backgroundColor: '#FFF6E0', borderColor: '#E0D8B0' }] }>
+						<Text style={[styles.cardTitle, { color: '#8A6D00' }]}>Debug: On-site completion</Text>
+						<ScrollView style={{ maxHeight: 160 }}>
+							<Text style={styles.emptyText}>Raw storage: {String(debugStorageRaw || '')}</Text>
+							<Text style={styles.emptyText}>Merged map: {JSON.stringify(debugMergedMap || {}, null, 2)}</Text>
+							<Text style={styles.emptyText}>Last action: {JSON.stringify(debugLastAction || {}, null, 2)}</Text>
+						</ScrollView>
+						<View style={{ flexDirection: 'row', marginTop: 8 }}>
+							<TouchableOpacity style={[styles.inlineOnSiteButtonIncomplete, { marginRight: 8 }]} onPress={async () => {
+								await AsyncStorage.removeItem(ON_SITE_COMPLETION_STORAGE_KEY);
+								setDebugStorageRaw(null);
+								setDebugMergedMap({});
+								setOnSiteCompletionMap({});
+								Alert.alert('Debug', 'Cleared on-site completion storage');
+							}}>
+								<Text style={[styles.inlineOnSiteButtonText]}>Clear stored map</Text>
+							</TouchableOpacity>
+							<TouchableOpacity style={[styles.inlineOnSiteButtonIncomplete]} onPress={() => setDebugMode(false)}>
+								<Text style={[styles.inlineOnSiteButtonText]}>Hide debug</Text>
+							</TouchableOpacity>
+						</View>
+					</View>
+				) : null}
 
 				{isSidebarMode ? (
 					<View style={styles.card}>

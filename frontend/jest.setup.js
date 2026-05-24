@@ -1,5 +1,17 @@
 import '@testing-library/jest-native/extend-expect';
 
+jest.mock('react-native/Libraries/Components/Touchable/TouchableOpacity', () => {
+  const React = require('react');
+  const TouchableOpacity = ({ children, onPress, ...props }) =>
+    React.createElement('Pressable', { onPress, accessibilityRole: 'button', ...props }, children);
+
+  return {
+    __esModule: true,
+    default: TouchableOpacity,
+    TouchableOpacity,
+  };
+});
+
 // Mock AsyncStorage
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(() => Promise.resolve('fake-token')),

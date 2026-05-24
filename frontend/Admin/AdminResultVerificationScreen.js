@@ -840,6 +840,45 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 		}
 	};
 
+	const loadSelectedBadgeIssuanceStatus = async () => {
+		if (!selectedIssuanceResult?.userId || !selectedBadge?.id) {
+			return;
+		}
+
+		const assessmentId = selectedIssuanceResult.assessmentId || selectedAssessment?.id || routeAssessmentId || selectedAssessmentId || null;
+
+		if (!assessmentId) {
+			return;
+		}
+
+		const issuanceKey = [selectedIssuanceResult.userId, assessmentId, selectedBadge.id]
+			.map((value) => String(value || '').trim())
+			.filter(Boolean)
+			.join('::');
+
+		try {
+			const token = await AsyncStorage.getItem('auth_token');
+
+			if (!token) {
+				return;
+			}
+
+			const response = await requestProfileApi(
+				`/api/v1/admin/badges/issuance-status?userId=${encodeURIComponent(selectedIssuanceResult.userId)}&assessmentId=${encodeURIComponent(assessmentId)}&badgeId=${encodeURIComponent(selectedBadge.id)}`,
+				token,
+				{ method: 'GET' }
+			);
+
+			const status = String(response?.data?.status || 'pending').toLowerCase();
+			setBadgeIssuanceStatusMap((previousMap) => ({
+				...previousMap,
+				[issuanceKey]: status,
+			}));
+		} catch (_error) {
+			// Best-effort sync only.
+		}
+	};
+
 	const loadModules = async () => {
 		setLoadingModules(true);
 
@@ -1310,6 +1349,10 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 	}, [isSidebarMode, selectedAssessmentId, isAllAssessmentsSelected]);
 
 	useEffect(() => {
+		loadSelectedBadgeIssuanceStatus();
+	}, [selectedIssuanceResult?.userId, selectedIssuanceResult?.assessmentId, selectedBadge?.id, selectedAssessmentId]);
+
+	useEffect(() => {
 		loadOnSiteCompletions(undefined, { silent: true });
 	}, []);
 
@@ -1424,7 +1467,7 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 
 							setBadgeIssuanceStatusMap((previousMap) => ({
 								...previousMap,
-								[issuanceStatusKey]: 'issued',
+								[issuanceStatusKey]: String(resp?.data?.status || 'issued').toLowerCase(),
 							}));
 
 							setStatusType('success');
@@ -1467,14 +1510,58 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return;
 		}
 
-		setStatusType('info');
+		const assessmentId = selectedIssuanceResult?.assessmentId || selectedAssessment?.id || routeAssessmentId || selectedAssessmentId || null;
+		const badgeId = selectedBadge?.id || null;
+
+		if (!selectedResult.userId || !assessmentId || !badgeId) {
+			setStatusType('info');
 			if (selectedIssuanceStatusKey) {
 				setBadgeIssuanceStatusMap((previousMap) => ({
 					...previousMap,
 					[selectedIssuanceStatusKey]: 'rejected',
 				}));
 			}
-		setStatusMessage(`Result for ${selectedResult.parkGuideName} was marked as rejected.`);
+			setStatusMessage(`Result for ${selectedResult.parkGuideName} was marked as rejected.`);
+			return;
+		}
+
+		setIssuing(true);
+		setStatusMessage('');
+
+		AsyncStorage.getItem('auth_token')
+			.then((token) => {
+				if (!token) {
+					throw new Error('Session expired. Please log in again.');
+				}
+
+				return requestProfileApi('/api/v1/admin/badges/reject', token, {
+					method: 'POST',
+					body: {
+						userId: selectedResult.userId,
+						badgeId,
+						assessmentId,
+						note: note.trim(),
+					},
+				});
+			})
+			.then((resp) => {
+				if (selectedIssuanceStatusKey) {
+					setBadgeIssuanceStatusMap((previousMap) => ({
+						...previousMap,
+						[selectedIssuanceStatusKey]: String(resp?.data?.status || 'rejected').toLowerCase(),
+					}));
+				}
+
+				setStatusType('info');
+				setStatusMessage(`Result for ${selectedResult.parkGuideName} was marked as rejected.`);
+			})
+			.catch((error) => {
+				setStatusType('error');
+				setStatusMessage(error?.message || 'Unable to reject badge issuance right now.');
+			})
+			.finally(() => {
+				setIssuing(false);
+			});
 	};
 
 	const updateOnSiteCompletion = (completionStatus) => {

@@ -1,0 +1,432 @@
+const { query } = require("../config/db");
+const assessmentService = require("../services/assessmentService");
+const notificationService = require("../services/notificationService");
+
+/**
+ * Controller for assessments - handles questions, submissions, and scoring.
+ */
+
+/*helo*/
+/**
+ * Get assessment questions for a module
+ */
+async function getAssessmentQuestions(req, res) {
+  try {
+    const { moduleId } = req.params;
+
+    const assessment = await assessmentService.getAssessmentQuestions(moduleId, false, 'module');
+
+    return res.json({
+      success: true,
+      data: assessment,
+    });
+  } catch (error) {
+    console.error("Get assessment questions error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch assessment questions.",
+    });
+  }
+}
+
+/**
+ * Check if user is eligible to attempt assessment
+ */
+async function checkAttemptEligibility(req, res) {
+  try {
+    const { userId } = req.user;
+    const { assessmentId } = req.params;
+
+    // Get assessment info
+    const [assessments] = await query(
+      "SELECT AssessmentID FROM Assessments WHERE AssessmentID = ? LIMIT 1",
+      [assessmentId]
+    );
+
+    if (assessments.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Assessment not found.",
+      });
+    }
+
+    const eligibility = await assessmentService.checkAttemptEligibility(
+      userId,
+      assessmentId
+    );
+
+    return res.json({
+      success: true,
+      data: eligibility,
+    });
+  } catch (error) {
+    console.error("Check attempt eligibility error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to check attempt eligibility.",
+    });
+  }
+}
+
+/**
+ * Submit assessment attempt with answers
+ */
+async function submitAssessmentAttempt(req, res) {
+  try {
+    const { userId } = req.user;
+    const { assessmentId, answers } = req.body;
+
+    if (!assessmentId || !answers || !Array.isArray(answers)) {
+      return res.status(400).json({
+        success: false,
+        message: "Assessment ID and answers array are required.",
+      });
+    }
+
+    // Submit attempt
+    const attempt = await assessmentService.submitAssessmentAttempt(
+      userId,
+      assessmentId,
+      answers
+    );
+
+    // If passed, send notification and update module progress
+    if (attempt.passed) {
+      // Get module and title for notification
+      const [assessments] = await query(
+        "SELECT ModuleID FROM Assessments WHERE AssessmentID = ? LIMIT 1",
+        [assessmentId]
+      );
+
+      if (assessments.length > 0) {
+        const [modules] = await query(
+          "SELECT ModuleTitle FROM Modules WHERE ModuleID = ? LIMIT 1",
+          [assessments[0].ModuleID]
+        );
+
+        if (modules.length > 0) {
+          await notificationService.notificationHelpers.notifyAssessmentResult(
+            userId,
+            modules[0].ModuleTitle,
+            true,
+            attempt.score
+          );
+
+          // Check if all modules passed, then issue certificate
+          const [certs] = await query(
+            `SELECT c.CertificateID, c.QualificationID, c.QualificationName
+             FROM Certificates c
+             LEFT JOIN Modules m ON m.QualificationID = c.QualificationID
+             WHERE c.UserID = ?
+             LIMIT 1`,
+            [userId]
+          );
+
+          if (
+            certs.length > 0 &&
+            certs[0].QualificationID
+          ) {
+            // Check if all modules for qualification are passed
+            const [allModules] = await query(
+              `SELECT m.ModuleID FROM Modules m WHERE m.QualificationID = ?`,
+              [certs[0].QualificationID]
+            );
+
+            let allPassed = true;
+            for (const mod of allModules) {
+              const [passed] = await query(
+                `SELECT 1 FROM AssessmentAttempts
+                 WHERE UserID = ? AND Status = 'Passed'
+                 AND AssessmentID IN (SELECT AssessmentID FROM Assessments WHERE ModuleID = ?)
+                 LIMIT 1`,
+                [userId, mod.ModuleID]
+              );
+
+              if (passed.length === 0) {
+                allPassed = false;
+                break;
+              }
+            }
+
+            if (allPassed) {
+              // Update certificate to Issued
+              await query(
+                "UPDATE Certificates SET Status = 'Issued' WHERE CertificateID = ?",
+                [certs[0].CertificateID]
+              );
+
+              // Send certificate notification
+              await notificationService.notificationHelpers.notifyCertificateIssued(
+                userId,
+                certs[0].QualificationName
+              );
+            }
+          }
+        }
+      }
+    } else {
+      // Send failure notification
+      const [assessments] = await query(
+        "SELECT ModuleID FROM Assessments WHERE AssessmentID = ? LIMIT 1",
+        [assessmentId]
+      );
+
+      if (assessments.length > 0) {
+        const [modules] = await query(
+          "SELECT ModuleTitle FROM Modules WHERE ModuleID = ? LIMIT 1",
+          [assessments[0].ModuleID]
+        );
+
+        if (modules.length > 0) {
+          await notificationService.notificationHelpers.notifyAssessmentResult(
+            userId,
+            modules[0].ModuleTitle,
+            false,
+            attempt.score
+          );
+        }
+      }
+    }
+
+    return res.status(201).json({
+      success: true,
+      message: "Assessment attempt submitted successfully.",
+      data: attempt,
+    });
+  } catch (error) {
+    console.error("Submit assessment attempt error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to submit assessment attempt.",
+    });
+  }
+}
+
+/**
+ * Get user's assessment attempt history for a module
+ */
+async function getAssessmentHistory(req, res) {
+  try {
+    const { userId } = req.user;
+    const { moduleId } = req.params;
+
+    const attempts = await assessmentService.getUserAssessmentAttempts(
+      userId,
+      moduleId
+    );
+
+    return res.json({
+      success: true,
+      data: attempts,
+    });
+  } catch (error) {
+    console.error("Get assessment history error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch assessment history.",
+    });
+  }
+}
+
+async function listAssessments(req, res) {
+  try {
+    const moduleId = req.query.moduleId ? Number(req.query.moduleId) : null;
+    const assessments = await assessmentService.listAssessments(moduleId);
+
+    return res.json({
+      success: true,
+      data: { assessments },
+    });
+  } catch (error) {
+    console.error('List assessments error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch assessments.',
+    });
+  }
+}
+
+async function createAssessment(req, res) {
+  try {
+    const { moduleId, title, passingScore, durationMinutes, attemptLimit } = req.body;
+    const assessment = await assessmentService.createAssessment(
+      Number(moduleId),
+      title,
+      Number(passingScore),
+      Number(durationMinutes),
+      Number(attemptLimit || 3)
+    );
+
+    return res.status(201).json({ success: true, data: assessment });
+  } catch (error) {
+    console.error('Create assessment error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to create assessment.',
+    });
+  }
+}
+
+async function updateAssessmentSettings(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const { passingScore, durationMinutes, attemptLimit } = req.body;
+
+    const result = await assessmentService.updateAssessmentSettings(
+      Number(assessmentId),
+      Number(passingScore),
+      Number(durationMinutes),
+      Number(attemptLimit)
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Update assessment settings error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update assessment settings.',
+    });
+  }
+}
+
+async function deleteAssessment(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    await assessmentService.deleteAssessment(Number(assessmentId));
+
+    return res.status(204).send();
+  } catch (error) {
+    console.error('Delete assessment error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to delete assessment.',
+    });
+  }
+}
+
+async function getAssessmentQuestionsAdmin(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const assessment = await assessmentService.getAssessmentQuestions(assessmentId, true, 'assessment');
+
+    return res.json({
+      success: true,
+      data: assessment,
+    });
+  } catch (error) {
+    console.error('Get admin assessment questions error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch assessment questions.',
+    });
+  }
+}
+
+async function addAssessmentQuestionAdmin(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const { questionText, questionType, options, correctAnswer } = req.body;
+    const result = await assessmentService.addAssessmentQuestion(
+      Number(assessmentId),
+      questionText,
+      questionType,
+      options,
+      correctAnswer
+    );
+
+    return res.status(201).json({ success: true, data: result });
+  } catch (error) {
+    console.error('Add assessment question error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to add assessment question.',
+    });
+  }
+}
+
+async function updateAssessmentQuestionAdmin(req, res) {
+  try {
+    const { questionId } = req.params;
+    const { questionText, questionType, options, correctAnswer } = req.body;
+    const result = await assessmentService.updateAssessmentQuestion(
+      Number(questionId),
+      questionText,
+      questionType,
+      options,
+      correctAnswer
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Update assessment question error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to update assessment question.',
+    });
+  }
+}
+
+async function deleteAssessmentQuestionAdmin(req, res) {
+  try {
+    const { questionId } = req.params;
+    const result = await assessmentService.deleteAssessmentQuestion(Number(questionId));
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Delete assessment question error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to delete assessment question.',
+    });
+  }
+}
+
+async function getAssessmentAttemptsAdmin(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const attempts = await assessmentService.getAssessmentAttempts(Number(assessmentId));
+
+    return res.json({
+      success: true,
+      data: { attempts },
+    });
+  } catch (error) {
+    console.error('Get assessment attempts error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch assessment attempts.',
+    });
+  }
+}
+
+async function resetAssessmentAttemptAdmin(req, res) {
+  try {
+    const { assessmentId, attemptId } = req.params;
+    const result = await assessmentService.resetUserAttempt(Number(assessmentId), Number(attemptId));
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Reset assessment attempt error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to reset assessment attempt.',
+    });
+  }
+}
+
+module.exports = {
+  getAssessmentQuestions,
+  checkAttemptEligibility,
+  submitAssessmentAttempt,
+  getAssessmentHistory,
+  listAssessments,
+  createAssessment,
+  updateAssessmentSettings,
+  deleteAssessment,
+  getAssessmentQuestionsAdmin,
+  addAssessmentQuestionAdmin,
+  updateAssessmentQuestionAdmin,
+  deleteAssessmentQuestionAdmin,
+  getAssessmentAttemptsAdmin,
+  resetAssessmentAttemptAdmin,
+};

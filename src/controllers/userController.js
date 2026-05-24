@@ -1978,6 +1978,7 @@ async function completeMFALogin(req, res) {
 
 module.exports = {
   loginUser,
+  getLoginMethodAvailability,
   loginWithRecoveryCode,
   requestEmailLoginCode,
   verifyEmailLoginCode,

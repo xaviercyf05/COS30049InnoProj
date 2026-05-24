@@ -2,10 +2,10 @@ import React from 'react';
 import { render, fireEvent, waitFor, act } from '@testing-library/react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import AddModuleScreen from './AddModuleScreen'; // Adjust the import path if necessary
+import AddModuleScreen from './AddModuleScreen';
 import { requestProfileApi, uploadModuleCoverImage } from '../Profile/profileApi.js';
 
-// --- Mocks ---
+
 jest.mock('@react-native-async-storage/async-storage', () => ({
   getItem: jest.fn(),
 }));
@@ -22,12 +22,12 @@ jest.mock('../Profile/profileApi.js', () => ({
   uploadModuleCoverImage: jest.fn(),
 }));
 
-// Mock the higher-order component role guard so it simply passes the component through
+
 jest.mock('../auth/withRoleGuard.js', () => {
   return (Component) => (props) => <Component {...props} />;
 });
 
-// Mock the platform dynamic Editor import
+
 jest.mock('./RichEditor', () => {
   const { TextInput } = require('react-native');
   return function MockRichEditor({ value, onChange }) {
@@ -90,7 +90,6 @@ describe('AddModuleScreen Component Tests', () => {
     const { getByText } = render(<AddModuleScreen navigation={mockNavigation} />);
     const saveButton = getByText('Save Module');
 
-    // Trigger save with empty title
     fireEvent.press(saveButton);
     
     await waitFor(() => {
@@ -103,15 +102,12 @@ describe('AddModuleScreen Component Tests', () => {
       <AddModuleScreen navigation={mockNavigation} />
     );
 
-    // Default configuration initializes 1 section
     expect(queryAllByPlaceholderText('Section Title').length).toBe(1);
 
-    // Add another section
     const addSectionButton = getByText('+ Add Section');
     fireEvent.press(addSectionButton);
     expect(queryAllByPlaceholderText('Section Title').length).toBe(2);
 
-    // Add subsection to the initial section
     const addSubsectionButton = getByText('+ Add Subsection');
     fireEvent.press(addSubsectionButton);
     expect(queryAllByPlaceholderText('Subsection Title').length).toBe(2);
@@ -122,29 +118,25 @@ describe('AddModuleScreen Component Tests', () => {
       <AddModuleScreen navigation={mockNavigation} />
     );
 
-    // Default 'General' type shows Price input
     expect(queryByPlaceholderText('Module Price (RM)')).toBeTruthy();
 
-    // Change variant to 'On Site Training Modules'
     const onSiteTab = getByText('On Site Training Modules');
     fireEvent.press(onSiteTab);
 
-    // On-site modules should drop standard billing metrics and provide a help block notice
     expect(queryByPlaceholderText('Module Price (RM)')).toBeNull();
     expect(queryByText('On Site Training Modules do not use a payment price.')).toBeTruthy();
   });
 
   it('submits correctly formed body payloads on a successful save', async () => {
     requestProfileApi
-      .mockResolvedValueOnce({ data: [] }) // Initial fetch
-      .mockResolvedValueOnce({ data: { success: true } }) // POST action payload
-      .mockResolvedValueOnce({ data: [{ id: 1 }] }); // Post-refresh sync hook
+      .mockResolvedValueOnce({ data: [] })
+      .mockResolvedValueOnce({ data: { success: true } }) 
+      .mockResolvedValueOnce({ data: [{ id: 1 }] }); 
 
     const { getByPlaceholderText, getByText, getByTestID } = render(
       <AddModuleScreen navigation={mockNavigation} />
     );
 
-    // Fill structural entity nodes
     fireEvent.changeText(getByPlaceholderText('Module Title'), 'Introduction to Wilderness');
     fireEvent.changeText(getByPlaceholderText('Module Summary (short description)'), 'A brief overview.');
     fireEvent.changeText(getByPlaceholderText('Module Price (RM)'), '150.00');

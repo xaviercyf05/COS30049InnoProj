@@ -21,14 +21,15 @@ except ImportError:
 # =========================
 # SETTINGS
 # =========================
-MODEL_PATH = "best6.pt"
+SCRIPT_DIR = os.path.dirname(__file__)
+MODEL_PATH = os.path.join(SCRIPT_DIR, "best6.pt")
 CAMERA_SOURCE = 0
 
 CONFIDENCE_THRESHOLD = 0.45
 
 SAVE_FOLDER = "evidence"
 
-TARGET_CLASSES = ["Animal", "Plucking"]
+TARGET_CLASSES = ["Touching Animal", "Plucking"]
 
 LOCATION_OPTIONS = [
     "Bako",
@@ -102,6 +103,8 @@ if not cap.isOpened():
 # =========================
 # MQTT
 # =========================
+
+
 def on_connect(client, userdata, flags, reason_code, properties):
 
     if reason_code == 0:
@@ -163,6 +166,7 @@ except Exception as ex:
 
     print(f"[MQTT] Could not connect: {ex}")
 
+
 # =========================
 # ALERT SOUND
 # =========================
@@ -188,6 +192,8 @@ def play_beep_alert():
 # =========================
 # MQTT ALERT
 # =========================
+
+
 def publish_alert(client, labels, video_path, location):
 
     if not client.is_connected():
@@ -228,9 +234,374 @@ def publish_alert(client, labels, video_path, location):
 
         return False
 
+
+# =========================
+# OFFLINE QUEUE / SYNC
+# =========================
+OFFLINE_QUEUE_FILE = os.path.join(SAVE_FOLDER, "pending_evidence.json")
+SYNC_RETRY_SECONDS = 10
+SYNC_SHUTDOWN_RETRY_SECONDS = 8
+DELETE_LOCAL_EVIDENCE_AFTER_SYNC = True
+
+# Evidence API settings (optional)
+API_BASE_URL = os.getenv(
+    "API_BASE_URL", "https://api.innopappserver.xyz").rstrip("/")
+EVIDENCE_API_URL = os.getenv(
+    "EVIDENCE_API_URL", f"{API_BASE_URL}/api/v1/evidence/log")
+EVIDENCE_DEVICE_ID = os.getenv("EVIDENCE_DEVICE_ID", "device001")
+EVIDENCE_DEVICE_KEY = os.getenv("EVIDENCE_DEVICE_KEY", "cos30049fr")
+EVIDENCE_API_TIMEOUT_SECONDS = 30
+EVIDENCE_USER_AGENT = os.getenv(
+    "EVIDENCE_USER_AGENT",
+    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
+)
+
+tunnel_manager_stop_event = threading.Event()
+pending_queue_lock = threading.Lock()
+pending_sync_wakeup_event = threading.Event()
+last_mqtt_reconnect_attempt = 0.0
+
+
+def try_reconnect_mqtt(client):
+    global last_mqtt_reconnect_attempt
+
+    if client.is_connected():
+        return True
+
+    now = time.time()
+    if now - last_mqtt_reconnect_attempt < SYNC_RETRY_SECONDS:
+        return False
+
+    last_mqtt_reconnect_attempt = now
+    try:
+        client.reconnect()
+        print("[MQTT] Reconnect attempt triggered for pending queue.")
+    except Exception as ex:
+        print(f"[MQTT] Reconnect attempt failed: {ex}")
+        return False
+
+    return client.is_connected()
+
+
+def build_multipart_form_data(fields, file_field_name, file_name, file_content_type, file_bytes):
+    boundary = f"----InnoEvidenceBoundary{int(time.time() * 1000)}{random.randint(0, 10**9)}"
+    body = bytearray()
+
+    for field_name, field_value in fields.items():
+        body.extend(f"--{boundary}\r\n".encode("utf-8"))
+        body.extend(
+            f'Content-Disposition: form-data; name="{field_name}"\r\n\r\n'.encode(
+                "utf-8")
+        )
+        body.extend(str(field_value).encode("utf-8"))
+        body.extend(b"\r\n")
+
+    body.extend(f"--{boundary}\r\n".encode("utf-8"))
+    body.extend(
+        f'Content-Disposition: form-data; name="{file_field_name}"; filename="{file_name}"\r\n'.encode(
+            "utf-8")
+    )
+    body.extend(f"Content-Type: {file_content_type}\r\n\r\n".encode("utf-8"))
+    body.extend(file_bytes)
+    body.extend(b"\r\n")
+    body.extend(f"--{boundary}--\r\n".encode("utf-8"))
+
+    return bytes(body), boundary
+
+
+def submit_evidence_via_api(labels, location, video_path, event_epoch):
+    if not os.path.exists(video_path):
+        print(f"[SYNC] Skipped API upload: file not found: {video_path}")
+        return False
+
+    try:
+        with open(video_path, "rb") as f:
+            video_bytes = f.read()
+
+        video_file_name = os.path.basename(video_path)
+        labels_json = json.dumps(labels)
+        event_timestamp = datetime.fromtimestamp(event_epoch).isoformat()
+
+        fields = {
+            "labels": labels_json,
+            "location": location,
+            "eventType": "abnormal_interaction_detected",
+            "eventEpoch": str(event_epoch),
+            "timestamp": event_timestamp,
+        }
+        payload, boundary = build_multipart_form_data(
+            fields,
+            "video",
+            video_file_name,
+            "video/mp4",
+            video_bytes,
+        )
+
+        request = urllib.request.Request(
+            EVIDENCE_API_URL,
+            data=payload,
+            method="POST",
+            headers={
+                "Content-Type": f"multipart/form-data; boundary={boundary}",
+                "Accept": "application/json",
+                "Accept-Language": "en-US,en;q=0.9",
+                "Origin": API_BASE_URL,
+                "Referer": API_BASE_URL + "/",
+                "User-Agent": EVIDENCE_USER_AGENT,
+                "x-device-id": EVIDENCE_DEVICE_ID,
+                "x-device-key": EVIDENCE_DEVICE_KEY,
+            },
+        )
+
+        with urllib.request.urlopen(request, timeout=EVIDENCE_API_TIMEOUT_SECONDS) as response:
+            response_body = response.read().decode("utf-8", errors="replace")
+            print(f"[SYNC] Evidence uploaded via API: {video_file_name}")
+            if response_body:
+                print(f"[SYNC] API response: {response_body[:300]}")
+            return True
+    except urllib.error.HTTPError as ex:
+        error_body = ex.read().decode("utf-8", errors="replace") if ex.fp else ""
+        print(f"[SYNC] Evidence API upload failed: HTTP {ex.code} {ex.reason}")
+        if error_body:
+            print(f"[SYNC] API error response: {error_body[:300]}")
+        return False
+    except Exception as ex:
+        print(f"[SYNC] Evidence API upload failed: {ex}")
+        return False
+
+
+def load_pending_queue():
+    if not os.path.exists(OFFLINE_QUEUE_FILE):
+        return []
+
+    try:
+        with open(OFFLINE_QUEUE_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, list):
+            normalized_items = []
+            for item in data:
+                video_path = item.get("video_path", "")
+                if video_path and not os.path.isabs(video_path):
+                    item["video_path"] = os.path.abspath(video_path)
+                if "api_synced" not in item and "db_synced" in item:
+                    item["api_synced"] = bool(item.get("db_synced", False))
+                normalized_items.append(item)
+            return normalized_items
+    except Exception as ex:
+        print(f"[SYNC] Failed to load pending queue: {ex}")
+
+    return []
+
+
+def save_pending_queue(queue_items):
+    temp_path = f"{OFFLINE_QUEUE_FILE}.tmp"
+    with open(temp_path, "w", encoding="utf-8") as f:
+        json.dump(queue_items, f, indent=2)
+    os.replace(temp_path, OFFLINE_QUEUE_FILE)
+
+
+def enqueue_pending_evidence(
+    queue_items,
+    labels,
+    location,
+    video_path,
+    event_epoch,
+    api_synced=False,
+    mqtt_synced=False,
+):
+    absolute_video_path = os.path.abspath(video_path)
+    for item in queue_items:
+        if os.path.abspath(item.get("video_path", "")) == absolute_video_path:
+            item["api_synced"] = item.get(
+                "api_synced", item.get("db_synced", False)) or api_synced
+            item["mqtt_synced"] = item.get("mqtt_synced", False) or mqtt_synced
+            save_pending_queue(queue_items)
+            print(
+                f"[SYNC] Pending item already queued, updated flags: {absolute_video_path}")
+            return
+
+    queue_items.append(
+        {
+            "labels": labels,
+            "location": location,
+            "video_path": absolute_video_path,
+            "event_epoch": event_epoch,
+            "api_synced": api_synced,
+            "mqtt_synced": mqtt_synced,
+        }
+    )
+    save_pending_queue(queue_items)
+    print(
+        f"[SYNC] Queued offline evidence for later upload: {absolute_video_path}")
+
+
+def prune_missing_pending_evidence(queue_items):
+    remaining_items = []
+    removed_count = 0
+
+    for item in queue_items:
+        video_path = item.get("video_path", "")
+        if video_path and not os.path.isabs(video_path):
+            video_path = os.path.abspath(video_path)
+            item["video_path"] = video_path
+
+        if video_path and not os.path.exists(video_path):
+            print(
+                f"[SYNC] Dropping stale pending item, file missing: {video_path}")
+            removed_count += 1
+            continue
+
+        remaining_items.append(item)
+
+    if removed_count:
+        save_pending_queue(remaining_items)
+
+    return remaining_items
+
+
+def delete_synced_evidence_files(queue_items):
+    if not DELETE_LOCAL_EVIDENCE_AFTER_SYNC:
+        return queue_items
+
+    remaining_items = []
+
+    for item in queue_items:
+        api_synced = item.get("api_synced", item.get("db_synced", False))
+        if api_synced and item.get("mqtt_synced", False):
+            video_path = item.get("video_path", "")
+            if video_path and os.path.exists(video_path):
+                try:
+                    os.remove(video_path)
+                    print(f"[SYNC] Deleted synced evidence file: {video_path}")
+                except Exception as ex:
+                    print(
+                        f"[SYNC] Could not delete synced evidence file {video_path}: {ex}")
+                    remaining_items.append(item)
+            else:
+                remaining_items.append(item)
+        else:
+            remaining_items.append(item)
+
+    return remaining_items
+
+
+def sync_pending_evidence(queue_items):
+    if not queue_items:
+        return False
+
+    queue_items = prune_missing_pending_evidence(queue_items)
+    if not queue_items:
+        save_pending_queue([])
+        return False
+
+    remaining_items = []
+    changed = False
+
+    for item in queue_items:
+        labels = item.get("labels", [])
+        location = item.get("location", "Unknown")
+        video_path = item.get("video_path", "")
+        event_epoch = item.get("event_epoch", time.time())
+        api_synced = bool(item.get("api_synced", item.get("db_synced", False)))
+        mqtt_synced = bool(item.get("mqtt_synced", False))
+
+        if not api_synced:
+            api_synced = submit_evidence_via_api(
+                labels,
+                location,
+                video_path,
+                event_epoch,
+            )
+            changed = True
+
+        if not mqtt_synced:
+            if not mqtt_client.is_connected():
+                try_reconnect_mqtt(mqtt_client)
+            mqtt_synced = publish_alert(
+                mqtt_client,
+                labels,
+                video_path,
+                location,
+            )
+            changed = True
+
+        if api_synced and mqtt_synced:
+            print(f"[SYNC] Offline evidence sent successfully: {video_path}")
+            changed = True
+            continue
+
+        remaining_items.append(
+            {
+                "labels": labels,
+                "location": location,
+                "video_path": video_path,
+                "event_epoch": event_epoch,
+                "api_synced": api_synced,
+                "mqtt_synced": mqtt_synced,
+            }
+        )
+
+    if changed:
+        remaining_items = delete_synced_evidence_files(remaining_items)
+        save_pending_queue(remaining_items)
+
+    return changed
+
+
+def flush_pending_evidence(queue_items, timeout_seconds=SYNC_SHUTDOWN_RETRY_SECONDS):
+    if not queue_items:
+        return
+
+    deadline = time.time() + timeout_seconds
+    attempted = False
+
+    while time.time() < deadline and queue_items:
+        synced = sync_pending_evidence(queue_items)
+        queue_items[:] = load_pending_queue()
+        attempted = True
+
+        if not queue_items:
+            break
+
+        if not synced:
+            time.sleep(1)
+
+    if attempted and queue_items:
+        print(
+            f"[SYNC] Pending evidence remains queued for next run: {len(queue_items)} item(s)")
+
+
+def pending_sync_worker():
+    global pending_queue
+    while not tunnel_manager_stop_event.is_set():
+        try:
+            with pending_queue_lock:
+                queue_snapshot = list(pending_queue)
+
+            if queue_snapshot:
+                changed = sync_pending_evidence(queue_snapshot)
+                if changed:
+                    with pending_queue_lock:
+                        pending_queue = load_pending_queue()
+
+            pending_sync_wakeup_event.wait(timeout=1)
+            pending_sync_wakeup_event.clear()
+        except Exception as ex:
+            print(f"[SYNC-WORKER] Error: {ex}")
+            time.sleep(2)
+
+
+# Initialize pending queue and start background pending sync worker
+pending_queue = load_pending_queue()
+pending_sync_thread = threading.Thread(target=pending_sync_worker, daemon=True)
+pending_sync_thread.start()
+print("[SYNC] Background sync worker started.")
+
 # =========================
 # NEW OVERLAP FUNCTION
 # =========================
+
+
 def overlap_area(box1, box2):
 
     x1 = max(box1[0], box2[0])
@@ -243,6 +614,7 @@ def overlap_area(box1, box2):
         return 0
 
     return (x2 - x1) * (y2 - y1)
+
 
 # =========================
 # VARIABLES
@@ -364,13 +736,11 @@ while True:
             x1 = y1 = x2 = y2 = 0
 
         # =========================
-        # COLLECT ANIMALS
+        # COLLECT ANIMALS (renamed to Touching Animal)
         # =========================
-        if cls_name == "Animal":
+        if cls_name == "Touching Animal":
 
-            animals.append(
-                (x1, y1, x2, y2)
-            )
+            animals.append((x1, y1, x2, y2))
 
             plucking_frames = 0
 
@@ -411,9 +781,7 @@ while True:
 
             overlap = overlap_area(a, h)
 
-            print(
-                f"[INFO] Animal-Hand Overlap: {overlap}"
-            )
+            print(f"[INFO] Touching Animal-Hand Overlap: {overlap}")
 
             # require larger overlap
             if overlap > OVERLAP_THRESHOLD:
@@ -444,9 +812,7 @@ while True:
 
         detected_target = True
 
-        detected_labels.append(
-            "Animal Touch Detected"
-        )
+        detected_labels.append("Touching Animal Detected")
 
     current_time = time.time()
 
@@ -595,6 +961,21 @@ while True:
                 "[INFO] Recording finished."
             )
 
+            # Always enqueue completed evidence for background sync (non-blocking)
+            try:
+                with pending_queue_lock:
+                    enqueue_pending_evidence(
+                        pending_queue,
+                        record_labels,
+                        record_location,
+                        record_file_path,
+                        record_start_time,
+                        api_synced=False,
+                        mqtt_synced=bool(record_mqtt_sent),
+                    )
+            except Exception as ex:
+                print(f"[SYNC] Failed to enqueue pending evidence: {ex}")
+
     # =========================
     # DISPLAY ALERT
     # =========================
@@ -649,6 +1030,13 @@ while True:
 if video_writer is not None:
 
     video_writer.release()
+
+tunnel_manager_stop_event.set()
+print("[TUNNEL] Stopping tunnel manager...")
+time.sleep(0.5)
+
+pending_queue = load_pending_queue()
+flush_pending_evidence(pending_queue)
 
 mqtt_client.loop_stop()
 

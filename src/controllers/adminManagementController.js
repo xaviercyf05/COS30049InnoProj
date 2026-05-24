@@ -441,14 +441,17 @@ async function uploadEsp32SensorLogsCsv(req, res) {
 
     const manualDeviceId = getManualDeviceId(req);
 
-    if (!manualDeviceId) {
+    // If no manualDeviceId supplied, accept per-row DeviceID values if present in the CSV.
+    const hasRowDeviceIds = parsed.rows.some((r) => r.deviceID && String(r.deviceID).trim() !== "");
+
+    if (!manualDeviceId && !hasRowDeviceIds) {
       return res.status(400).json({
         success: false,
-        message: "DeviceID is required for manual upload.",
+        message: "DeviceID is required for manual upload or each CSV row must include a DeviceID.",
         errors: [
           {
             row: 0,
-            message: "Enter a DeviceID in the upload form. CSV DeviceID values are ignored for manual uploads.",
+            message: "Enter a DeviceID in the upload form, or include a DeviceID column in the CSV rows.",
           },
         ],
       });
@@ -468,8 +471,11 @@ async function uploadEsp32SensorLogsCsv(req, res) {
     let insertedCount = 0;
 
     for (const row of rowsToInsert) {
+      // Prefer per-row DeviceID (from CSV). Fall back to manualDeviceId when absent.
+      const deviceIdToUse = row.deviceID && String(row.deviceID).trim() ? String(row.deviceID).trim() : manualDeviceId;
+
       await query(insertSql, [
-        manualDeviceId,
+        deviceIdToUse,
         row.location,
         row.temperature,
         row.humidity,

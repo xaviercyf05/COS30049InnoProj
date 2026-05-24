@@ -152,6 +152,30 @@ function buildLoginSuccessPayload(user, tokenPair) {
   };
 }
 
+function buildLoginMethodAvailabilityPayload(user, passkeyCount) {
+  const emailCodeEnabled = Boolean(String(user.Email || '').trim());
+  const recoveryCodeEnabled = user.MFAEnabled === 1;
+  const passkeyEnabled = Number(passkeyCount) > 0;
+
+  return {
+    success: true,
+    data: {
+      methods: {
+        password: true,
+        emailCode: emailCodeEnabled,
+        recoveryCode: recoveryCodeEnabled,
+        passkey: passkeyEnabled,
+      },
+      availableMethods: [
+        'password',
+        ...(emailCodeEnabled ? ['emailCode'] : []),
+        ...(recoveryCodeEnabled ? ['recoveryCode'] : []),
+        ...(passkeyEnabled ? ['passkey'] : []),
+      ],
+    },
+  };
+}
+
 function maskEmailAddress(email) {
   const normalizedEmail = String(email || "").trim();
   const [localPart = "", domainPart = ""] = normalizedEmail.split("@");
@@ -288,6 +312,61 @@ async function loginUser(req, res) {
     return res.status(500).json({
       success: false,
       message: "Internal server error.",
+    });
+  }
+}
+
+/**
+ * Check which login methods are enabled for a user account.
+ */
+async function getLoginMethodAvailability(req, res) {
+  try {
+    const loginIdentifier = String(req.body?.identifier || req.body?.username || req.body?.email || req.body?.userId || '').trim();
+
+    if (!loginIdentifier) {
+      return res.status(400).json({
+        success: false,
+        message: 'Username, email, or User ID is required.',
+      });
+    }
+
+    const user = await findUserForLogin(loginIdentifier);
+
+    if (!user) {
+      return res.status(404).json({
+        success: false,
+        message: 'Account not found.',
+      });
+    }
+
+    if (user.IsActive === 0) {
+      return res.status(403).json({
+        success: false,
+        message: 'Your account is inactive. Please verify your email using the verification link sent to you to activate your account.',
+        isInactive: true,
+      });
+    }
+
+    if (user.Status !== 'Active') {
+      return res.status(403).json({
+        success: false,
+        message: `Account is ${user.Status}. Please contact an administrator.`,
+      });
+    }
+
+    const [passkeyRows] = await query(
+      `SELECT COUNT(*) AS PasskeyCount FROM PasskeyCredentials WHERE UserID = ?`,
+      [user.UserID]
+    );
+
+    const passkeyCount = passkeyRows.length > 0 ? passkeyRows[0].PasskeyCount : 0;
+
+    return res.json(buildLoginMethodAvailabilityPayload(user, passkeyCount));
+  } catch (error) {
+    console.error('Login method availability error:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Internal server error.',
     });
   }
 }

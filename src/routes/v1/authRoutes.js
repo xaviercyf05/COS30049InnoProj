@@ -62,6 +62,52 @@ router.post(
 );
 
 /**
+ * POST /auth/login/methods - Check which login methods are enabled for an account
+ * Body: { identifier } where identifier can be username, email, or userId
+ */
+router.post(
+  "/login/methods",
+  [
+    body("identifier")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Identifier must be between 1 and 100 characters."),
+    body("username")
+      .optional({ values: "falsy" })
+      .trim()
+      .isLength({ min: 1, max: 100 })
+      .withMessage("Username must be between 1 and 100 characters."),
+    body("userId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("User ID must be a positive integer."),
+    body("email")
+      .optional({ values: "falsy" })
+      .trim()
+      .isEmail()
+      .withMessage("A valid email address is required."),
+    body().custom((_, { req }) => {
+      const hasIdentifier =
+        (typeof req.body.identifier === 'string' && req.body.identifier.trim().length > 0) ||
+        (typeof req.body.username === 'string' && req.body.username.trim().length > 0) ||
+        (typeof req.body.email === 'string' && req.body.email.trim().length > 0) ||
+        (req.body.userId !== undefined &&
+          req.body.userId !== null &&
+          String(req.body.userId).trim().length > 0);
+
+      if (!hasIdentifier) {
+        throw new Error('Username, email, or User ID is required.');
+      }
+
+      return true;
+    }),
+  ],
+  validate,
+  asyncHandler(userController.getLoginMethodAvailability)
+);
+
+/**
  * POST /auth/login/recovery-code - Login using an MFA recovery code
  * Body: { identifier, recoveryCode } where identifier can be username or userId
  */

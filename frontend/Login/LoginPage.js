@@ -23,6 +23,7 @@ export default function LoginPage({ navigation }) {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState('');
   const [loginMethod, setLoginMethod] = useState('password');
+  const [showOtherLoginMethods, setShowOtherLoginMethods] = useState(false);
   const [emailCodeRequested, setEmailCodeRequested] = useState(false);
   const [emailCode, setEmailCode] = useState('');
   const [emailCodeLoading, setEmailCodeLoading] = useState(false);
@@ -170,6 +171,26 @@ export default function LoginPage({ navigation }) {
     });
   };
 
+  const submitLoginMethodAvailabilityRequest = (baseUrl) => {
+    const normalizedIdentifier = username.trim();
+    const numericUserId = /^\d+$/.test(normalizedIdentifier)
+      ? Number.parseInt(normalizedIdentifier, 10)
+      : undefined;
+
+    return fetch(`${baseUrl}/api/v1/auth/login/methods`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        identifier: normalizedIdentifier,
+        username: normalizedIdentifier,
+        email: normalizedIdentifier.includes('@') ? normalizedIdentifier : undefined,
+        userId: numericUserId,
+      }),
+    });
+  };
+
   const resetEmailCodeState = () => {
     setEmailCodeRequested(false);
     setEmailCode('');
@@ -186,8 +207,72 @@ export default function LoginPage({ navigation }) {
     setPasskeyMessage('');
   };
 
+  const resolveLoginMethodLabel = (method) => {
+    if (method === 'emailCode') {
+      return 'Email code';
+    }
+
+    if (method === 'recoveryCode') {
+      return 'Recovery code';
+    }
+
+    if (method === 'passkey') {
+      return 'Passkey';
+    }
+
+    return 'This';
+  };
+
+  const checkLoginMethodAvailability = async (method) => {
+    const normalizedIdentifier = username.trim();
+
+    if (!normalizedIdentifier) {
+      setErrorMessage('Please enter your username, email, or User ID first.');
+      return null;
+    }
+
+    try {
+      let response;
+
+      if (Platform.OS === 'web') {
+        let lastWebError = null;
+
+        for (const webBaseUrl of getWebApiBaseUrls()) {
+          try {
+            response = await submitLoginMethodAvailabilityRequest(webBaseUrl);
+            lastWebError = null;
+            break;
+          } catch (error) {
+            lastWebError = error;
+          }
+        }
+
+        if (!response) {
+          throw lastWebError || new Error('Login method availability check failed on web.');
+        }
+      } else {
+        response = await submitLoginMethodAvailabilityRequest(API_ORIGIN);
+      }
+
+      const data = await response.json();
+      const methods = data?.data?.methods || {};
+      const isEnabled = Boolean(methods?.[method]);
+
+      if (!response.ok || !data?.success || !isEnabled) {
+        throw new Error(data?.message || `${resolveLoginMethodLabel(method)} sign-in is not enabled for this account.`);
+      }
+
+      return methods;
+    } catch (error) {
+      const fallbackMessage = `${resolveLoginMethodLabel(method)} sign-in is not enabled for this account.`;
+      setErrorMessage(error?.message || fallbackMessage);
+      return null;
+    }
+  };
+
   const switchLoginMethod = (nextMethod) => {
     setLoginMethod(nextMethod);
+    setShowOtherLoginMethods(nextMethod !== 'password');
     setErrorMessage('');
     setLoading(false);
     setEmailCodeLoading(false);
@@ -196,6 +281,21 @@ export default function LoginPage({ navigation }) {
     resetEmailCodeState();
     resetRecoveryCodeState();
     setPasskeyMessage('');
+  };
+
+  const handleSelectLoginMethod = async (nextMethod) => {
+    if (nextMethod === 'password') {
+      handleReturnToPasswordLogin();
+      return;
+    }
+
+    const methods = await checkLoginMethodAvailability(nextMethod);
+
+    if (!methods) {
+      return;
+    }
+
+    switchLoginMethod(nextMethod);
   };
 
   useEffect(() => {
@@ -292,6 +392,12 @@ export default function LoginPage({ navigation }) {
   };
 
   const handleRequestEmailCode = async () => {
+    const methods = await checkLoginMethodAvailability('emailCode');
+
+    if (!methods) {
+      return;
+    }
+
     if (!username.trim()) {
       setErrorMessage('Please enter your username, email, or user ID.');
       return;
@@ -354,6 +460,12 @@ export default function LoginPage({ navigation }) {
   };
 
   const handleVerifyEmailCode = async () => {
+    const methods = await checkLoginMethodAvailability('emailCode');
+
+    if (!methods) {
+      return;
+    }
+
     if (!username.trim()) {
       setErrorMessage('Please enter your username, email, or user ID.');
       return;
@@ -432,6 +544,12 @@ export default function LoginPage({ navigation }) {
   };
 
   const handleRecoveryCodeLogin = async () => {
+    const methods = await checkLoginMethodAvailability('recoveryCode');
+
+    if (!methods) {
+      return;
+    }
+
     if (!username.trim()) {
       setErrorMessage('Please enter your username or user ID.');
       return;
@@ -508,10 +626,28 @@ export default function LoginPage({ navigation }) {
     resetEmailCodeState();
     setEmailCodeLoading(false);
     setErrorMessage('');
+    setShowOtherLoginMethods(false);
+    setLoginMethod('password');
+  };
+
+  const handleReturnToPasswordLogin = () => {
+    resetEmailCodeState();
+    resetRecoveryCodeState();
+    resetPasskeyState();
+    setEmailCodeLoading(false);
+    setPasskeyLoading(false);
+    setErrorMessage('');
+    setShowOtherLoginMethods(false);
     setLoginMethod('password');
   };
 
   const handlePasskeyLogin = async () => {
+    const methods = await checkLoginMethodAvailability('passkey');
+
+    if (!methods) {
+      return;
+    }
+
     if (!passkeySupported) {
       setErrorMessage('Passkeys are not supported on this device or browser.');
       return;
@@ -811,49 +947,10 @@ export default function LoginPage({ navigation }) {
               </>
             ) : (
               <>
-                <View style={styles.methodToggleRow}>
-                  <TouchableOpacity
-                    style={[styles.methodToggleButton, loginMethod === 'password' && styles.methodToggleButtonActive]}
-                    onPress={() => switchLoginMethod('password')}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.methodToggleText, loginMethod === 'password' && styles.methodToggleTextActive]}>
-                      Password
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.methodToggleButton, loginMethod === 'recoveryCode' && styles.methodToggleButtonActive]}
-                    onPress={() => switchLoginMethod('recoveryCode')}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.methodToggleText, loginMethod === 'recoveryCode' && styles.methodToggleTextActive]}>
-                      Recovery code
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.methodToggleButton, loginMethod === 'passkey' && styles.methodToggleButtonActive]}
-                    onPress={() => switchLoginMethod('passkey')}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.methodToggleText, loginMethod === 'passkey' && styles.methodToggleTextActive]}>
-                      Passkey
-                    </Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={[styles.methodToggleButton, loginMethod === 'emailCode' && styles.methodToggleButtonActive]}
-                    onPress={() => switchLoginMethod('emailCode')}
-                    activeOpacity={0.85}
-                  >
-                    <Text style={[styles.methodToggleText, loginMethod === 'emailCode' && styles.methodToggleTextActive]}>
-                      Email code
-                    </Text>
-                  </TouchableOpacity>
-                </View>
-
                 {loginMethod === 'password' ? (
                   <>
                     <Text style={styles.loginLabel}>Sign In</Text>
-                    <Text style={styles.methodDescription}>Use your password, or switch to a code sent to your email address.</Text>
+                    <Text style={styles.methodDescription}>Use your password to sign in.</Text>
 
                     <View style={styles.inputContainer}>
                       <User color="#2D5A27" size={20} style={styles.icon} />
@@ -895,6 +992,40 @@ export default function LoginPage({ navigation }) {
                         textContentType="password"
                       />
                     </View>
+
+                    <TouchableOpacity
+                      onPress={() => setShowOtherLoginMethods((previous) => !previous)}
+                      activeOpacity={0.8}
+                      style={styles.otherMethodsDisclosure}
+                    >
+                      <Text style={styles.otherMethodsDisclosureText}>Login with other methods</Text>
+                    </TouchableOpacity>
+
+                    {showOtherLoginMethods ? (
+                      <View style={styles.otherMethodsPanel}>
+                        <TouchableOpacity
+                          style={styles.otherMethodButton}
+                          onPress={() => handleSelectLoginMethod('emailCode')}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.otherMethodButtonText}>Email code</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.otherMethodButton}
+                          onPress={() => handleSelectLoginMethod('recoveryCode')}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.otherMethodButtonText}>Recovery code</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={styles.otherMethodButton}
+                          onPress={() => handleSelectLoginMethod('passkey')}
+                          activeOpacity={0.85}
+                        >
+                          <Text style={styles.otherMethodButtonText}>Passkey</Text>
+                        </TouchableOpacity>
+                      </View>
+                    ) : null}
 
                     {!!errorMessage && <Text style={styles.inlineErrorText}>{errorMessage}</Text>}
                     <View style={styles.rememberContainer}>
@@ -1006,6 +1137,14 @@ export default function LoginPage({ navigation }) {
                     </TouchableOpacity>
 
                     <Text style={styles.helperText}>Enter one of the backup recovery codes generated when MFA was enabled.</Text>
+
+                    <TouchableOpacity
+                      onPress={handleReturnToPasswordLogin}
+                      activeOpacity={0.8}
+                      style={styles.registerLinkWrap}
+                    >
+                      <Text style={styles.registerLinkText}>Use password instead</Text>
+                    </TouchableOpacity>
                   </>
                 ) : loginMethod === 'passkey' ? (
                   <>
@@ -1062,6 +1201,14 @@ export default function LoginPage({ navigation }) {
                     <Text style={styles.helperText}>
                       If your account has no passkey yet, sign in with another method first and register one from Security.
                     </Text>
+
+                    <TouchableOpacity
+                      onPress={handleReturnToPasswordLogin}
+                      activeOpacity={0.8}
+                      style={styles.registerLinkWrap}
+                    >
+                      <Text style={styles.registerLinkText}>Use password instead</Text>
+                    </TouchableOpacity>
                   </>
                 ) : (
                   <>

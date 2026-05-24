@@ -215,6 +215,36 @@ export const styles = StyleSheet.create({
     color: '#21311F',
     fontSize: 16,
   },
+  otherMethodsDisclosure: {
+    marginTop: 2,
+    marginBottom: 14,
+    alignSelf: 'flex-start',
+  },
+  otherMethodsDisclosureText: {
+    color: '#2D5A27',
+    fontSize: 13,
+    fontWeight: '800',
+    textDecorationLine: 'underline',
+  },
+  otherMethodsPanel: {
+    gap: 10,
+    marginBottom: 14,
+  },
+  otherMethodButton: {
+    minHeight: 46,
+    borderRadius: 14,
+    borderWidth: 1,
+    borderColor: '#D7E0D3',
+    backgroundColor: '#F1F5EE',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
+  },
+  otherMethodButtonText: {
+    color: '#21401D',
+    fontSize: 14,
+    fontWeight: '800',
+  },
   inlineErrorText: {
     color: '#A12626',
     backgroundColor: '#FCE8E8',

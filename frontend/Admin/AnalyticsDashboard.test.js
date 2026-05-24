@@ -200,14 +200,14 @@ describe('AnalyticsDashboard Component Tests', () => {
   });
 
   it('filters information rows exactly to matched configuration metrics via filter chips', async () => {
-    const { findByText, getByText, queryByText } = render(<AnalyticsDashboard />);
+    const { findByText, getByText, getAllByText, queryByText } = render(<AnalyticsDashboard />);
     
     await findByText('Overview Main Title');
     fireEvent.press(getByText('Park Guides'));
     
     await findByText('Alice Smith');
     
-    const inactiveFilterChip = getByText('Inactive');
+    const inactiveFilterChip = getAllByText('Inactive').pop();
     fireEvent.press(inactiveFilterChip);
     
     expect(queryByText('Alice Smith')).toBeNull();

@@ -556,7 +556,7 @@ export default function AnalyticsDashboard() {
       try {
         const data = await fetchAnalyticsDashboardData();
         if (mounted) {
-          setAnalyticsData(data);
+          setAnalyticsData(data || createEmptyAnalyticsData());
         }
       } catch (fetchError) {
         if (mounted) {
@@ -632,9 +632,19 @@ export default function AnalyticsDashboard() {
     );
   };
 
-  const currentSheet = useMemo(() => analyticsData[activeSheet] || createEmptyAnalyticsData()[activeSheet], [activeSheet, analyticsData]);
-
   const activeMeta = workbookSheets.find((sheet) => sheet.key === activeSheet) || workbookSheets[0];
+  const emptyAnalyticsData = createEmptyAnalyticsData?.() || {};
+  const safeAnalyticsData = analyticsData && typeof analyticsData === 'object' ? analyticsData : emptyAnalyticsData;
+
+  const currentSheet = useMemo(
+    () => safeAnalyticsData?.[activeSheet] || emptyAnalyticsData?.[activeSheet] || {
+      title: activeMeta?.title || '',
+      subtitle: activeMeta?.subtitle || '',
+      kpis: []
+    },
+    [activeSheet, safeAnalyticsData, emptyAnalyticsData, activeMeta]
+  );
+
   const moduleGroupViews = useMemo(() => {
     const pieSlices = Array.isArray(currentSheet?.pieSlices) ? currentSheet.pieSlices : [];
     const bars = Array.isArray(currentSheet?.bars) ? currentSheet.bars : [];
@@ -678,7 +688,7 @@ export default function AnalyticsDashboard() {
               setError('');
               try {
                 const data = await fetchAnalyticsDashboardData();
-                setAnalyticsData(data);
+                setAnalyticsData(data || createEmptyAnalyticsData());
               } catch (fetchError) {
                 setError(fetchError.message || 'Failed to fetch analytics dashboard data.');
               } finally {

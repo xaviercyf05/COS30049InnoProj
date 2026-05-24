@@ -50,10 +50,7 @@ describe('SensorAlertScreen', () => {
   });
 
   it('renders standard headers and maps data correctly', async () => {
-    let renderResult;
-    await act(async () => {
-      renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
-    });
+    const renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
 
     const { getByText, findByText, getByTestId } = renderResult;
 
@@ -70,10 +67,7 @@ describe('SensorAlertScreen', () => {
       canceled: true,
     });
 
-    let renderResult;
-    await act(async () => {
-      renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
-    });
+    const renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
 
     const { getByText, queryByText } = renderResult;
 
@@ -97,10 +91,7 @@ describe('SensorAlertScreen', () => {
       data: { insertedCount: 12, skippedCount: 2 },
     });
 
-    let renderResult;
-    await act(async () => {
-      renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
-    });
+    const renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
 
     const { getByText, findByText } = renderResult;
 
@@ -125,10 +116,7 @@ describe('SensorAlertScreen', () => {
   it('handles document picker asset exception errors safely', async () => {
     DocumentPicker.getDocumentAsync.mockRejectedValue(new Error('System permission denied'));
 
-    let renderResult;
-    await act(async () => {
-      renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
-    });
+    const renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
 
     const { getByText, findByText } = renderResult;
 
@@ -148,10 +136,7 @@ describe('SensorAlertScreen', () => {
 
     uploadEsp32SensorLogsCsv.mockRejectedValue(new Error('Network gateway timeout'));
 
-    let renderResult;
-    await act(async () => {
-      renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
-    });
+    const renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
 
     const { getByText, findByText } = renderResult;
 
@@ -170,10 +155,7 @@ describe('SensorAlertScreen', () => {
   });
 
   it('routes to detail page when specific alert record is pressed', async () => {
-    let renderResult;
-    await act(async () => {
-      renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
-    });
+    const renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
 
     const { findByText } = renderResult;
 
@@ -189,10 +171,7 @@ describe('SensorAlertScreen', () => {
   });
 
   it('routes to general overview component when action item is clicked', async () => {
-    let renderResult;
-    await act(async () => {
-      renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
-    });
+    const renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
 
     const { getByText } = renderResult;
 
@@ -209,10 +188,7 @@ describe('SensorAlertScreen', () => {
       error: '',
     });
 
-    let renderResult;
-    await act(async () => {
-      renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
-    });
+    const renderResult = render(<SensorAlertScreen navigation={mockNavigation} />);
 
     const { findByText } = renderResult;
 

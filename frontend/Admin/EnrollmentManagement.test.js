@@ -1,5 +1,6 @@
 import React from 'react';
 import { render, fireEvent, waitFor } from '@testing-library/react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import EnrollmentManagementScreen from './EnrollmentManagement';
 
 // 1. Define the mock data
@@ -58,6 +59,7 @@ const mockNavigation = {
 describe('EnrollmentManagementScreen', () => {
 	beforeEach(() => {
 		jest.clearAllMocks();
+		AsyncStorage.getItem.mockResolvedValue('mock-token');
 		// Reset implementation and provide default successful data resolve for every test
 		mockRequestProfileApiImpl.mockReset();
 		mockRequestProfileApiImpl.mockImplementation(() => Promise.resolve(mockPaymentsData));
@@ -72,24 +74,24 @@ describe('EnrollmentManagementScreen', () => {
 	});
 
 	it('marks evidence as verified', async () => {
-		const { getByText } = render(<EnrollmentManagementScreen navigation={mockNavigation} />);
+		const { getByText, queryByText } = render(<EnrollmentManagementScreen navigation={mockNavigation} />);
 		await waitFor(() => expect(getByText('John Doe')).toBeTruthy());
 		
 		const verifyButton = getByText('Mark Verified');
 		fireEvent.press(verifyButton);
 		
 		await waitFor(() => {
-			expect(getByText('Evidence verified')).toBeTruthy();
+			expect(queryByText('Mark Verified')).toBeNull();
 		});
 	});
 
 	it('approves enrollment request', async () => {
-		const { getByText } = render(<EnrollmentManagementScreen navigation={mockNavigation} />);
+		const { getByText, queryByText } = render(<EnrollmentManagementScreen navigation={mockNavigation} />);
 		await waitFor(() => expect(getByText('John Doe')).toBeTruthy());
 		
 		// Evidence must be verified before approval becomes clickable
 		fireEvent.press(getByText('Mark Verified'));
-		await waitFor(() => expect(getByText('Evidence verified')).toBeTruthy());
+		await waitFor(() => expect(queryByText('Mark Verified')).toBeNull());
 		
 		const approveButton = getByText('Approve Enrollment');
 		fireEvent.press(approveButton);

@@ -322,29 +322,36 @@ function ModuleScreen({
       return;
     }
 
-    // Mobile
+    // Mobile: allow images and PDFs
     try {
       const result = await DocumentPicker.getDocumentAsync({
-        type: 'application/pdf',
+        type: '*/*',
         copyToCacheDirectory: true,
       });
 
       if (!result.canceled && result.assets?.[0]) {
         const file = result.assets[0];
-        setSelectedFile({
-          name: file.name,
-          uri: file.uri,
-          type: file.mimeType || 'application/pdf',
-        });
+        const mime = file.mimeType || file.type || '';
+        if (mime.startsWith('image/') || mime === 'application/pdf') {
+          setSelectedFile({
+            name: file.name,
+            uri: file.uri,
+            type: mime || (mime.startsWith('image/') ? 'image/*' : 'application/pdf'),
+          });
+        } else {
+          Alert.alert('Invalid File', 'Please select a PDF or image file.');
+        }
       }
     } catch (err) {
-      Alert.alert('Error', 'Failed to pick PDF file');
+      Alert.alert('Error', 'Failed to pick a file');
     }
   };
 
   const handleWebFileSelect = (e) => {
     const file = e.target.files[0];
-    if (file && file.type === "application/pdf") {
+    if (!file) return;
+    const mime = file.type || '';
+    if (mime === 'application/pdf' || mime.startsWith('image/')) {
       setSelectedFile({
         name: file.name,
         uri: URL.createObjectURL(file),
@@ -352,13 +359,13 @@ function ModuleScreen({
         fileObject: file,
       });
     } else {
-      Alert.alert("Invalid File", "Please select a PDF file only.");
+      Alert.alert('Invalid File', 'Please select a PDF or image file.');
     }
   };
 
   const submitPaymentEvidence = async () => {
     if (!selectedFile) {
-      Alert.alert('Missing File', 'Please select a PDF file first');
+      Alert.alert('Missing File', 'Please select a PDF or image file first');
       return;
     }
 
@@ -1412,7 +1419,7 @@ function ModuleScreen({
             </View>
 
             <Text style={styles.instruction}>
-              Transfer the fee and upload your receipt (PDF)
+              Transfer the fee and upload your receipt (PDF or image)
             </Text>
 
             <TouchableOpacity
@@ -1420,9 +1427,7 @@ function ModuleScreen({
               onPress={pickPaymentEvidence}
             >
               <Text style={styles.uploadButtonText}>
-                {selectedFile
-                  ? "📄 Change Receipt"
-                  : "📎 Upload Payment Receipt (PDF)"}
+                {selectedFile ? "📄 Change Receipt" : "📎 Upload Payment Receipt (PDF or image)"}
               </Text>
             </TouchableOpacity>
 
@@ -1507,7 +1512,7 @@ function ModuleScreen({
         <input
           ref={fileInputRef}
           type="file"
-          accept="application/pdf"
+          accept="application/pdf,image/*"
           style={{ display: "none" }}
           onChange={handleWebFileSelect}
         />

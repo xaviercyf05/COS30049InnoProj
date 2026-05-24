@@ -15,7 +15,7 @@ import {
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { pickProfileImagePath, requestProfileApi, resolveProfileImageUri } from './profileApi';
 
-const defaultAvatar = require('../assets/icon.png');
+const defaultAvatar = require('../assets/SFClogo.jpg');
 
 function toProgressPercent(value) {
   const parsed = Number(value);

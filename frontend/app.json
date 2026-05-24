@@ -5,11 +5,11 @@
     "version": "1.0.0",
     "scheme": "trainingapp",
     "orientation": "portrait",
-    "icon": "./assets/icon.png",
+    "icon": "./assets/SFClogo.jpg",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash-icon.png",
+      "image": "./assets/SFClogo.jpg",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
@@ -22,14 +22,14 @@
     },
     "android": {
       "package": "com.innopapp.trainingapp",
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/android-icon-foreground.png",
+        "adaptiveIcon": {
+        "foregroundImage": "./assets/SFClogo.jpg",
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true
     },
     "web": {
-      "favicon": "./assets/favicon.png",
+      "favicon": "./assets/SFClogo.jpg",
       "name": "Training App",
       "shortName": "Training",
       "description": "Digital Park Guide training platform for web and mobile.",

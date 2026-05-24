@@ -9,6 +9,7 @@ import {
   StatusBar,
   ActivityIndicator,
   Switch,
+  Image,
 } from 'react-native';
 import { Leaf, Lock, ShieldCheck, User, Compass, PawPrint, Mail, KeyRound } from 'lucide-react-native';
 
@@ -851,7 +852,7 @@ export default function LoginPage({ navigation }) {
           <View style={styles.heroPanel}>
             <View style={styles.heroLogoWrap}>
               <View style={styles.logoCircle}>
-                <Leaf color="#FFFFFF" size={60} strokeWidth={1.5} />
+                <Image source={require('../assets/SFClogo.jpg')} style={styles.logo} />
               </View>
             </View>
             <Text style={styles.title}>Sarawak Guide Training</Text>

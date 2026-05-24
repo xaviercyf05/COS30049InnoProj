@@ -17,7 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { requestProfileApi, resolveProfileImageUri } from './profileApi';
 
-const defaultAvatar = require('../assets/icon.png');
+const defaultAvatar = require('../assets/SFClogo.jpg');
 
 function normalize(value) {
   return String(value || '').trim();

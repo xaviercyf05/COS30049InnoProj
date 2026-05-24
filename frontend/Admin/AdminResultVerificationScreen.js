@@ -1096,8 +1096,22 @@ function AdminResultVerificationScreen({ navigation, route, useSharedChrome = fa
 			return;
 		}
 
-		// compute target keys always using user + module id so we scope to a single module
-		const targetModuleId = row.moduleId || row.onSiteModuleId || selectedOnSiteModule?.moduleId;
+			// compute target keys always using user + on-site module id so we scope to a single module
+			// If an assessment row is passed in, resolve its linked on-site module via the
+			// `onSiteModuleByTpaModuleId` mapping. Fall back to explicit onSiteModuleId
+			// or the currently selected on-site module when available.
+			let targetModuleId = row.moduleId || row.onSiteModuleId || selectedOnSiteModule?.moduleId;
+
+			const isAssessmentRow = String(row.rowType || '').toLowerCase() === 'assessment' || Boolean(row.tpaModuleId || row.assessmentId);
+			if (isAssessmentRow) {
+				const lookupKey = String(row.tpaModuleId || row.moduleId || '').trim();
+				const mappedOnSite = lookupKey ? onSiteModuleByTpaModuleId.get(lookupKey) : null;
+				if (mappedOnSite && (mappedOnSite.moduleId || mappedOnSite.onSiteModuleId)) {
+					targetModuleId = mappedOnSite.moduleId || mappedOnSite.onSiteModuleId;
+				} else if (!targetModuleId && selectedOnSiteModule && selectedOnSiteModule.moduleId) {
+					targetModuleId = selectedOnSiteModule.moduleId;
+				}
+			}
 		const targetUserId = row.userId;
 
 		const targetOnSiteKey = buildOnSiteCompletionRowKey(targetUserId, targetModuleId);

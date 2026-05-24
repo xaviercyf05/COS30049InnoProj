@@ -87,6 +87,16 @@ export const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 8 },
     elevation: 10,
   },
+  logo: {
+    width: 84,
+    height: 84,
+    borderRadius: 42,
+    resizeMode: 'cover',
+    borderWidth: 2,
+    borderColor: 'rgba(255,255,255,0.12)',
+    overflow: 'hidden',
+    backgroundColor: 'transparent',
+  },
   title: {
     fontSize: 30,
     fontWeight: '800',

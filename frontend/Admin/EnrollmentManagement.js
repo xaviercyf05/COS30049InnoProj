@@ -1,17 +1,18 @@
 import React, { useMemo, useState, useEffect } from 'react';
 import {
+	ActivityIndicator,
 	Alert,
 	FlatList,
+	Image,
 	Modal,
 	Platform,
-	SafeAreaView,
 	StyleSheet,
 	Text,
 	TouchableOpacity,
 	View,
-	Linking,
 } from 'react-native';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { WebView } from 'react-native-webview';
 
 import withRoleGuard from '../auth/withRoleGuard.js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -67,11 +68,24 @@ function getStatusStyle(status) {
 	return { backgroundColor: '#FFF5DB', color: COLORS.pending };
 }
 
+function isImageEvidence(request) {
+	const value = `${request?.evidenceLabel || ''} ${request?.evidenceUrl || ''}`.toLowerCase();
+	return /\.(png|jpe?g|gif|webp|bmp|heic|heif)(\?|#|$)/i.test(value);
+}
+
+function isPdfEvidence(request) {
+	const value = `${request?.evidenceLabel || ''} ${request?.evidenceUrl || ''}`.toLowerCase();
+	return /\.pdf(\?|#|$)/i.test(value);
+}
+
 function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 	const insets = useSafeAreaInsets();
 	const [requests, setRequests] = useState(DEFAULT_REQUESTS);
 	const [selectedRequest, setSelectedRequest] = useState(null);
 	const [modalVisible, setModalVisible] = useState(false);
+	const [previewToken, setPreviewToken] = useState(null);
+	const [previewLoading, setPreviewLoading] = useState(false);
+	const [previewError, setPreviewError] = useState('');
 	const [notice, setNotice] = useState('');
 
 	const getAuthToken = async () => {
@@ -92,13 +106,9 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 
 	const loadRequests = async () => {
 		try {
-			console.log('[EnrollmentManagement] Loading payment requests...');
 			const token = await getAuthToken();
-			console.log('[EnrollmentManagement] Token retrieved:', !!token);
 			const resp = await requestProfileApi('/api/v1/admin/payments', token, { method: 'GET' });
-			console.log('[EnrollmentManagement] API response:', resp);
 			const rows = Array.isArray(resp.data) ? resp.data : [];
-			console.log('[EnrollmentManagement] Rows:', rows);
 			const mapped = rows.map((r) => ({
 				id: `P-${r.paymentId}`,
 				paymentId: r.paymentId,
@@ -119,7 +129,6 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 				raw: r,
 			}));
 
-			console.log('[EnrollmentManagement] Mapped requests:', mapped);
 			setRequests(mapped);
 		} catch (error) {
 			console.error('[EnrollmentManagement] Error loading payments:', error);
@@ -161,6 +170,39 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 	const openEvidence = (request) => {
 		setSelectedRequest(request);
 		setModalVisible(true);
+		setPreviewError('');
+		setPreviewToken(null);
+		if (Platform.OS !== 'web' && request?.evidenceUrl) {
+			prepareEvidencePreview(request);
+		}
+	};
+
+	const buildEvidenceUri = (request, baseUrl = API_ORIGIN) => {
+		const evidenceUrl = request?.evidenceUrl;
+		if (!evidenceUrl) {
+			return null;
+		}
+
+		return evidenceUrl.startsWith('http') ? evidenceUrl : `${baseUrl}${evidenceUrl}`;
+	};
+
+	const prepareEvidencePreview = async (request) => {
+		setPreviewLoading(true);
+		setPreviewError('');
+
+		try {
+			const token = await getAuthToken();
+			setPreviewToken(token);
+
+			const evidenceUri = buildEvidenceUri(request);
+			if (!evidenceUri) {
+				throw new Error('Evidence file is unavailable.');
+			}
+		} catch (error) {
+			setPreviewError(error?.message || 'Unable to preview evidence right now.');
+		} finally {
+			setPreviewLoading(false);
+		}
 	};
 
 	const openEvidenceFile = async (request) => {
@@ -204,7 +246,7 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 						document.body.removeChild(link);
 						setTimeout(() => URL.revokeObjectURL(evidenceBlobUrl), 60000);
 					} else {
-						Linking.openURL(evidenceUrl);
+						await prepareEvidencePreview(request);
 					}
 
 					return;
@@ -395,9 +437,54 @@ function EnrollmentManagementScreen({ navigation, useSharedChrome = false }) {
 								<Text style={styles.modalDetail}>Reference: {selectedRequest.paymentReference}</Text>
 								<Text style={styles.modalDetail}>File: {selectedRequest.evidenceLabel}</Text>
 								{selectedRequest.evidenceUrl ? (
-									<TouchableOpacity onPress={() => openEvidenceFile(selectedRequest)} style={{ marginTop: 8 }}>
-										<Text style={{ color: '#2563EB', fontWeight: '700' }}>Download evidence</Text>
-									</TouchableOpacity>
+									Platform.OS === 'web' ? (
+										<TouchableOpacity onPress={() => openEvidenceFile(selectedRequest)} style={{ marginTop: 8 }}>
+											<Text style={{ color: '#2563EB', fontWeight: '700' }}>Download evidence</Text>
+										</TouchableOpacity>
+									) : (
+										<View style={styles.previewPanel}>
+											{previewLoading ? (
+												<View style={styles.previewStatus}>
+													<ActivityIndicator color={COLORS.olive} />
+													<Text style={styles.previewStatusText}>Loading preview...</Text>
+												</View>
+											) : previewError ? (
+												<View style={styles.previewStatus}>
+													<Text style={styles.previewErrorText}>{previewError}</Text>
+													<TouchableOpacity onPress={() => prepareEvidencePreview(selectedRequest)} style={styles.retryButton}>
+														<Text style={styles.retryButtonText}>Try again</Text>
+													</TouchableOpacity>
+												</View>
+											) : isImageEvidence(selectedRequest) ? (
+												<Image
+													source={{
+														uri: buildEvidenceUri(selectedRequest),
+														headers: previewToken ? { Authorization: `Bearer ${previewToken}` } : undefined,
+													}}
+													style={styles.evidenceImage}
+													resizeMode="contain"
+													onError={() => setPreviewError('Unable to render this evidence image.')}
+												/>
+											) : (
+												<WebView
+													source={{
+														uri: isPdfEvidence(selectedRequest)
+															? `https://docs.google.com/gview?embedded=true&url=${encodeURIComponent(buildEvidenceUri(selectedRequest))}`
+															: buildEvidenceUri(selectedRequest),
+														headers: previewToken ? { Authorization: `Bearer ${previewToken}` } : undefined,
+													}}
+													style={styles.evidenceWebView}
+													startInLoadingState
+													renderLoading={() => (
+														<View style={styles.webViewLoader}>
+															<ActivityIndicator color={COLORS.olive} />
+														</View>
+													)}
+													onError={() => setPreviewError('Unable to render this evidence preview.')}
+												/>
+											)}
+										</View>
+									)
 								) : null}
 								<Text style={styles.modalDetail}>
 									Status: {selectedRequest.evidenceVerified ? 'Verified' : 'Pending review'}
@@ -674,6 +761,7 @@ const styles = StyleSheet.create({
 		borderRadius: 22,
 		padding: 18,
 		width: Platform.OS === 'web' ? '50%' : '100%',
+		maxHeight: '88%',
 		alignSelf: 'center',
 	},
 	modalTitle: {
@@ -692,6 +780,61 @@ const styles = StyleSheet.create({
 		color: COLORS.heading,
 		fontSize: 14,
 		lineHeight: 20,
+	},
+	previewPanel: {
+		height: 360,
+		marginTop: 12,
+		borderWidth: 1,
+		borderColor: COLORS.border,
+		borderRadius: 14,
+		overflow: 'hidden',
+		backgroundColor: '#F8FAF5',
+	},
+	previewStatus: {
+		flex: 1,
+		alignItems: 'center',
+		justifyContent: 'center',
+		padding: 16,
+	},
+	previewStatusText: {
+		marginTop: 10,
+		color: COLORS.body,
+		fontSize: 13,
+		fontWeight: '700',
+	},
+	previewErrorText: {
+		color: COLORS.rejected,
+		fontSize: 13,
+		fontWeight: '700',
+		textAlign: 'center',
+		lineHeight: 18,
+	},
+	retryButton: {
+		marginTop: 12,
+		backgroundColor: '#E0ECFF',
+		borderRadius: 12,
+		paddingHorizontal: 14,
+		paddingVertical: 10,
+	},
+	retryButtonText: {
+		color: COLORS.verified,
+		fontSize: 13,
+		fontWeight: '800',
+	},
+	evidenceImage: {
+		width: '100%',
+		height: '100%',
+		backgroundColor: '#FFFFFF',
+	},
+	evidenceWebView: {
+		flex: 1,
+		backgroundColor: '#FFFFFF',
+	},
+	webViewLoader: {
+		...StyleSheet.absoluteFillObject,
+		alignItems: 'center',
+		justifyContent: 'center',
+		backgroundColor: '#FFFFFF',
 	},
 	modalButton: {
 		marginTop: 16,

@@ -39,10 +39,21 @@ jest.mock('@react-native-async-storage/async-storage', () => ({
 }));
 
 jest.mock('react-native-safe-area-context', () => ({
+	SafeAreaView: (props) => {
+		const { View } = require('react-native');
+		return <View {...props} />;
+	},
 	useSafeAreaInsets: () => ({ top: 0, bottom: 0, left: 0, right: 0 }),
 }));
 
 jest.mock('../auth/withRoleGuard.js', () => (Component) => Component);
+
+jest.mock('react-native-webview', () => ({
+	WebView: (props) => {
+		const { View } = require('react-native');
+		return <View testID="evidence-webview" {...props} />;
+	},
+}));
 
 const mockNavigation = {
 	addListener: jest.fn((event, callback) => {

@@ -63,7 +63,9 @@ export default function AlertHistory({ navigation }) {
 
     return () => {
       active = false;
-      unsubscribe();
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
     };
   }, []);
 

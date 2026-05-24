@@ -26,7 +26,7 @@ jest.mock('../auth/withRoleGuard.js', () => (Component) => Component);
 
 jest.mock('./RichEditor', () => {
   const { TextInput } = require('react-native');
-  return function MockRichEditor({ value, onChange }) {
+  const MockRichEditor = function MockRichEditor({ value, onChange }) {
     return (
       <TextInput
         testID="mock-rich-editor"
@@ -34,6 +34,11 @@ jest.mock('./RichEditor', () => {
         onChangeText={onChange}
       />
     );
+  };
+
+  return {
+    __esModule: true,
+    default: MockRichEditor,
   };
 }, { virtual: true });
 

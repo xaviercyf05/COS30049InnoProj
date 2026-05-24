@@ -252,7 +252,9 @@ function AddModuleScreen({ navigation }) {
 
     return () => {
       active = false;
-      unsubscribe();
+        if (typeof unsubscribe === 'function') {
+          unsubscribe();
+        }
     };
   }, [navigation]);
 

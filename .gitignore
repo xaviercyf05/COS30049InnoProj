@@ -56,3 +56,4 @@ database/appdb (1).sql
 /.env
 .env
 *.env
+frontend/package.json

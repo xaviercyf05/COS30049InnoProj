@@ -8,9 +8,72 @@ const {
 } = require("../services/moduleUiService");
 
 const moduleCoverPathPrefix = "/uploads/module-covers/";
+const ONSITE_MODULE_TYPE_NAME = "On-Site Training Modules";
+const TPA_MODULE_TYPE_NAME = "Total Protected Area Modules";
+
+function parseOptionalDecimal(value) {
+  if (value === undefined || value === null || value === "") {
+    return null;
+  }
+
+  const numericValue = Number.parseFloat(value);
+  return Number.isFinite(numericValue) ? numericValue : null;
+}
+
+function getIncomingModulePrice(body) {
+  return parseOptionalDecimal(body.modulePrice ?? body.price ?? body.module_fee ?? body.module_price);
+}
+
+function normalizeModulePriceForType(moduleTypeName, incomingPrice) {
+  const normalizedTypeName = String(moduleTypeName || "").trim().toLowerCase();
+  if (normalizedTypeName === ONSITE_MODULE_TYPE_NAME.toLowerCase()) {
+    return null;
+  }
+
+  return incomingPrice;
+}
 
 function createModuleCoverImageUrl(fileName) {
   return `${moduleCoverPathPrefix}${fileName}`;
+}
+
+async function getModuleTypeNameById(execute, moduleTypeId) {
+  if (!Number.isFinite(moduleTypeId) || moduleTypeId <= 0) {
+    return null;
+  }
+
+  const [rows] = await execute(
+    "SELECT TypeName FROM ModuleTypes WHERE ModuleTypeID = ? LIMIT 1",
+    [moduleTypeId]
+  );
+
+  return rows.length > 0 ? rows[0].TypeName : null;
+}
+
+async function resolveModuleTypeId(execute, requestedModuleTypeId, fallbackModuleTypeId = null) {
+  // Attempt to use requested type if provided and valid
+  if (Number.isFinite(requestedModuleTypeId) && requestedModuleTypeId > 0) {
+    const [typeRows] = await execute(
+      "SELECT ModuleTypeID FROM ModuleTypes WHERE ModuleTypeID = ? LIMIT 1",
+      [requestedModuleTypeId]
+    );
+
+    if (typeRows.length > 0) {
+      return requestedModuleTypeId;
+    }
+  }
+
+  // Fall back to current module's type on update (to preserve existing type if not explicitly changed)
+  if (Number.isFinite(fallbackModuleTypeId) && fallbackModuleTypeId > 0) {
+    return fallbackModuleTypeId;
+  }
+
+  // Default to first available type (no type prerequisites—any type can be created)
+  const [defaultTypeRows] = await execute(
+    "SELECT ModuleTypeID FROM ModuleTypes ORDER BY ModuleTypeID ASC LIMIT 1"
+  );
+
+  return defaultTypeRows.length > 0 ? defaultTypeRows[0].ModuleTypeID : null;
 }
 
 function normalizeSectionsInput(sectionsInput) {
@@ -27,31 +90,88 @@ function normalizeSectionsInput(sectionsInput) {
   if (!Array.isArray(parsedSections)) {
     return [];
   }
-
+  // Support two input formats:
+  // 1) Legacy: [{ title, content }]
+  // 2) New: [{ title, ordering, subsections: [{ title, content, ordering }] }]
   return parsedSections
     .map((section, index) => {
-      const title = String(section?.title || "").trim();
-      const content = String(section?.content || "").trim();
+      const title = String(section?.title || `Section ${index + 1}`).trim();
+      const description = String(section?.description || '').trim();
 
-      if (!title && !content) {
-        return null;
+      // If subsections provided, normalize them
+      if (Array.isArray(section?.subsections)) {
+        const subs = section.subsections
+          .map((s, i) => {
+            const stitle = String(s?.title || `${title} - ${i + 1}`).trim();
+            const scontent = String(s?.content || "").trim();
+            if (!stitle && !scontent) return null;
+            return {
+              title: stitle,
+              content: scontent || "<p>No content provided.</p>",
+              ordering: typeof s?.ordering !== 'undefined' ? Number(s.ordering) : null,
+            };
+          })
+          .filter(Boolean);
+
+        return {
+          title,
+          description,
+          ordering: typeof section?.ordering !== 'undefined' ? Number(section.ordering) : null,
+          subsections: subs,
+        };
       }
 
+      // Legacy single-content section
+      const content = String(section?.content || "").trim();
+
       return {
-        title: title || `Section ${index + 1}`,
-        content: content || "<p>No content provided.</p>",
+        title,
+        description,
+        ordering: typeof section?.ordering !== 'undefined' ? Number(section.ordering) : null,
+        subsections: [
+          {
+            title,
+            content: content || "<p>No content provided.</p>",
+            ordering: null,
+          },
+        ],
       };
     })
     .filter(Boolean);
 }
 
-function mapSectionRow(sectionRow) {
-  return {
-    id: `section-${sectionRow.MaterialID}`,
-    materialId: sectionRow.MaterialID,
-    title: sectionRow.Title || sectionRow.Chapter || "Section",
-    content: sectionRow.ContentText || "",
-  };
+function mapSectionRowsToStructure(rows) {
+  // rows: flattened rows from JOIN of Sections and Subsections
+  const sectionsMap = new Map();
+
+  for (const r of rows) {
+    const sid = r.SectionID;
+
+    if (!sectionsMap.has(sid)) {
+      sectionsMap.set(sid, {
+        id: `section-${sid}`,
+        sectionId: sid,
+        title: r.SectionTitle,
+        description: r.SectionDescription || '',
+        ordering: r.SectionOrdering,
+        subsections: [],
+      });
+    }
+
+    if (r.SubsectionID) {
+      sectionsMap.get(sid).subsections.push({
+        id: `subsection-${r.SubsectionID}`,
+        subsectionId: r.SubsectionID,
+        title: r.SubTitle,
+        contentType: r.ContentType,
+        content: r.ContentText,
+        ordering: r.SubOrdering,
+      });
+    }
+  }
+
+  // Return ordered array
+  return Array.from(sectionsMap.values()).sort((a, b) => (a.ordering || 0) - (b.ordering || 0));
 }
 
 async function readModuleById(moduleId) {
@@ -61,9 +181,16 @@ async function readModuleById(moduleId) {
     `SELECT m.ModuleID,
             m.QualificationID,
             m.ModuleTitle,
-            meta.CoverImageUrl
+            m.ModuleTypeID,
+            m.ModulePrice,
+            m.LinkedTpaModuleID,
+            m.LinkedOnsiteModuleID,
+            mt.TypeName,
+            meta.CoverImageUrl,
+            meta.Summary
        FROM Modules m
        LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
+       LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
       WHERE m.ModuleID = ?
       LIMIT 1`,
     [moduleId]
@@ -75,22 +202,39 @@ async function readModuleById(moduleId) {
 
   const moduleRow = moduleRows[0];
 
-  const [sectionRows] = await query(
-    `SELECT MaterialID, Chapter, Title, ContentText
-       FROM LearningMaterials
-      WHERE ModuleID = ?
-      ORDER BY MaterialID ASC`,
+  const [rows] = await query(
+    `SELECT s.SectionID,
+            s.Title AS SectionTitle,
+            s.Description AS SectionDescription,
+            s.Ordering AS SectionOrdering,
+            sc.SubsectionID,
+            sc.Title AS SubTitle,
+            sc.ContentType,
+            sc.ContentText,
+            sc.Ordering AS SubOrdering
+       FROM Sections s
+       LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
+      WHERE s.ModuleID = ?
+      ORDER BY s.Ordering ASC, sc.Ordering ASC`,
     [moduleId]
   );
+
+  const sections = mapSectionRowsToStructure(rows);
 
   return {
     moduleId: moduleRow.ModuleID,
     id: `module-${moduleRow.ModuleID}`,
     qualificationId: moduleRow.QualificationID,
     title: moduleRow.ModuleTitle,
+    moduleTypeId: moduleRow.ModuleTypeID,
+    moduleType: moduleRow.TypeName || 'General Modules',
+    modulePrice: moduleRow.ModulePrice === null || moduleRow.ModulePrice === undefined ? null : Number(moduleRow.ModulePrice),
+    linkedTpaModuleId: moduleRow.LinkedTpaModuleID || null,
+    linkedOnsiteModuleId: moduleRow.LinkedOnsiteModuleID || null,
     moduleImageUrl: resolveModuleCoverImage(moduleRow.ModuleID, moduleRow.CoverImageUrl),
-    sections: sectionRows.map((sectionRow) => mapSectionRow(sectionRow)),
-    sectionCount: sectionRows.length,
+    summary: moduleRow.Summary || '',
+    sections,
+    sectionCount: sections.length,
   };
 }
 
@@ -102,15 +246,24 @@ async function listModules(req, res) {
     await ensureModuleUiSchema();
 
     const [rows] = await query(
-      `SELECT m.ModuleID,
+            `SELECT m.ModuleID,
               m.QualificationID,
               m.ModuleTitle,
+              m.ModuleTypeID,
+              m.ModulePrice,
+              m.LinkedTpaModuleID,
+              m.LinkedOnsiteModuleID,
+              mt.TypeName,
               meta.CoverImageUrl,
-              COUNT(lm.MaterialID) AS SectionCount
+              meta.Summary,
+              COUNT(sc.SubsectionID) AS SectionCount
          FROM Modules m
          LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
+         LEFT JOIN Sections s ON s.ModuleID = m.ModuleID
+         LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
          LEFT JOIN LearningMaterials lm ON lm.ModuleID = m.ModuleID
-        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, meta.CoverImageUrl
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        GROUP BY m.ModuleID, m.QualificationID, m.ModuleTitle, m.ModuleTypeID, m.LinkedTpaModuleID, m.LinkedOnsiteModuleID, mt.TypeName, meta.CoverImageUrl, meta.Summary
         ORDER BY m.ModuleID DESC`
     );
 
@@ -119,7 +272,13 @@ async function listModules(req, res) {
       id: `module-${row.ModuleID}`,
       qualificationId: row.QualificationID,
       title: row.ModuleTitle,
+      moduleTypeId: row.ModuleTypeID,
+      moduleType: row.TypeName || 'Theory',
+      modulePrice: row.ModulePrice === null || row.ModulePrice === undefined ? null : Number(row.ModulePrice),
+      linkedTpaModuleId: row.LinkedTpaModuleID || null,
+      linkedOnsiteModuleId: row.LinkedOnsiteModuleID || null,
       moduleImageUrl: resolveModuleCoverImage(row.ModuleID, row.CoverImageUrl),
+      summary: row.Summary || '',
       sectionCount: Number(row.SectionCount || 0),
     }));
 
@@ -209,12 +368,34 @@ async function uploadModuleCoverImage(req, res) {
 
 /**
  * Admin: create module and section content.
+ * 
+ * Note: moduleTypeId can be provided to create a module of any type directly.
+ * No type prerequisites exist—you can create "Total Protected Area Modules" 
+ * or "On-Site Training Modules" without creating "General Modules" first.
  */
 async function createModule(req, res) {
   const title = String(req.body.title || "").trim();
   const moduleImageUrl = normalizeModuleCoverImageUrl(req.body.moduleImageUrl);
   const requestedQualificationId = Number.parseInt(req.body.qualificationId, 10);
+  const requestedModuleTypeId = Number.parseInt(req.body.moduleTypeId, 10);
+  const requestedLinkedTpaModuleId = Number.parseInt(req.body.linkedTpaModuleId, 10);
+  const requestedModulePrice = getIncomingModulePrice(req.body);
   const sections = normalizeSectionsInput(req.body.sections);
+
+  // Debug logging to verify incoming payload
+  try {
+    console.debug('createModule received', {
+      title,
+      moduleImageUrl,
+      requestedQualificationId,
+      requestedModuleTypeId,
+      requestedLinkedTpaModuleId,
+      sectionsCount: Array.isArray(sections) ? sections.length : 0,
+      firstSectionPreview: sections && sections[0] ? String(sections[0].content).slice(0, 120) : null,
+    });
+  } catch (_e) {
+    // ignore logging errors
+  }
 
   if (!title) {
     return res.status(400).json({
@@ -223,12 +404,12 @@ async function createModule(req, res) {
     });
   }
 
-  if (sections.length === 0) {
-    return res.status(400).json({
-      success: false,
-      message: "At least one section is required.",
-    });
-  }
+    if (sections.length === 0) {
+      return res.status(400).json({
+        success: false,
+        message: "At least one section is required.",
+      });
+    }
 
   let connection;
 
@@ -255,29 +436,109 @@ async function createModule(req, res) {
       });
     }
 
+    const moduleTypeId = await resolveModuleTypeId(connection.execute.bind(connection), requestedModuleTypeId);
+    const moduleTypeName = await getModuleTypeNameById(connection.execute.bind(connection), moduleTypeId);
+    const modulePrice = normalizeModulePriceForType(moduleTypeName, requestedModulePrice);
+
+    if (moduleTypeName !== ONSITE_MODULE_TYPE_NAME && modulePrice === null) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Module price is required and must be numeric for non-on-site modules.",
+      });
+    }
+
+    console.debug('createModule resolved moduleTypeId:', { requestedModuleTypeId, resolvedModuleTypeId: moduleTypeId });
+
+    // Validate linked TPA relationship if provided
+    let linkedTpaModuleId = null;
+    if (Number.isFinite(requestedLinkedTpaModuleId) && requestedLinkedTpaModuleId > 0) {
+      const sourceModuleTypeName = await getModuleTypeNameById(
+        connection.execute.bind(connection),
+        moduleTypeId
+      );
+
+      if (sourceModuleTypeName !== ONSITE_MODULE_TYPE_NAME) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Only On-Site Training Modules can be linked to a TPA module.",
+        });
+      }
+
+      const [tpaModuleRows] = await connection.execute(
+        `SELECT m.ModuleID, mt.TypeName
+           FROM Modules m
+           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+          WHERE m.ModuleID = ?
+          LIMIT 1`,
+        [requestedLinkedTpaModuleId]
+      );
+
+      if (tpaModuleRows.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Linked TPA module does not exist.",
+        });
+      }
+
+      if (tpaModuleRows[0].TypeName !== TPA_MODULE_TYPE_NAME) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Linked module must be a Total Protected Area module.",
+        });
+      }
+
+      linkedTpaModuleId = requestedLinkedTpaModuleId;
+    }
+
     const [moduleInsert] = await connection.execute(
-      "INSERT INTO Modules (QualificationID, ModuleTitle) VALUES (?, ?)",
-      [qualificationId, title]
+      "INSERT INTO Modules (QualificationID, ModuleTitle, ModuleTypeID, ModulePrice, LinkedTpaModuleID) VALUES (?, ?, ?, ?, ?)",
+      [qualificationId, title, moduleTypeId, modulePrice, linkedTpaModuleId]
     );
 
     const moduleId = moduleInsert.insertId;
 
     await connection.execute(
-      "INSERT INTO ModuleUiMeta (ModuleID, CoverImageUrl) VALUES (?, ?)",
-      [moduleId, moduleImageUrl || null]
+      "INSERT INTO ModuleUiMeta (ModuleID, CoverImageUrl, Summary) VALUES (?, ?, ?)",
+      [moduleId, moduleImageUrl || null, req.body.summary ? String(req.body.summary).trim() : null]
     );
 
+    // Insert sections and subsections
+    let sectionOrderCounter = 0;
     for (const section of sections) {
-      await connection.execute(
-        `INSERT INTO LearningMaterials (
-          ModuleID,
-          Chapter,
-          Title,
-          ContentType,
-          ContentText
-        ) VALUES (?, ?, ?, 'html', ?)`,
-        [moduleId, section.title, section.title, section.content]
+      sectionOrderCounter += 1;
+      const sectionOrdering = typeof section.ordering === 'number' && !Number.isNaN(section.ordering)
+        ? section.ordering
+        : sectionOrderCounter;
+
+      const [secInsert] = await connection.execute(
+        "INSERT INTO Sections (ModuleID, Title, Description, Ordering) VALUES (?, ?, ?, ?)",
+        [moduleId, section.title, section.description || null, sectionOrdering]
       );
+
+      const sectionId = secInsert.insertId;
+
+      let subOrderCounter = 0;
+      for (const sub of (section.subsections || [])) {
+        subOrderCounter += 1;
+        const subOrdering = typeof sub.ordering === 'number' && !Number.isNaN(sub.ordering)
+          ? sub.ordering
+          : subOrderCounter;
+
+        await connection.execute(
+          `INSERT INTO Subsections (
+            SectionID,
+            Title,
+            ContentType,
+            ContentText,
+            Ordering
+          ) VALUES (?, ?, 'html', ?, ?)`,
+          [sectionId, sub.title, sub.content || '<p>No content provided.</p>', subOrdering]
+        );
+      }
     }
 
     await connection.commit();
@@ -313,6 +574,9 @@ async function updateModule(req, res) {
   const { moduleId } = req.params;
   const title = String(req.body.title || "").trim();
   const moduleImageUrl = normalizeModuleCoverImageUrl(req.body.moduleImageUrl);
+  const requestedModuleTypeId = Number.parseInt(req.body.moduleTypeId, 10);
+  const requestedLinkedTpaModuleId = Number.parseInt(req.body.linkedTpaModuleId, 10);
+  const requestedModulePrice = getIncomingModulePrice(req.body);
   const sections = normalizeSectionsInput(req.body.sections);
 
   if (!title) {
@@ -350,9 +614,100 @@ async function updateModule(req, res) {
       });
     }
 
+    const [currentModuleRows] = await connection.execute(
+      "SELECT ModuleTypeID, LinkedTpaModuleID, ModulePrice FROM Modules WHERE ModuleID = ? LIMIT 1",
+      [moduleId]
+    );
+
+    const currentModuleTypeId = currentModuleRows.length > 0 ? currentModuleRows[0].ModuleTypeID : null;
+    const currentLinkedTpaModuleId = currentModuleRows.length > 0 ? currentModuleRows[0].LinkedTpaModuleID : null;
+    const moduleTypeId = await resolveModuleTypeId(
+      connection.execute.bind(connection),
+      requestedModuleTypeId,
+      currentModuleTypeId
+    );
+    const moduleTypeName = await getModuleTypeNameById(connection.execute.bind(connection), moduleTypeId);
+    const modulePrice = normalizeModulePriceForType(moduleTypeName, requestedModulePrice);
+
+    if (moduleTypeName !== ONSITE_MODULE_TYPE_NAME && modulePrice === null) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Module price is required and must be numeric for non-on-site modules.",
+      });
+    }
+
+    // Validate linked TPA relationship if provided
+    let linkedTpaModuleId = currentLinkedTpaModuleId;
+    if (Number.isFinite(requestedLinkedTpaModuleId) && requestedLinkedTpaModuleId > 0) {
+      if (Number(moduleId) === requestedLinkedTpaModuleId) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "A module cannot be linked to itself.",
+        });
+      }
+
+      const sourceModuleTypeName = await getModuleTypeNameById(
+        connection.execute.bind(connection),
+        moduleTypeId
+      );
+
+      if (sourceModuleTypeName !== ONSITE_MODULE_TYPE_NAME) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Only On-Site Training Modules can be linked to a TPA module.",
+        });
+      }
+
+      const [tpaModuleRows] = await connection.execute(
+        `SELECT m.ModuleID, mt.TypeName
+           FROM Modules m
+           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+          WHERE m.ModuleID = ?
+          LIMIT 1`,
+        [requestedLinkedTpaModuleId]
+      );
+
+      if (tpaModuleRows.length === 0) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Linked TPA module does not exist.",
+        });
+      }
+
+      if (tpaModuleRows[0].TypeName !== TPA_MODULE_TYPE_NAME) {
+        await connection.rollback();
+        return res.status(400).json({
+          success: false,
+          message: "Linked module must be a Total Protected Area module.",
+        });
+      }
+
+      linkedTpaModuleId = requestedLinkedTpaModuleId;
+    } else if (requestedLinkedTpaModuleId === 0) {
+      // Explicitly clear the link if 0 is passed
+      linkedTpaModuleId = null;
+    }
+
+    const finalModuleTypeName = await getModuleTypeNameById(
+      connection.execute.bind(connection),
+      moduleTypeId
+    );
+
+    if (finalModuleTypeName !== ONSITE_MODULE_TYPE_NAME && linkedTpaModuleId) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Only On-Site Training Modules can keep a linked TPA module. Clear the link first.",
+      });
+    }
+
     await connection.execute(
-      "UPDATE Modules SET ModuleTitle = ? WHERE ModuleID = ?",
-      [title, moduleId]
+      "UPDATE Modules SET ModuleTitle = ?, ModuleTypeID = ?, ModulePrice = ?, LinkedTpaModuleID = ? WHERE ModuleID = ?",
+      [title, moduleTypeId, modulePrice, linkedTpaModuleId, moduleId]
     );
 
     await connection.execute(
@@ -362,19 +717,49 @@ async function updateModule(req, res) {
       [moduleId, moduleImageUrl || null]
     );
 
-    await connection.execute("DELETE FROM LearningMaterials WHERE ModuleID = ?", [moduleId]);
+    // Persist summary in UI meta as well
+    await connection.execute(
+      `INSERT INTO ModuleUiMeta (ModuleID, CoverImageUrl, Summary)
+       VALUES (?, ?, ?)
+       ON DUPLICATE KEY UPDATE CoverImageUrl = VALUES(CoverImageUrl), Summary = VALUES(Summary)`,
+      [moduleId, moduleImageUrl || null, req.body.summary ? String(req.body.summary).trim() : null]
+    );
 
+    // Remove existing sections/subsections for module and recreate
+    await connection.execute("DELETE FROM Sections WHERE ModuleID = ?", [moduleId]);
+
+    let sectionOrderCounter2 = 0;
     for (const section of sections) {
-      await connection.execute(
-        `INSERT INTO LearningMaterials (
-          ModuleID,
-          Chapter,
-          Title,
-          ContentType,
-          ContentText
-        ) VALUES (?, ?, ?, 'html', ?)`,
-        [moduleId, section.title, section.title, section.content]
+      sectionOrderCounter2 += 1;
+      const sectionOrdering = typeof section.ordering === 'number' && !Number.isNaN(section.ordering)
+        ? section.ordering
+        : sectionOrderCounter2;
+
+      const [secInsert] = await connection.execute(
+        "INSERT INTO Sections (ModuleID, Title, Description, Ordering) VALUES (?, ?, ?, ?)",
+        [moduleId, section.title, section.description || null, sectionOrdering]
       );
+
+      const sectionId = secInsert.insertId;
+
+      let subOrderCounter2 = 0;
+      for (const sub of (section.subsections || [])) {
+        subOrderCounter2 += 1;
+        const subOrdering = typeof sub.ordering === 'number' && !Number.isNaN(sub.ordering)
+          ? sub.ordering
+          : subOrderCounter2;
+
+        await connection.execute(
+          `INSERT INTO Subsections (
+            SectionID,
+            Title,
+            ContentType,
+            ContentText,
+            Ordering
+          ) VALUES (?, ?, 'html', ?, ?)`,
+          [sectionId, sub.title, sub.content || '<p>No content provided.</p>', subOrdering]
+        );
+      }
     }
 
     await connection.commit();
@@ -395,6 +780,136 @@ async function updateModule(req, res) {
     return res.status(500).json({
       success: false,
       message: "Failed to update module.",
+    });
+  } finally {
+    if (connection) {
+      connection.release();
+    }
+  }
+}
+
+/**
+ * Admin: link or unlink an On-Site module to a TPA module by module ID.
+ */
+async function linkModuleToTpa(req, res) {
+  const moduleId = Number.parseInt(req.params.moduleId, 10);
+  const requestedLinkedTpaModuleId = Number.parseInt(req.body.linkedTpaModuleId, 10);
+  const shouldClear = requestedLinkedTpaModuleId === 0;
+
+  let connection;
+
+  try {
+    connection = await pool.getConnection();
+    await connection.beginTransaction();
+
+    const [sourceRows] = await connection.execute(
+      `SELECT m.ModuleID, m.ModuleTypeID, mt.TypeName, m.LinkedTpaModuleID
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.ModuleID = ?
+        LIMIT 1`,
+      [moduleId]
+    );
+
+    if (sourceRows.length === 0) {
+      await connection.rollback();
+      return res.status(404).json({
+        success: false,
+        message: "Module not found.",
+      });
+    }
+
+    const source = sourceRows[0];
+
+    if (source.TypeName !== ONSITE_MODULE_TYPE_NAME) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Only On-Site Training Modules can be linked to a TPA module.",
+      });
+    }
+
+    if (shouldClear) {
+      await connection.execute(
+        "UPDATE Modules SET LinkedTpaModuleID = NULL WHERE ModuleID = ?",
+        [moduleId]
+      );
+
+      await connection.commit();
+      return res.json({
+        success: true,
+        message: "TPA link cleared successfully.",
+        data: {
+          moduleId,
+          linkedTpaModuleId: null,
+        },
+      });
+    }
+
+    if (!Number.isFinite(requestedLinkedTpaModuleId) || requestedLinkedTpaModuleId <= 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "linkedTpaModuleId is required and must be a positive integer, or 0 to clear.",
+      });
+    }
+
+    if (moduleId === requestedLinkedTpaModuleId) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "A module cannot be linked to itself.",
+      });
+    }
+
+    const [targetRows] = await connection.execute(
+      `SELECT m.ModuleID, mt.TypeName
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.ModuleID = ?
+        LIMIT 1`,
+      [requestedLinkedTpaModuleId]
+    );
+
+    if (targetRows.length === 0) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Linked TPA module does not exist.",
+      });
+    }
+
+    if (targetRows[0].TypeName !== TPA_MODULE_TYPE_NAME) {
+      await connection.rollback();
+      return res.status(400).json({
+        success: false,
+        message: "Linked module must be a Total Protected Area module.",
+      });
+    }
+
+    await connection.execute(
+      "UPDATE Modules SET LinkedTpaModuleID = ? WHERE ModuleID = ?",
+      [requestedLinkedTpaModuleId, moduleId]
+    );
+
+    await connection.commit();
+    return res.json({
+      success: true,
+      message: "Module linked to TPA successfully.",
+      data: {
+        moduleId,
+        linkedTpaModuleId: requestedLinkedTpaModuleId,
+      },
+    });
+  } catch (error) {
+    if (connection) {
+      await connection.rollback().catch(() => {});
+    }
+
+    console.error("Link module to TPA error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to link module to TPA.",
     });
   } finally {
     if (connection) {
@@ -432,11 +947,43 @@ async function deleteModule(req, res) {
   }
 }
 
+/**
+ * Admin: get all available module types.
+ */
+async function getModuleTypes(req, res) {
+  try {
+    const [rows] = await query(
+      `SELECT ModuleTypeID, TypeName, Description
+         FROM ModuleTypes
+        ORDER BY ModuleTypeID ASC`
+    );
+
+    const data = rows.map((row) => ({
+      moduleTypeId: row.ModuleTypeID,
+      typeName: row.TypeName,
+      description: row.Description || "",
+    }));
+
+    return res.json({
+      success: true,
+      data,
+    });
+  } catch (error) {
+    console.error("Get module types error:", error);
+    return res.status(500).json({
+      success: false,
+      message: "Failed to fetch module types.",
+    });
+  }
+}
+
 module.exports = {
   listModules,
   getModuleById,
   uploadModuleCoverImage,
   createModule,
   updateModule,
+  linkModuleToTpa,
   deleteModule,
+  getModuleTypes,
 };

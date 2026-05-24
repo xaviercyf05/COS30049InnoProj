@@ -4,10 +4,10 @@ const { authenticateUser } = require("../../middleware/authUser");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const assessmentController = require("../../controllers/assessmentController");
+const assessmentService = require("../../services/assessmentService");
 
 const router = express.Router();
 
-// All routes require authentication
 router.use(authenticateUser);
 
 /**
@@ -21,6 +21,16 @@ router.get(
 );
 
 /**
+ * GET /assessments/:assessmentId - Get assessment details for a module assessment
+ */
+router.get(
+  "/:assessmentId",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.getAssessmentDetails)
+);
+
+/**
  * GET /assessments/:assessmentId/eligibility - Check if user can attempt assessment
  */
 router.get(
@@ -31,21 +41,51 @@ router.get(
 );
 
 /**
- * POST /assessments/submit - Submit assessment attempt
+ * Dev-only: POST /assessments/submit-test - Simulate submission without auth
+ * Body: { assessmentId, answers: [{ optionId }, ...], testUserId?, timeUsedSeconds? }
+ */
+router.post(
+  "/submit-test",
+  [
+    body("assessmentId").isInt().withMessage("Valid assessment ID is required."),
+    body("answers").isArray().withMessage("Answers must be an array."),
+    body("answers.*.optionId").optional().isInt().withMessage("Each answer must have a valid option ID."),
+    body("testUserId").optional().isInt().withMessage("testUserId must be an integer."),
+    body("timeUsedSeconds")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0 })
+      .withMessage("Time used must be a non-negative integer in seconds."),
+  ],
+  validate,
+  asyncHandler(async (req, res) => {
+    const { assessmentId, answers, timeUsedSeconds, testUserId } = req.body;
+    const userId = Number(testUserId) || 1; // default test user
+
+    const attempt = await assessmentService.submitAssessmentAttempt(
+      userId,
+      Number(assessmentId),
+      answers,
+      Number(timeUsedSeconds || 0)
+    );
+
+    return res.status(201).json({ success: true, data: attempt });
+  })
+);
+
+/**
+ * POST /assessments/submit - Submit assessment attempt (authenticated)
  * Body: { assessmentId, answers: [{ optionId }, ...] }
  */
 router.post(
   "/submit",
   [
-    body("assessmentId")
-      .isInt()
-      .withMessage("Valid assessment ID is required."),
-    body("answers")
-      .isArray()
-      .withMessage("Answers must be an array."),
-    body("answers.*.optionId")
-      .isInt()
-      .withMessage("Each answer must have a valid option ID."),
+    body("assessmentId").isInt().withMessage("Valid assessment ID is required."),
+    body("answers").isArray().withMessage("Answers must be an array."),
+    body("answers.*.optionId").optional().isInt().withMessage("Each answer must have a valid option ID."),
+    body("timeUsedSeconds")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0 })
+      .withMessage("Time used must be a non-negative integer in seconds."),
   ],
   validate,
   asyncHandler(assessmentController.submitAssessmentAttempt)

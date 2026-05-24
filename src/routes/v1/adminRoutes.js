@@ -2,6 +2,7 @@ const express = require("express");
 const { body, param } = require("express-validator");
 const { authenticateAdminOnly } = require("../../middleware/authUser");
 const moduleCoverUpload = require("../../middleware/moduleCoverUpload");
+const sensorLogUpload = require("../../middleware/sensorLogUpload");
 const validate = require("../../middleware/validate");
 const asyncHandler = require("../../utils/asyncHandler");
 const adminController = require("../../controllers/adminManagementController");
@@ -9,6 +10,7 @@ const registrationController = require("../../controllers/registrationController
 const moduleAdminController = require("../../controllers/moduleAdminController");
 const badgeController = require("../../controllers/badgeController");
 const assessmentController = require("../../controllers/assessmentController");
+const qualificationController = require("../../controllers/qualificationController");
 
 const router = express.Router();
 
@@ -185,6 +187,151 @@ router.get(
 );
 
 /**
+ * GET /admin/evidence - List evidence alerts for the admin dashboard
+ */
+router.get(
+  "/evidence",
+  asyncHandler(adminController.listEvidenceAlerts)
+);
+
+/**
+ * GET /admin/esp32sensorlogs - List ESP32 sensor alerts for the admin dashboard
+ */
+router.get(
+  "/esp32sensorlogs",
+  asyncHandler(adminController.listEsp32SensorAlerts)
+);
+
+router.get(
+  "/esp32-sensor-logs",
+  asyncHandler(adminController.listEsp32SensorAlerts)
+);
+
+router.get(
+  "/sensor-logs",
+  asyncHandler(adminController.listEsp32SensorAlerts)
+);
+
+/**
+ * POST /admin/esp32sensorlogs/upload - Upload ESP32 sensor logs CSV manually
+ * Body: multipart/form-data with file field file and required DeviceID for all uploaded rows
+ */
+router.post(
+  "/esp32sensorlogs/upload",
+  sensorLogUpload.single("file"),
+  asyncHandler(adminController.uploadEsp32SensorLogsCsv)
+);
+
+router.post(
+  "/esp32-sensor-logs/upload",
+  sensorLogUpload.single("file"),
+  asyncHandler(adminController.uploadEsp32SensorLogsCsv)
+);
+
+router.post(
+  "/sensor-logs/upload",
+  sensorLogUpload.single("file"),
+  asyncHandler(adminController.uploadEsp32SensorLogsCsv)
+);
+
+/**
+ * GET /admin/payments - List submitted payment evidence (admin)
+ */
+router.get(
+  "/payments",
+  asyncHandler(adminController.listPayments)
+);
+
+/**
+ * PUT /admin/payments/:paymentId/status - Approve or reject a payment evidence
+ * Body: { status: 'approved'|'rejected', remark?: string }
+ */
+router.put(
+  "/payments/:paymentId/status",
+  [
+    param("paymentId").isInt({ min: 1 }).withMessage("Invalid payment ID."),
+    body("status")
+      .trim()
+      .custom((value) => {
+        const normalized = String(value || "").toLowerCase();
+        if (!["approved", "rejected"].includes(normalized)) {
+          throw new Error("Status must be approved or rejected.");
+        }
+        return true;
+      }),
+    body("remark").optional({ values: "falsy" }).isLength({ max: 255 }).withMessage("Remark must be at most 255 characters."),
+  ],
+  validate,
+  asyncHandler(adminController.updatePaymentStatus)
+);
+
+/**
+ * GET /admin/analytics/dashboard - Aggregated analytics dashboard data
+ */
+router.get(
+  "/analytics/dashboard",
+  asyncHandler(adminController.getAnalyticsDashboard)
+);
+
+/**
+ * PUT /admin/evidence/:evidenceId/status - Update evidence solved status
+ * Body: { resolved: boolean }
+ */
+router.put(
+  "/evidence/:evidenceId/status",
+  [
+    param("evidenceId").isInt({ min: 1 }).withMessage("Invalid evidence ID."),
+    body("resolved").isBoolean().withMessage("resolved must be a boolean."),
+  ],
+  validate,
+  asyncHandler(adminController.updateEvidenceStatus)
+);
+
+/**
+ * PUT /admin/esp32sensorlogs/:logId/status - Update ESP32 sensor log solved status
+ * Body: { resolved: boolean }
+ */
+router.put(
+  "/esp32sensorlogs/:logId/status",
+  [
+    param("logId").isInt({ min: 1 }).withMessage("Invalid sensor log ID."),
+    body("resolved").isBoolean().withMessage("resolved must be a boolean."),
+  ],
+  validate,
+  asyncHandler(adminController.updateEsp32SensorLogStatus)
+);
+
+router.put(
+  "/esp32-sensor-logs/:logId/status",
+  [
+    param("logId").isInt({ min: 1 }).withMessage("Invalid sensor log ID."),
+    body("resolved").isBoolean().withMessage("resolved must be a boolean."),
+  ],
+  validate,
+  asyncHandler(adminController.updateEsp32SensorLogStatus)
+);
+
+router.put(
+  "/sensor-logs/:logId/status",
+  [
+    param("logId").isInt({ min: 1 }).withMessage("Invalid sensor log ID."),
+    body("resolved").isBoolean().withMessage("resolved must be a boolean."),
+  ],
+  validate,
+  asyncHandler(adminController.updateEsp32SensorLogStatus)
+);
+
+/**
+ * GET /admin/evidence/:evidenceId/video - Stream an evidence video
+ */
+router.get(
+  "/evidence/:evidenceId/video",
+  [param("evidenceId").isInt({ min: 1 }).withMessage("Invalid evidence ID.")],
+  validate,
+  asyncHandler(adminController.streamEvidenceVideo)
+);
+
+/**
  * GET /admin/registrations - List registration requests
  */
 router.get(
@@ -218,6 +365,16 @@ router.put(
 );
 
 /**
+ * POST /admin/registrations/:registrationId/resend-token - Resend activation token email
+ */
+router.post(
+  "/registrations/:registrationId/resend-token",
+  [param("registrationId").isInt().withMessage("Invalid registration ID.")],
+  validate,
+  asyncHandler(registrationController.resendRegistrationVerificationToken)
+);
+
+/**
  * GET /admin/registrations/:registrationId/resume - Stream applicant resume
  */
 router.get(
@@ -228,102 +385,14 @@ router.get(
 );
 
 /**
+ * GET /admin/modules/types - Get all available module types
+ */
+router.get("/modules/types", asyncHandler(moduleAdminController.getModuleTypes));
+
+/**
  * GET /admin/modules - List module library for admin management
  */
 router.get("/modules", asyncHandler(moduleAdminController.listModules));
-
-/**
- * GET /admin/assessments - List assessments for admin management
- */
-router.get("/assessments", asyncHandler(assessmentController.listAssessments));
-
-/**
- * POST /admin/assessments - Create assessment
- */
-router.post("/assessments", asyncHandler(assessmentController.createAssessment));
-
-/**
- * PUT /admin/assessments/:assessmentId/settings - Update assessment settings
- */
-router.put(
-  "/assessments/:assessmentId/settings",
-  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
-  validate,
-  asyncHandler(assessmentController.updateAssessmentSettings)
-);
-
-/**
- * DELETE /admin/assessments/:assessmentId - Delete assessment
- */
-router.delete(
-  "/assessments/:assessmentId",
-  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
-  validate,
-  asyncHandler(assessmentController.deleteAssessment)
-);
-
-/**
- * GET /admin/assessments/:assessmentId/questions - Get questions with answers for admin editing
- */
-router.get(
-  "/assessments/:assessmentId/questions",
-  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
-  validate,
-  asyncHandler(assessmentController.getAssessmentQuestionsAdmin)
-);
-
-/**
- * POST /admin/assessments/:assessmentId/questions - Add question
- */
-router.post(
-  "/assessments/:assessmentId/questions",
-  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
-  validate,
-  asyncHandler(assessmentController.addAssessmentQuestionAdmin)
-);
-
-/**
- * PUT /admin/assessments/questions/:questionId - Update question
- */
-router.put(
-  "/assessments/questions/:questionId",
-  [param("questionId").isInt().withMessage("Invalid question ID.")],
-  validate,
-  asyncHandler(assessmentController.updateAssessmentQuestionAdmin)
-);
-
-/**
- * DELETE /admin/assessments/questions/:questionId - Delete question
- */
-router.delete(
-  "/assessments/questions/:questionId",
-  [param("questionId").isInt().withMessage("Invalid question ID.")],
-  validate,
-  asyncHandler(assessmentController.deleteAssessmentQuestionAdmin)
-);
-
-/**
- * GET /admin/assessments/:assessmentId/attempts - List assessment attempts
- */
-router.get(
-  "/assessments/:assessmentId/attempts",
-  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
-  validate,
-  asyncHandler(assessmentController.getAssessmentAttemptsAdmin)
-);
-
-/**
- * POST /admin/assessments/:assessmentId/attempts/:attemptId/reset - Reset attempt
- */
-router.post(
-  "/assessments/:assessmentId/attempts/:attemptId/reset",
-  [
-    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
-    param("attemptId").isInt().withMessage("Invalid attempt ID."),
-  ],
-  validate,
-  asyncHandler(assessmentController.resetAssessmentAttemptAdmin)
-);
 
 /**
  * GET /admin/modules/:moduleId - Get module details for editing
@@ -359,6 +428,10 @@ router.post(
       .optional({ values: "falsy" })
       .isInt({ min: 1 })
       .withMessage("Qualification ID must be a positive integer."),
+    body("linkedTpaModuleId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Linked TPA Module ID must be a positive integer."),
     body("sections")
       .custom((value) => {
         let parsed = value;
@@ -393,6 +466,10 @@ router.put(
       .trim()
       .isLength({ min: 1, max: 160 })
       .withMessage("Module title is required and must be at most 160 characters."),
+    body("linkedTpaModuleId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0 })
+      .withMessage("Linked TPA Module ID must be a positive integer or 0 to clear the link."),
     body("sections")
       .custom((value) => {
         let parsed = value;
@@ -417,6 +494,22 @@ router.put(
 );
 
 /**
+ * PATCH /admin/modules/:moduleId/link-tpa - Link/unlink On-Site module to TPA module by ID
+ */
+router.patch(
+  "/modules/:moduleId/link-tpa",
+  [
+    param("moduleId").isInt({ min: 1 }).withMessage("Invalid module ID."),
+    body("linkedTpaModuleId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0 })
+      .withMessage("Linked TPA Module ID must be a positive integer or 0 to clear the link."),
+  ],
+  validate,
+  asyncHandler(moduleAdminController.linkModuleToTpa)
+);
+
+/**
  * DELETE /admin/modules/:moduleId - Delete module
  */
 router.delete(
@@ -432,6 +525,285 @@ router.delete(
 router.get("/badges", asyncHandler(badgeController.getAllBadges));
 
 /**
+ * GET /admin/assessments - List assessments for admin management
+ */
+router.get(
+  "/assessments",
+  asyncHandler(assessmentController.listAssessments)
+);
+
+/**
+ * POST /admin/assessments - Create assessment
+ */
+router.post(
+  "/assessments",
+  [
+    body("moduleId").isInt().withMessage("Valid module ID is required."),
+    body("badgeId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("Badge ID must be a valid number."),
+    body("title")
+      .trim()
+      .isLength({ min: 1, max: 160 })
+      .withMessage("Assessment title is required and must be at most 160 characters."),
+    body("passingScore")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0, max: 100 })
+      .withMessage("Passing score must be between 0 and 100."),
+    body("durationMinutes")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Duration must be a positive number of minutes."),
+    body("attemptLimit")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Attempt limit must be at least 1."),
+  ],
+  validate,
+  asyncHandler(assessmentController.createAssessment)
+);
+
+/**
+ * PUT /admin/assessments/:assessmentId/settings - Update assessment settings
+ */
+router.put(
+  "/assessments/:assessmentId/settings",
+  [
+    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
+    body("passingScore")
+      .optional({ values: "falsy" })
+      .isInt({ min: 0, max: 100 })
+      .withMessage("Passing score must be between 0 and 100."),
+    body("durationMinutes")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Duration must be a positive number of minutes."),
+    body("attemptLimit")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("Attempt limit must be at least 1."),
+  ],
+  validate,
+  asyncHandler(assessmentController.updateAssessmentSettings)
+);
+
+/**
+ * DELETE /admin/assessments/:assessmentId - Delete assessment
+ */
+router.delete(
+  "/assessments/:assessmentId",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID."),],
+  validate,
+  asyncHandler(assessmentController.deleteAssessment)
+);
+
+/**
+ * GET /admin/assessments/:assessmentId/questions - Get assessment questions
+ */
+router.get(
+  "/assessments/:assessmentId/questions",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID."),],
+  validate,
+  asyncHandler(assessmentController.getAssessmentQuestionsAdmin)
+);
+
+/**
+ * POST /admin/assessments/:assessmentId/questions - Add assessment question
+ */
+router.post(
+  "/assessments/:assessmentId/questions",
+  [
+    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
+    body("questionText")
+      .trim()
+      .isLength({ min: 1 })
+      .withMessage("Question text is required."),
+    body("questionType")
+      .isIn(["mcq", "fill"])
+      .withMessage("Question type must be mcq or fill."),
+  ],
+  validate,
+  asyncHandler(assessmentController.addAssessmentQuestionAdmin)
+);
+
+/**
+ * PUT /admin/assessments/questions/:questionId - Update assessment question
+ */
+router.put(
+  "/assessments/questions/:questionId",
+  [param("questionId").isInt().withMessage("Invalid question ID."),],
+  validate,
+  asyncHandler(assessmentController.updateAssessmentQuestionAdmin)
+);
+
+/**
+ * DELETE /admin/assessments/questions/:questionId - Delete assessment question
+ */
+router.delete(
+  "/assessments/questions/:questionId",
+  [param("questionId").isInt().withMessage("Invalid question ID."),],
+  validate,
+  asyncHandler(assessmentController.deleteAssessmentQuestionAdmin)
+);
+
+/**
+ * GET /admin/assessments/:assessmentId/attempts - List assessment attempts
+ */
+router.get(
+  "/assessments/:assessmentId/attempts",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID."),],
+  validate,
+  asyncHandler(assessmentController.getAssessmentAttemptsAdmin)
+);
+
+/**
+ * POST /admin/assessments/:assessmentId/attempts/:attemptId/reset - Reset a user attempt
+ */
+router.post(
+  "/assessments/:assessmentId/attempts/:attemptId/reset",
+  [
+    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
+    param("attemptId").isInt().withMessage("Invalid attempt ID."),
+  ],
+  validate,
+  asyncHandler(assessmentController.resetAssessmentAttemptAdmin)
+);
+
+/**
+ * PUT /admin/assessments/:assessmentId/badge/:badgeId - Link badge to assessment
+ */
+router.put(
+  "/assessments/:assessmentId/badge/:badgeId",
+  [
+    param("assessmentId").isInt().withMessage("Invalid assessment ID."),
+    param("badgeId").isInt().withMessage("Invalid badge ID."),
+  ],
+  validate,
+  asyncHandler(assessmentController.linkAssessmentBadge)
+);
+
+/**
+ * DELETE /admin/assessments/:assessmentId/badge - Unlink badge from assessment
+ */
+router.delete(
+  "/assessments/:assessmentId/badge",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.unlinkAssessmentBadge)
+);
+
+/**
+ * GET /admin/assessments/:assessmentId/badge - Get linked badge for assessment
+ */
+router.get(
+  "/assessments/:assessmentId/badge",
+  [param("assessmentId").isInt().withMessage("Invalid assessment ID.")],
+  validate,
+  asyncHandler(assessmentController.getAssessmentBadge)
+);
+
+/**
+ * POST /admin/users/:userId/badges - Issue a badge to a user (admin action)
+ */
+router.post(
+  "/users/:userId/badges",
+  [
+    param("userId").isInt().withMessage("Invalid user ID."),
+    body("badgeId").isInt({ min: 1 }).withMessage("Valid badgeId is required."),
+    body("assessmentId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("assessmentId must be a valid integer."),
+    body("moduleId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("moduleId must be a valid integer."),
+  ],
+  validate,
+  asyncHandler(assessmentController.issueBadgeToUser)
+);
+
+/**
+ * POST /admin/badges/reject - Mark a badge issuance as rejected (admin action)
+ */
+// router.post(
+//   "/badges/reject",
+//   [
+//     body("userId").isInt({ min: 1 }).withMessage("Valid userId is required."),
+//     body("badgeId").isInt({ min: 1 }).withMessage("Valid badgeId is required."),
+//     body("assessmentId")
+//       .optional({ values: "falsy" })
+//       .isInt({ min: 1 })
+//       .withMessage("assessmentId must be a valid integer."),
+//     body("note").optional().isString().withMessage("note must be a string."),
+//   ],
+//   validate,
+//   asyncHandler(assessmentController.rejectBadgeIssuance)
+// );
+
+/**
+ * GET /admin/qualifications/on-site-completions - Read persisted on-site completion rows
+ */
+router.get(
+  "/qualifications/on-site-completions",
+  asyncHandler(qualificationController.getOnSiteCompletions)
+);
+
+/**
+ * POST /admin/users/:userId/modules/:moduleId/complete - Manually mark a module as completed
+ */
+router.post(
+  "/users/:userId/modules/:moduleId/complete",
+  [
+    param("userId").isInt({ min: 1 }).withMessage("Valid user ID is required."),
+    param("moduleId").isInt({ min: 1 }).withMessage("Valid module ID is required."),
+    body("assessmentId")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1 })
+      .withMessage("assessmentId must be a valid integer."),
+  ],
+  validate,
+  asyncHandler(qualificationController.markModuleCompletedAdmin)
+);
+
+/**
+ * POST /admin/badges/issue - Issue a badge to a user (frontend-compatible alias)
+ */
+router.post(
+  "/badges/issue",
+  [
+    body("userId").isInt({ min: 1 }).withMessage("Valid userId is required."),
+    body("badgeId").isInt({ min: 1 }).withMessage("Valid badgeId is required."),
+    body("assessmentId").isInt({ min: 1 }).withMessage("Valid assessmentId is required."),
+    body("moduleId")
+      .optional({ values: "falsy" })
+      .isInt()
+      .withMessage("moduleId must be a valid integer."),
+  ],
+  validate,
+  asyncHandler(assessmentController.issueBadgeToUser)
+);
+
+/**
+ * GET /admin/badges/issuance-status - Get one badge issuance record by user, assessment, and badge.
+ */
+router.get(
+  "/badges/issuance-status",
+  asyncHandler(assessmentController.getBadgeIssuanceStatus)
+);
+
+/**
+ * GET /admin/modules/:moduleId/badges - Get badges linked to a module
+ */
+router.get(
+  "/modules/:moduleId/badges",
+  [param("moduleId").isInt().withMessage("Invalid module ID.")],
+  validate,
+  asyncHandler(badgeController.getBadgesByModule)
+);
+
+/**
  * POST /admin/badges - Create badge
  */
 router.post(
@@ -445,6 +817,37 @@ router.post(
       .optional({ values: "falsy" })
       .isInt({ min: 0, max: 100 })
       .withMessage("Unlock threshold must be between 0 and 100."),
+    body("isValid")
+      .optional({ values: "falsy" })
+      .isBoolean()
+      .withMessage("isValid must be a boolean."),
+    body("validityMonths")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1, max: 120 })
+      .withMessage("Validity months must be between 1 and 120."),
+    body("expiryDate")
+      .optional({ values: "falsy" })
+      .isISO8601()
+      .withMessage("Expiry date must be a valid ISO8601 date."),
+    body("linkedModuleIds")
+      .optional()
+      .custom((value) => {
+        const values = Array.isArray(value)
+          ? value
+          : typeof value === "string"
+            ? value.split(",")
+            : [value];
+
+        const isValid = values
+          .filter((item) => item !== undefined && item !== null && String(item).trim() !== "")
+          .every((item) => Number.isInteger(Number(item)) && Number(item) > 0);
+
+        if (!isValid) {
+          throw new Error("Linked module IDs must be valid numbers.");
+        }
+
+        return true;
+      }),
   ],
   validate,
   asyncHandler(badgeController.createBadge)
@@ -465,6 +868,37 @@ router.put(
       .optional({ values: "falsy" })
       .isInt({ min: 0, max: 100 })
       .withMessage("Unlock threshold must be between 0 and 100."),
+    body("isValid")
+      .optional({ values: "falsy" })
+      .isBoolean()
+      .withMessage("isValid must be a boolean."),
+    body("validityMonths")
+      .optional({ values: "falsy" })
+      .isInt({ min: 1, max: 120 })
+      .withMessage("Validity months must be between 1 and 120."),
+    body("expiryDate")
+      .optional({ values: "falsy" })
+      .isISO8601()
+      .withMessage("Expiry date must be a valid ISO8601 date."),
+    body("linkedModuleIds")
+      .optional()
+      .custom((value) => {
+        const values = Array.isArray(value)
+          ? value
+          : typeof value === "string"
+            ? value.split(",")
+            : [value];
+
+        const isValid = values
+          .filter((item) => item !== undefined && item !== null && String(item).trim() !== "")
+          .every((item) => Number.isInteger(Number(item)) && Number(item) > 0);
+
+        if (!isValid) {
+          throw new Error("Linked module IDs must be valid numbers.");
+        }
+
+        return true;
+      }),
   ],
   validate,
   asyncHandler(badgeController.updateBadge)

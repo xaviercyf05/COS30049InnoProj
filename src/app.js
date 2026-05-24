@@ -18,19 +18,38 @@ const assessmentRoutes = require("./routes/v1/assessmentRoutes");
 const notificationRoutes = require("./routes/v1/notificationRoutes");
 const badgeRoutes = require("./routes/v1/badgeRoutes");
 const adminRoutes = require("./routes/v1/adminRoutes");
-const richContentModule = require("../feature_modules/rich-content/backend");
+// Sensor routes (ESP32 devices)
+const sensorRoutes = require("./routes/sensorRoutes");
+// Evidence upload routes (device uploads)
+const evidenceRoutes = require("./routes/evidenceRoutes");
+const enrollmentRoutes = require("./routes/v1/enrollmentRoutes");
+const richContentModule = require("../feature_modules/rich-content");
 
 const app = express();
 const publicDir = path.join(__dirname, "..", "public");
+// If a frontend build exists in known locations, serve it so deployment can be
+// as-simple-as copying the repo (useful for quick updates of PWA assets).
+const frontendDistCandidates = [
+  path.join(__dirname, '..', 'frontend', 'dist'),
+  path.join(__dirname, '..', 'branch', 'COS30049InnoProj', 'frontend', 'dist'),
+];
+let servedFrontendDist = null;
+for (const candidate of frontendDistCandidates) {
+  try {
+    if (fs.existsSync(candidate)) {
+      servedFrontendDist = candidate;
+      break;
+    }
+  } catch (e) {
+    // ignore
+  }
+}
+if (servedFrontendDist) {
+  app.use(express.static(servedFrontendDist));
+}
+const filesDir = path.join(__dirname, "files");
 const uploadsDir = path.join(__dirname, "..", "uploads");
 const richContentStorageDir = richContentModule.initRichContentStorage();
-const richContentDemoDir = path.join(
-  __dirname,
-  "..",
-  "feature_modules",
-  "rich-content",
-  "frontend"
-);
 
 /**
  * Security and middleware setup
@@ -42,32 +61,44 @@ const configuredCorsOrigins = Array.isArray(env.corsOrigin)
   : [];
 
 app.use(
-  cors({
-    origin(origin, callback) {
-      // When no CORS_ORIGIN is configured, allow all origins (dev-friendly default).
-      if (configuredCorsOrigins.length === 0) {
-        return callback(null, true);
-      }
+  cors((req, callback) => {
+    const requestOrigin = req.header("Origin");
+    const isPasswordResetRoute = req.path.startsWith("/api/v1/auth/reset-password");
 
-      // Allow server-to-server and same-origin requests without an Origin header.
-      if (!origin) {
-        return callback(null, true);
-      }
+    // The password reset page is public and must be able to submit its form without
+    // being blocked by the global origin whitelist.
+    if (isPasswordResetRoute) {
+      return callback(null, {
+        origin: true,
+        methods: ["GET", "POST", "OPTIONS"],
+      });
+    }
 
-      if (configuredCorsOrigins.includes(origin)) {
-        return callback(null, true);
-      }
+    // When no CORS_ORIGIN is configured, allow all origins (dev-friendly default).
+    if (configuredCorsOrigins.length === 0) {
+      return callback(null, { origin: true });
+    }
 
-      return callback(new Error("Not allowed by CORS"));
-    },
+    // Allow server-to-server and same-origin requests without an Origin header.
+    if (!requestOrigin) {
+      return callback(null, { origin: true });
+    }
+
+    if (configuredCorsOrigins.includes(requestOrigin)) {
+      return callback(null, { origin: true });
+    }
+
+    return callback(new Error("Not allowed by CORS"));
   })
 );
 app.use(morgan("combined"));
 app.use(express.json({ limit: env.requestBodyLimit }));
 app.use(express.urlencoded({ limit: env.requestBodyLimit, extended: true }));
 fs.mkdirSync(uploadsDir, { recursive: true });
+fs.mkdirSync(filesDir, { recursive: true });
 app.use(express.static(publicDir));
 app.use("/public", express.static(publicDir));
+app.use("/files", express.static(filesDir));
 app.use(
   "/uploads",
   (req, res, next) => {
@@ -77,10 +108,34 @@ app.use(
   express.static(uploadsDir)
 );
 app.use("/storage", express.static(richContentStorageDir));
-app.use("/rich-content-demo", express.static(richContentDemoDir));
 
 app.get("/", (req, res) => {
+  if (servedFrontendDist) {
+    return res.sendFile(path.join(servedFrontendDist, "index.html"));
+  }
+
   return res.sendFile(path.join(publicDir, "index.html"));
+});
+
+// Temporary explicit icon route to bypass static middleware/config issues.
+app.get('/icons/:icon', (req, res, next) => {
+  const iconName = req.params.icon;
+  const candidates = [];
+  if (servedFrontendDist) candidates.push(path.join(servedFrontendDist, 'icons', iconName));
+  candidates.push(path.join(publicDir, 'icons', iconName));
+
+  for (const p of candidates) {
+    try {
+      if (fs.existsSync(p)) {
+        return res.sendFile(p);
+      }
+    } catch (e) {
+      // continue
+    }
+  }
+
+  // Let the normal handlers handle 404s (and logging)
+  return next();
 });
 
 /**
@@ -136,8 +191,17 @@ apiV1.use("/badges", badgeRoutes);
 // Admin management routes (admin only)
 apiV1.use("/admin", adminRoutes);
 
+// Enrollment / payment evidence routes (protected)
+apiV1.use("/enrollment", enrollmentRoutes);
+
 // Rich content + attachments routes (protected)
 apiV1.use("/rich-content", richContentModule.router);
+
+// Sensor data routes (public endpoint for ESP32 devices to POST data)
+apiV1.use("/sensors", sensorRoutes);
+
+// Evidence upload routes (public endpoint for camera devices to POST clips)
+apiV1.use("/evidence", evidenceRoutes);
 
 // Register v1 routes
 app.use("/api/v1", apiV1);

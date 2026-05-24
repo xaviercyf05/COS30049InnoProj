@@ -2,6 +2,7 @@ const { query } = require("../config/db");
 const qualificationService = require("../services/qualificationService");
 const notificationService = require("../services/notificationService");
 const asyncHandler = require("../utils/asyncHandler");
+const badgeService = require("../services/badgeService");
 
 /**
  * Controller for qualifications - handles enrollment, viewing, and progress tracking.
@@ -203,10 +204,161 @@ async function getQualificationProgress(req, res) {
   }
 }
 
+/**
+ * Admin: get persisted on-site module completion rows.
+ */
+async function getOnSiteCompletions(req, res) {
+  try {
+    const moduleId = req.query.moduleId ? Number(req.query.moduleId) : null;
+
+    if (req.query.moduleId && (!Number.isInteger(moduleId) || moduleId <= 0)) {
+      return res.status(400).json({
+        success: false,
+        message: "moduleId must be a valid integer.",
+      });
+    }
+
+    const completions = await qualificationService.getModuleCompletions(moduleId);
+
+    // Attach persisted badge issuance status for rows that have an assessmentId
+    const pairs = completions
+      .filter((r) => r.assessmentId && Number.isInteger(Number(r.userId)))
+      .map((r) => ({ userId: Number(r.userId), assessmentId: Number(r.assessmentId) }));
+
+    const issuanceMap = await badgeService.listIssuancesForUserAssessmentPairs(pairs);
+
+    const augmented = completions.map((row) => {
+      if (row.assessmentId && Number.isInteger(Number(row.userId))) {
+        const key = `${row.userId}:${row.assessmentId}`;
+        const issuance = issuanceMap[key] || null;
+        return {
+          ...row,
+          badgeIssuanceStatus: issuance
+            ? {
+                status: issuance.status,
+                badgeId: issuance.badgeId,
+                issuedBy: issuance.issuedBy,
+                issuedAt: issuance.issuedAt,
+                note: issuance.note,
+              }
+            : { status: 'pending' },
+        };
+      }
+
+      return { ...row, badgeIssuanceStatus: null };
+    });
+
+    return res.json({
+      success: true,
+      data: augmented,
+    });
+  } catch (error) {
+    console.error("Get on-site completions error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch on-site completions.",
+    });
+  }
+}
+
+/**
+ * Admin: mark a module as completed for a user after verification.
+ */
+async function markModuleCompletedAdmin(req, res) {
+  try {
+    const completedBy = req.user.userId;
+    const targetUserId = Number(req.body.userId ?? req.params.userId);
+    const moduleId = Number(req.body.moduleId ?? req.params.moduleId);
+    const assessmentId = req.body.assessmentId ? Number(req.body.assessmentId) : null;
+
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ success: false, message: "Valid userId is required." });
+    }
+
+    if (!Number.isInteger(moduleId) || moduleId <= 0) {
+      return res.status(400).json({ success: false, message: "Valid moduleId is required." });
+    }
+
+    const [userRows] = await query("SELECT UserID FROM Users WHERE UserID = ? LIMIT 1", [targetUserId]);
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Target user not found." });
+    }
+
+    const [moduleRows] = await query(
+      `SELECT m.ModuleID,
+              m.LinkedTpaModuleID,
+              LOWER(TRIM(COALESCE(mt.TypeName, ''))) AS ModuleTypeName
+         FROM Modules m
+         LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+        WHERE m.ModuleID = ?
+        LIMIT 1`,
+      [moduleId]
+    );
+    if (moduleRows.length === 0) {
+      return res.status(404).json({ success: false, message: "Module not found." });
+    }
+
+    const moduleRow = moduleRows[0];
+    const result = await qualificationService.markModuleCompletedByAdmin(
+      targetUserId,
+      moduleId,
+      completedBy,
+      assessmentId
+    );
+
+    const isOnSiteModule = String(moduleRow.ModuleTypeName || '').includes('on-site');
+    const linkedTpaModuleId = Number(moduleRow.LinkedTpaModuleID) > 0 ? Number(moduleRow.LinkedTpaModuleID) : null;
+
+    if (isOnSiteModule && linkedTpaModuleId) {
+      const [linkedAssessments] = await query(
+        `SELECT a.AssessmentID, a.BadgeID
+           FROM Assessments a
+           INNER JOIN Badges b ON b.BadgeID = a.BadgeID AND b.IsActive = 1
+          WHERE a.ModuleID = ?
+            AND a.BadgeID IS NOT NULL`,
+        [linkedTpaModuleId]
+      );
+
+      for (const linkedAssessment of linkedAssessments) {
+        if (!Number.isInteger(Number(linkedAssessment.AssessmentID)) || !Number.isInteger(Number(linkedAssessment.BadgeID))) {
+          continue;
+        }
+
+        try {
+          await badgeService.upsertIssuance({
+            userId: targetUserId,
+            assessmentId: Number(linkedAssessment.AssessmentID),
+            badgeId: Number(linkedAssessment.BadgeID),
+            status: 'pending',
+            byUserId: completedBy,
+            note: 'On-site module completed; awaiting badge issuance',
+          });
+        } catch (seedError) {
+          console.error('Failed to seed pending badge issuance record:', seedError);
+        }
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: "Module marked as completed.",
+      data: result,
+    });
+  } catch (error) {
+    console.error("Mark module completed admin error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to mark module as completed.",
+    });
+  }
+}
+
 module.exports = {
   getQualifications,
   getQualificationDetails,
   getUserQualifications,
   enrollInQualification,
   getQualificationProgress,
+  getOnSiteCompletions,
+  markModuleCompletedAdmin,
 };

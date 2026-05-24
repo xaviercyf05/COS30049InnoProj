@@ -1,6 +1,8 @@
 const { query } = require("../config/db");
 const assessmentService = require("../services/assessmentService");
 const notificationService = require("../services/notificationService");
+const qualificationService = require("../services/qualificationService");
+const badgeService = require("../services/badgeService");
 
 /**
  * Controller for assessments - handles questions, submissions, and scoring.
@@ -68,13 +70,64 @@ async function checkAttemptEligibility(req, res) {
   }
 }
 
+async function autoIssueAssessmentBadgeIfEligible(userId, assessmentId) {
+  const [assessmentRows] = await query(
+    `SELECT a.AssessmentID, a.ModuleID, a.BadgeID, mt.TypeName
+       FROM Assessments a
+       LEFT JOIN Modules m ON m.ModuleID = a.ModuleID
+       LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
+      WHERE a.AssessmentID = ?
+      LIMIT 1`,
+    [assessmentId]
+  );
+
+  if (assessmentRows.length === 0 || !assessmentRows[0].BadgeID) {
+    return { issued: false, reason: "No linked badge" };
+  }
+
+  const assessment = assessmentRows[0];
+  const eligibility = await qualificationService.canIssueBadgeForAssessment(userId, assessmentId);
+  if (!eligibility.allowed) {
+    return {
+      issued: false,
+      reason: eligibility.reason || "Eligibility requirements not met",
+    };
+  }
+
+  await query(
+    `INSERT INTO UserBadges (UserID, BadgeID, IssuedBy, AssessmentID, ModuleID)
+     VALUES (?, ?, NULL, ?, ?)
+     ON DUPLICATE KEY UPDATE
+       AssessmentID = VALUES(AssessmentID),
+       ModuleID = VALUES(ModuleID),
+       IssuedAt = CURRENT_TIMESTAMP`,
+    [userId, assessment.BadgeID, assessment.AssessmentID, assessment.ModuleID]
+  );
+
+  return { issued: true, badgeId: assessment.BadgeID };
+}
+
 /**
  * Submit assessment attempt with answers
  */
 async function submitAssessmentAttempt(req, res) {
   try {
     const { userId } = req.user;
-    const { assessmentId, answers } = req.body;
+    const { assessmentId, answers, timeUsedSeconds } = req.body;
+    // Debug: log incoming payload shape for troubleshooting 500 errors
+    try {
+      console.debug('Submit assessment attempt incoming:', {
+        userId,
+        assessmentIdType: typeof assessmentId,
+        assessmentIdValue: assessmentId,
+        answersType: Array.isArray(answers) ? 'array' : typeof answers,
+        answersCount: Array.isArray(answers) ? answers.length : 0,
+        sampleAnswers: Array.isArray(answers) ? answers.slice(0, 5) : answers,
+        timeUsedSeconds,
+      });
+    } catch (logErr) {
+      console.error('Failed to log submit payload', logErr);
+    }
 
     if (!assessmentId || !answers || !Array.isArray(answers)) {
       return res.status(400).json({
@@ -87,8 +140,19 @@ async function submitAssessmentAttempt(req, res) {
     const attempt = await assessmentService.submitAssessmentAttempt(
       userId,
       assessmentId,
-      answers
+      answers,
+      Number(timeUsedSeconds || 0)
     );
+
+    // Auto-award linked badge for passed assessments.
+    // Badge issuance failures should not block assessment submission.
+    if (attempt.passed) {
+      try {
+        await autoIssueAssessmentBadgeIfEligible(userId, assessmentId);
+      } catch (badgeError) {
+        console.error("Auto badge issuance skipped:", badgeError);
+      }
+    }
 
     // If passed, send notification and update module progress
     if (attempt.passed) {
@@ -248,13 +312,16 @@ async function listAssessments(req, res) {
 
 async function createAssessment(req, res) {
   try {
-    const { moduleId, title, passingScore, durationMinutes, attemptLimit } = req.body;
+    const { userId } = req.user;
+    const { moduleId, title, passingScore, durationMinutes, attemptLimit, badgeId } = req.body;
     const assessment = await assessmentService.createAssessment(
       Number(moduleId),
       title,
-      Number(passingScore),
-      Number(durationMinutes),
-      Number(attemptLimit || 3)
+      Number.isFinite(Number(passingScore)) ? Number(passingScore) : 60,
+      Number.isFinite(Number(durationMinutes)) ? Number(durationMinutes) : 120,
+      Number.isFinite(Number(attemptLimit)) ? Number(attemptLimit) : 3,
+      Number.isFinite(Number(badgeId)) ? Number(badgeId) : null,
+      Number(userId)
     );
 
     return res.status(201).json({ success: true, data: assessment });
@@ -270,13 +337,18 @@ async function createAssessment(req, res) {
 async function updateAssessmentSettings(req, res) {
   try {
     const { assessmentId } = req.params;
-    const { passingScore, durationMinutes, attemptLimit } = req.body;
+    const { passingScore, durationMinutes, attemptLimit, title } = req.body;
+
+    const parsedPassingScore = Number(passingScore);
+    const parsedDurationMinutes = Number(durationMinutes);
+    const parsedAttemptLimit = Number(attemptLimit);
 
     const result = await assessmentService.updateAssessmentSettings(
       Number(assessmentId),
-      Number(passingScore),
-      Number(durationMinutes),
-      Number(attemptLimit)
+      Number.isFinite(parsedPassingScore) ? parsedPassingScore : undefined,
+      Number.isFinite(parsedDurationMinutes) ? parsedDurationMinutes : undefined,
+      Number.isFinite(parsedAttemptLimit) ? parsedAttemptLimit : undefined,
+      typeof title === 'string' ? title : undefined
     );
 
     return res.json({ success: true, data: result });
@@ -414,11 +486,272 @@ async function resetAssessmentAttemptAdmin(req, res) {
   }
 }
 
+/**
+ * Get assessment details for a specific assessment ID
+ */
+async function getAssessmentDetails(req, res) {
+  try {
+    const { assessmentId } = req.params;
+
+    const [rows] = await query(
+      `SELECT AssessmentID, ModuleID, BadgeID, Title, PassingScore, AttemptLimit, DurationMinutes
+       FROM Assessments
+       WHERE AssessmentID = ?
+       LIMIT 1`,
+      [assessmentId]
+    );
+
+    if (rows.length === 0) {
+      return res.status(404).json({
+        success: false,
+        message: "Assessment not found.",
+      });
+    }
+
+    const assessment = rows[0];
+
+    return res.json({
+      success: true,
+      data: {
+        AssessmentID: assessment.AssessmentID,
+        ModuleID: assessment.ModuleID,
+        BadgeID: assessment.BadgeID,
+        Title: assessment.Title,
+        PassingScore: assessment.PassingScore,
+        AttemptLimit: assessment.AttemptLimit,
+        DurationMinutes: Number(assessment.DurationMinutes || 120),
+      },
+    });
+  } catch (error) {
+    console.error("Get assessment details error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "Failed to fetch assessment details.",
+    });
+  }
+}
+
+async function linkAssessmentBadge(req, res) {
+  try {
+    const { assessmentId, badgeId } = req.params;
+    const result = await assessmentService.linkBadgeToAssessment(
+      Number(assessmentId),
+      Number(badgeId)
+    );
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Link assessment badge error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to link badge to assessment.',
+    });
+  }
+}
+
+async function unlinkAssessmentBadge(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const result = await assessmentService.unlinkBadgeFromAssessment(Number(assessmentId));
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Unlink assessment badge error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to unlink badge from assessment.',
+    });
+  }
+}
+
+async function getAssessmentBadge(req, res) {
+  try {
+    const { assessmentId } = req.params;
+    const result = await assessmentService.getAssessmentBadge(Number(assessmentId));
+
+    return res.json({ success: true, data: result });
+  } catch (error) {
+    console.error('Get assessment badge error:', error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || 'Failed to fetch assessment badge.',
+    });
+  }
+}
+
+/**
+ * Admin: issue a badge to a user (create UserBadges row).
+ * POST /admin/users/:userId/badges
+ * Body: { badgeId, assessmentId?, moduleId? }
+ */
+async function issueBadgeToUser(req, res) {
+  try {
+    const issuedBy = req.user.userId;
+    const targetUserId = Number(req.body.userId ?? req.params.userId);
+    const badgeId = Number(req.body.badgeId);
+    const assessmentId = req.body.assessmentId ? Number(req.body.assessmentId) : null;
+    const moduleId = req.body.moduleId ? Number(req.body.moduleId) : null;
+
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid target user ID.' });
+    }
+
+    if (!Number.isInteger(badgeId) || badgeId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid badge ID.' });
+    }
+
+    if (!Number.isInteger(assessmentId) || assessmentId <= 0) {
+      return res.status(400).json({ success: false, message: 'assessmentId is required.' });
+    }
+
+    // Ensure user exists
+    const [userRows] = await query('SELECT UserID FROM Users WHERE UserID = ? LIMIT 1', [targetUserId]);
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Target user not found.' });
+    }
+
+    // Ensure badge exists and is active
+    const [badgeRows] = await query('SELECT BadgeID FROM Badges WHERE BadgeID = ? AND IsActive = 1 LIMIT 1', [badgeId]);
+    if (badgeRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Badge not found or inactive.' });
+    }
+
+    const eligibility = await qualificationService.canIssueBadgeForAssessment(targetUserId, assessmentId);
+    if (!eligibility.allowed) {
+      return res.status(400).json({
+        success: false,
+        message: eligibility.reason,
+      });
+    }
+
+    if (moduleId && Number(moduleId) !== Number(eligibility.assessment.ModuleID)) {
+      return res.status(400).json({
+        success: false,
+        message: 'moduleId does not match the assessment module.',
+      });
+    }
+
+    // Insert award (unique constraint on UserID,BadgeID prevents duplicates)
+    await query(
+      `INSERT INTO UserBadges (UserID, BadgeID, IssuedBy, AssessmentID, ModuleID)
+       VALUES (?, ?, ?, ?, ?)
+       ON DUPLICATE KEY UPDATE IssuedBy = VALUES(IssuedBy), AssessmentID = VALUES(AssessmentID), ModuleID = VALUES(ModuleID), IssuedAt = CURRENT_TIMESTAMP`,
+      [targetUserId, badgeId, issuedBy, assessmentId, eligibility.assessment.ModuleID]
+    );
+
+    let issuanceRecord = null;
+
+    try {
+      // Persist issuance record for frontend/admin audit
+      issuanceRecord = await badgeService.upsertIssuance({
+        userId: targetUserId,
+        assessmentId: assessmentId,
+        badgeId: badgeId,
+        status: 'issued',
+        byUserId: issuedBy,
+        note: req.body.note || null,
+      });
+    } catch (e) {
+      console.error('Failed to persist badge issuance record:', e);
+      // Do not block response to client if issuance persistence fails
+    }
+
+    return res.json({ success: true, message: 'Badge issued to user.', data: issuanceRecord });
+  } catch (error) {
+    console.error('Issue badge to user error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to issue badge.' });
+  }
+}
+
+async function getBadgeIssuanceStatus(req, res) {
+  try {
+    const userId = Number(req.query.userId);
+    const assessmentId = Number(req.query.assessmentId);
+    const badgeId = Number(req.query.badgeId);
+
+    if (!Number.isInteger(userId) || userId <= 0) {
+      return res.status(400).json({ success: false, message: 'userId is required.' });
+    }
+
+    if (!Number.isInteger(assessmentId) || assessmentId <= 0) {
+      return res.status(400).json({ success: false, message: 'assessmentId is required.' });
+    }
+
+    if (!Number.isInteger(badgeId) || badgeId <= 0) {
+      return res.status(400).json({ success: false, message: 'badgeId is required.' });
+    }
+
+    const issuance = await badgeService.getIssuanceByUserAssessmentBadge({ userId, assessmentId, badgeId });
+
+    return res.json({
+      success: true,
+      data: issuance,
+    });
+  } catch (error) {
+    console.error('Get badge issuance status error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to fetch badge issuance status.' });
+  }
+}
+
+/**
+ * Admin: mark a badge issuance as rejected (for a user and assessment)
+ * POST /admin/badges/reject
+ * Body: { userId, badgeId, assessmentId, note? }
+ */
+async function rejectBadgeIssuance(req, res) {
+  try {
+    const actedBy = req.user.userId;
+    const targetUserId = Number(req.body.userId ?? req.params.userId);
+    const badgeId = Number(req.body.badgeId);
+    const assessmentId = req.body.assessmentId ? Number(req.body.assessmentId) : null;
+    const note = req.body.note ? String(req.body.note).slice(0, 1000) : null;
+
+    if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid target user ID.' });
+    }
+
+    if (!Number.isInteger(badgeId) || badgeId <= 0) {
+      return res.status(400).json({ success: false, message: 'Invalid badge ID.' });
+    }
+
+    if (!Number.isInteger(assessmentId) || assessmentId <= 0) {
+      return res.status(400).json({ success: false, message: 'assessmentId is required.' });
+    }
+
+    // Ensure user exists
+    const [userRows] = await query('SELECT UserID FROM Users WHERE UserID = ? LIMIT 1', [targetUserId]);
+    if (userRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Target user not found.' });
+    }
+
+    // Ensure badge exists and is active
+    const [badgeRows] = await query('SELECT BadgeID FROM Badges WHERE BadgeID = ? AND IsActive = 1 LIMIT 1', [badgeId]);
+    if (badgeRows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Badge not found or inactive.' });
+    }
+
+    const issuance = await badgeService.upsertIssuance({
+      userId: targetUserId,
+      assessmentId: assessmentId,
+      badgeId: badgeId,
+      status: 'rejected',
+      byUserId: actedBy,
+      note,
+    });
+
+    return res.json({ success: true, message: 'Badge issuance marked as rejected.', data: issuance });
+  } catch (error) {
+    console.error('Reject badge issuance error:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Failed to reject badge issuance.' });
+  }
+}
+
 module.exports = {
   getAssessmentQuestions,
   checkAttemptEligibility,
   submitAssessmentAttempt,
   getAssessmentHistory,
+  getAssessmentDetails,
   listAssessments,
   createAssessment,
   updateAssessmentSettings,
@@ -429,4 +762,9 @@ module.exports = {
   deleteAssessmentQuestionAdmin,
   getAssessmentAttemptsAdmin,
   resetAssessmentAttemptAdmin,
+  linkAssessmentBadge,
+  unlinkAssessmentBadge,
+  getAssessmentBadge,
+  issueBadgeToUser,
+  getBadgeIssuanceStatus,
 };

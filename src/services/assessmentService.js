@@ -5,7 +5,7 @@ const { query } = require("../config/db");
  */
 
 const ATTEMPT_LIMIT = 3;
-const COOLDOWN_HOURS = 1;
+const COOLDOWN_HOURS = 0; // Set to 0 for testing - disable cooldown
 
 function normalizeQuestionType(questionType) {
   const normalized = String(questionType || '').toLowerCase();
@@ -20,7 +20,7 @@ function normalizeQuestionType(questionType) {
 async function getAssessmentRow(identifier, lookupBy = 'module') {
   const column = lookupBy === 'assessment' ? 'AssessmentID' : 'ModuleID';
   const [assessments] = await query(
-    `SELECT AssessmentID, ModuleID, Title, PassingScore, AttemptLimit
+    `SELECT AssessmentID, ModuleID, Title, PassingScore, AttemptLimit, DurationMinutes, BadgeID
      FROM Assessments
      WHERE ${column} = ?
      LIMIT 1`,
@@ -89,6 +89,8 @@ async function getAssessmentQuestions(identifier, includeCorrectAnswer = false, 
       title: assessment.Title,
       passingScore: assessment.PassingScore,
       attemptLimit: assessment.AttemptLimit,
+      durationMinutes: Number(assessment.DurationMinutes || 120),
+      badgeId: assessment.BadgeID || null,
       totalQuestions: questionsWithOptions.length,
       questions: questionsWithOptions,
     };
@@ -102,6 +104,20 @@ async function getAssessmentQuestions(identifier, includeCorrectAnswer = false, 
  */
 async function checkAttemptEligibility(userId, assessmentId) {
   try {
+    const [assessmentRows] = await query(
+      `SELECT AttemptLimit
+       FROM Assessments
+       WHERE AssessmentID = ?
+       LIMIT 1`,
+      [assessmentId]
+    );
+
+    if (assessmentRows.length === 0) {
+      throw new Error('Assessment not found');
+    }
+
+    const maxAttempts = Number(assessmentRows[0].AttemptLimit || ATTEMPT_LIMIT);
+
     // Get user's attempts for this assessment
     const [attempts] = await query(
       `SELECT AttemptID, SubmittedAt, Status
@@ -121,39 +137,31 @@ async function checkAttemptEligibility(userId, assessmentId) {
     }
 
     const failedAttempts = attempts.filter((a) => a.Status === "Failed");
-    const remainingAttempts = Math.max(0, ATTEMPT_LIMIT - failedAttempts.length);
+    const remainingAttempts = Math.max(0, maxAttempts - failedAttempts.length);
 
     if (remainingAttempts === 0) {
       return {
         canAttempt: false,
         reason: "No remaining attempts",
         remainingAttempts: 0,
+        maxAttempts,
       };
     }
 
-    // Check cooldown from last attempt
-    if (attempts.length > 0) {
-      const lastAttempt = new Date(attempts[0].SubmittedAt);
-      const now = new Date();
-      const hoursSinceLastAttempt = (now - lastAttempt) / (1000 * 60 * 60);
-
-      if (hoursSinceLastAttempt < COOLDOWN_HOURS) {
-        return {
-          canAttempt: false,
-          reason: `Must wait ${Math.ceil(
-            COOLDOWN_HOURS - hoursSinceLastAttempt
-          )} more hour(s) before next attempt`,
-          remainingAttempts,
-          cooldownEndsAt: new Date(
-            lastAttempt.getTime() + COOLDOWN_HOURS * 60 * 60 * 1000
-          ),
-        };
-      }
-    }
+    // TODO: Cooldown check temporarily disabled for testing. Re-enable later.
+    // if (attempts.length > 0) {
+    //   const lastAttempt = new Date(attempts[0].SubmittedAt);
+    //   const now = new Date();
+    //   const hoursSinceLastAttempt = (now - lastAttempt) / (1000 * 60 * 60);
+    //   if (hoursSinceLastAttempt < COOLDOWN_HOURS) {
+    //     return { ... };
+    //   }
+    // }
 
     return {
       canAttempt: true,
       remainingAttempts,
+      maxAttempts,
     };
   } catch (error) {
     throw error;
@@ -161,9 +169,54 @@ async function checkAttemptEligibility(userId, assessmentId) {
 }
 
 /**
+ * Compare string answers with multiple matching conditions
+ * Supports: exact match, case-insensitive, trimmed whitespace, normalized punctuation
+ */
+function compareStringAnswers(userAnswer, correctAnswer) {
+  const user = String(userAnswer || '').trim();
+  const correct = String(correctAnswer || '').trim();
+
+  // Condition 1: Exact match (case-sensitive)
+  if (user === correct) {
+    return true;
+  }
+
+  // Condition 2: Case-insensitive match
+  if (user.toLowerCase() === correct.toLowerCase()) {
+    return true;
+  }
+
+  // Condition 3: Normalize punctuation and compare
+  const normalizePunctuation = (str) => {
+    return str
+      .replace(/[.,!?;:\-—–]/g, '') // Remove common punctuation
+      .replace(/\s+/g, ' ') // Normalize multiple spaces to single space
+      .trim()
+      .toLowerCase();
+  };
+
+  const normalizedUser = normalizePunctuation(user);
+  const normalizedCorrect = normalizePunctuation(correct);
+
+  if (normalizedUser === normalizedCorrect) {
+    return true;
+  }
+
+  // Condition 4: Partial match (user answer contains all words from correct answer)
+  const userWords = new Set(user.toLowerCase().split(/\s+/).filter(Boolean));
+  const correctWords = correct.toLowerCase().split(/\s+/).filter(Boolean);
+
+  if (correctWords.every((word) => userWords.has(word))) {
+    return true;
+  }
+
+  return false;
+}
+
+/**
  * Submit assessment answers and calculate score
  */
-async function submitAssessmentAttempt(userId, assessmentId, answers) {
+async function submitAssessmentAttempt(userId, assessmentId, answers, timeUsedSeconds = 0) {
   try {
     // Check eligibility
     const eligibility = await checkAttemptEligibility(userId, assessmentId);
@@ -189,24 +242,64 @@ async function submitAssessmentAttempt(userId, assessmentId, answers) {
 
     for (const answer of answers) {
       totalQuestions++;
-      const [options] = await query(
-        "SELECT IsCorrect FROM AssessmentOptions WHERE OptionID = ? LIMIT 1",
-        [answer.optionId]
-      );
+      
+      // Handle MCQ questions (with optionId)
+      if (answer.optionId !== undefined && answer.optionId !== null) {
+        const optionId = Number(answer.optionId);
+        
+        // Validate optionId is numeric and > 0
+        if (!Number.isInteger(optionId) || optionId <= 0) {
+          console.log(`Invalid optionId for question ${answer.questionId}: ${answer.optionId}`);
+          continue; // Skip this answer - unanswered question
+        }
+        
+        const [options] = await query(
+          "SELECT IsCorrect FROM AssessmentOptions WHERE OptionID = ? LIMIT 1",
+          [optionId]
+        );
 
-      if (options.length > 0 && options[0].IsCorrect) {
-        correctCount++;
+        if (options.length > 0 && Number(options[0].IsCorrect) === 1) {
+          correctCount++;
+        }
+      } else if (answer.answer !== undefined && answer.answer !== null) {
+        // Handle fill-in questions (with answer text)
+        try {
+          // Get the correct answer from the AssessmentOptions table (marked with IsCorrect = 1)
+          const [correctRows] = await query(
+            `SELECT ao.OptionText 
+             FROM AssessmentOptions ao 
+             WHERE ao.QuestionID = ? 
+             AND ao.IsCorrect = 1 
+             LIMIT 1`,
+            [answer.questionId]
+          );
+
+          if (correctRows && correctRows.length > 0) {
+            const correctAnswer = correctRows[0].OptionText;
+            const isMatch = compareStringAnswers(answer.answer, correctAnswer);
+            
+            if (isMatch) {
+              correctCount++;
+            }
+            console.log(`Fill-in question ${answer.questionId}: "${answer.answer}" vs "${correctAnswer}" - ${isMatch ? 'CORRECT' : 'INCORRECT'}`);
+          } else {
+            console.log(`No correct answer found for fill-in question ${answer.questionId}`);
+          }
+        } catch (error) {
+          console.error(`Error processing fill-in answer for question ${answer.questionId}:`, error);
+        }
       }
     }
 
-    const score = Math.round((correctCount / totalQuestions) * 100);
+    // Calculate score (prevent division by zero)
+    const score = totalQuestions > 0 ? Math.round((correctCount / totalQuestions) * 100) : 0;
     const status = score >= assessment.PassingScore ? "Passed" : "Failed";
 
     // Record attempt
     const [result] = await query(
-      `INSERT INTO AssessmentAttempts (UserID, AssessmentID, Score, Status)
-       VALUES (?, ?, ?, ?)`,
-      [userId, assessmentId, score, status]
+      `INSERT INTO AssessmentAttempts (UserID, AssessmentID, Score, Status, TimeUsedSeconds)
+       VALUES (?, ?, ?, ?, ?)`,
+      [userId, assessmentId, score, status, Number(timeUsedSeconds || 0)]
     );
 
     return {
@@ -277,18 +370,18 @@ function normalizeCorrectAnswerIndex(options, correctAnswer) {
 
 async function listAssessments(moduleId = null) {
   const sql = moduleId
-    ? `SELECT a.AssessmentID, a.ModuleID, a.Title, a.PassingScore, a.AttemptLimit,
+   ? `SELECT a.AssessmentID, a.ModuleID, a.BadgeID, a.Title, a.PassingScore, a.AttemptLimit, a.DurationMinutes,
               COUNT(q.QuestionID) AS QuestionCount
        FROM Assessments a
        LEFT JOIN AssessmentQuestions q ON q.AssessmentID = a.AssessmentID
        WHERE a.ModuleID = ?
-       GROUP BY a.AssessmentID, a.ModuleID, a.Title, a.PassingScore, a.AttemptLimit
+     GROUP BY a.AssessmentID, a.ModuleID, a.BadgeID, a.Title, a.PassingScore, a.AttemptLimit, a.DurationMinutes
        ORDER BY a.AssessmentID DESC`
-    : `SELECT a.AssessmentID, a.ModuleID, a.Title, a.PassingScore, a.AttemptLimit,
+   : `SELECT a.AssessmentID, a.ModuleID, a.BadgeID, a.Title, a.PassingScore, a.AttemptLimit, a.DurationMinutes,
               COUNT(q.QuestionID) AS QuestionCount
        FROM Assessments a
        LEFT JOIN AssessmentQuestions q ON q.AssessmentID = a.AssessmentID
-       GROUP BY a.AssessmentID, a.ModuleID, a.Title, a.PassingScore, a.AttemptLimit
+     GROUP BY a.AssessmentID, a.ModuleID, a.BadgeID, a.Title, a.PassingScore, a.AttemptLimit, a.DurationMinutes
        ORDER BY a.AssessmentID DESC`;
 
   const params = moduleId ? [moduleId] : [];
@@ -297,44 +390,83 @@ async function listAssessments(moduleId = null) {
   return rows.map((assessment) => ({
     id: assessment.AssessmentID,
     moduleId: assessment.ModuleID,
+    badgeId: assessment.BadgeID || null,
     title: assessment.Title,
     passingScore: assessment.PassingScore,
     attemptLimit: assessment.AttemptLimit,
-    durationMinutes: 120,
+    durationMinutes: Number(assessment.DurationMinutes || 120),
     questionCount: Number(assessment.QuestionCount || 0),
   }));
 }
 
-async function createAssessment(moduleId, title, passingScore, durationMinutes, attemptLimit = 3) {
+async function createAssessment(moduleId, title, passingScore, durationMinutes, attemptLimit = 3, badgeId = null, createdBy = null) {
   const [result] = await query(
-    `INSERT INTO Assessments (ModuleID, Title, PassingScore, AttemptLimit)
-     VALUES (?, ?, ?, ?)`,
-    [moduleId, title, passingScore, attemptLimit]
+    `INSERT INTO Assessments (ModuleID, BadgeID, Title, PassingScore, DurationMinutes, AttemptLimit, CreatedBy)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+    [
+      moduleId,
+      badgeId || null,
+      title,
+      passingScore,
+      Number(durationMinutes || 120),
+      attemptLimit,
+      createdBy || null,
+    ]
   );
 
   return {
     assessmentId: result.insertId,
+    id: result.insertId,
     moduleId,
+    badgeId: badgeId || null,
     title,
     passingScore,
-    durationMinutes: durationMinutes || 120,
+    durationMinutes: Number(durationMinutes || 120),
     attemptLimit,
   };
 }
 
-async function updateAssessmentSettings(assessmentId, passingScore, durationMinutes, attemptLimit) {
+async function updateAssessmentSettings(assessmentId, passingScore, durationMinutes, attemptLimit, title = null) {
   const [result] = await query(
     `UPDATE Assessments
-     SET PassingScore = ?, AttemptLimit = ?
+     SET PassingScore = COALESCE(?, PassingScore),
+         DurationMinutes = COALESCE(?, DurationMinutes),
+         AttemptLimit = COALESCE(?, AttemptLimit),
+         Title = COALESCE(?, Title)
      WHERE AssessmentID = ?`,
-    [passingScore, attemptLimit, assessmentId]
+    [
+      Number.isFinite(passingScore) ? passingScore : null,
+      Number.isFinite(durationMinutes) ? durationMinutes : null,
+      Number.isFinite(attemptLimit) ? attemptLimit : null,
+      typeof title === 'string' && title.trim().length > 0 ? title.trim() : null,
+      assessmentId,
+    ]
   );
 
   if (result.affectedRows === 0) {
     throw new Error('Assessment not found');
   }
 
-  return { assessmentId, passingScore, durationMinutes: durationMinutes || 120, attemptLimit };
+  return {
+    assessmentId,
+    passingScore: Number.isFinite(passingScore) ? passingScore : undefined,
+    durationMinutes: Number.isFinite(durationMinutes) ? durationMinutes : undefined,
+    attemptLimit: Number.isFinite(attemptLimit) ? attemptLimit : undefined,
+    title: typeof title === 'string' ? title : undefined,
+  };
+}
+
+async function syncAssessmentQuestionCount(assessmentId) {
+  await query(
+    `UPDATE Assessments a
+     SET a.QuestionCount = (
+       SELECT COUNT(*)
+       FROM AssessmentQuestions q
+       WHERE q.AssessmentID = a.AssessmentID
+     )
+     WHERE a.AssessmentID = ?`,
+    [assessmentId]
+  );
 }
 
 async function deleteAssessment(assessmentId) {
@@ -377,7 +509,28 @@ async function addAssessmentQuestion(assessmentId, questionText, questionType, o
     );
   }
 
-  return { questionId };
+  // Persist the correct answer text in AssessmentQuestions.CorrectAnswer
+  try {
+    let correctAnswerText = null;
+    if (normalizedType === 'mcq' && optionList.length > 0) {
+      correctAnswerText = String(optionList[correctIndex] || '');
+    } else if (normalizedType === 'fill') {
+      correctAnswerText = String(correctAnswer || '');
+    }
+
+    if (correctAnswerText !== null) {
+      await query(
+        `UPDATE AssessmentQuestions SET CorrectAnswer = ? WHERE QuestionID = ?`,
+        [correctAnswerText, questionId]
+      );
+    }
+  } catch (e) {
+    console.error('Failed to persist CorrectAnswer for question', questionId, e);
+  }
+
+  await syncAssessmentQuestionCount(assessmentId);
+
+  return { questionId, assessmentId };
 }
 
 async function updateAssessmentQuestion(questionId, questionText, questionType, options, correctAnswer) {
@@ -416,22 +569,62 @@ async function updateAssessmentQuestion(questionId, questionText, questionType, 
     );
   }
 
-  return { questionId };
+  // Persist the correct answer text in AssessmentQuestions.CorrectAnswer
+  try {
+    let correctAnswerText = null;
+    if (normalizedType === 'mcq' && optionList.length > 0) {
+      correctAnswerText = String(optionList[correctIndex] || '');
+    } else if (normalizedType === 'fill') {
+      correctAnswerText = String(correctAnswer || '');
+    }
+
+    if (correctAnswerText !== null) {
+      await query(
+        `UPDATE AssessmentQuestions SET CorrectAnswer = ? WHERE QuestionID = ?`,
+        [correctAnswerText, questionId]
+      );
+    }
+  } catch (e) {
+    console.error('Failed to persist CorrectAnswer for question', questionId, e);
+  }
+
+  const [rows] = await query(
+    `SELECT AssessmentID FROM AssessmentQuestions WHERE QuestionID = ? LIMIT 1`,
+    [questionId]
+  );
+
+  const assessmentId = rows.length > 0 ? rows[0].AssessmentID : null;
+  if (assessmentId) {
+    await syncAssessmentQuestionCount(assessmentId);
+  }
+
+  return { questionId, assessmentId };
 }
 
 async function deleteAssessmentQuestion(questionId) {
+  const [rows] = await query(
+    `SELECT AssessmentID FROM AssessmentQuestions WHERE QuestionID = ? LIMIT 1`,
+    [questionId]
+  );
+
+  const assessmentId = rows.length > 0 ? rows[0].AssessmentID : null;
+
   const [result] = await query('DELETE FROM AssessmentQuestions WHERE QuestionID = ?', [questionId]);
 
   if (result.affectedRows === 0) {
     throw new Error('Question not found');
   }
 
-  return { questionId };
+  if (assessmentId) {
+    await syncAssessmentQuestionCount(assessmentId);
+  }
+
+  return { questionId, assessmentId };
 }
 
 async function getAssessmentAttempts(assessmentId) {
   const [attempts] = await query(
-    `SELECT aa.AttemptID, aa.UserID, aa.AssessmentID, aa.Score, aa.Status, aa.SubmittedAt,
+    `SELECT aa.AttemptID, aa.UserID, aa.AssessmentID, aa.Score, aa.Status, aa.SubmittedAt, aa.TimeUsedSeconds,
             u.Username AS UserName, u.Email AS UserEmail, a.PassingScore
      FROM AssessmentAttempts aa
      INNER JOIN Users u ON u.UserID = aa.UserID
@@ -449,7 +642,7 @@ async function getAssessmentAttempts(assessmentId) {
     score: attempt.Score,
     status: attempt.Status,
     submittedAt: attempt.SubmittedAt,
-    timeUsedSeconds: 0,
+    timeUsedSeconds: Number(attempt.TimeUsedSeconds || 0),
     passed: String(attempt.Status).toLowerCase() === 'passed',
     passingScore: attempt.PassingScore,
   }));
@@ -458,7 +651,7 @@ async function getAssessmentAttempts(assessmentId) {
 async function resetUserAttempt(assessmentId, attemptId) {
   const [result] = await query(
     `UPDATE AssessmentAttempts
-     SET Status = 'Pending', Score = NULL
+     SET Status = 'Pending', Score = NULL, TimeUsedSeconds = 0
      WHERE AssessmentID = ? AND AttemptID = ?`,
     [assessmentId, attemptId]
   );
@@ -468,6 +661,109 @@ async function resetUserAttempt(assessmentId, attemptId) {
   }
 
   return { attemptId, assessmentId };
+}
+
+async function linkBadgeToAssessment(assessmentId, badgeId) {
+  const [assessmentRows] = await query(
+    `SELECT AssessmentID FROM Assessments WHERE AssessmentID = ? LIMIT 1`,
+    [assessmentId]
+  );
+
+  if (assessmentRows.length === 0) {
+    throw new Error('Assessment not found');
+  }
+
+  const [badgeRows] = await query(
+    `SELECT BadgeID FROM Badges WHERE BadgeID = ? AND IsActive = 1 LIMIT 1`,
+    [badgeId]
+  );
+
+  if (badgeRows.length === 0) {
+    throw new Error('Badge not found');
+  }
+
+  await query(
+    `UPDATE Assessments
+     SET BadgeID = ?
+     WHERE AssessmentID = ?`,
+    [badgeId, assessmentId]
+  );
+
+  return { assessmentId, badgeId };
+}
+
+async function unlinkBadgeFromAssessment(assessmentId) {
+  const [result] = await query(
+    `UPDATE Assessments
+     SET BadgeID = NULL
+     WHERE AssessmentID = ?`,
+    [assessmentId]
+  );
+
+  if (result.affectedRows === 0) {
+    throw new Error('Assessment not found');
+  }
+
+  return { assessmentId, badgeId: null };
+}
+
+async function getAssessmentBadge(assessmentId) {
+  const [rows] = await query(
+    `SELECT a.AssessmentID, a.ModuleID, a.BadgeID, b.BadgeName, b.IconUrl, m.ModuleTitle
+     FROM Assessments a
+     LEFT JOIN Badges b ON b.BadgeID = a.BadgeID
+     LEFT JOIN Modules m ON m.ModuleID = a.ModuleID
+     WHERE a.AssessmentID = ?
+     LIMIT 1`,
+    [assessmentId]
+  );
+
+  if (rows.length === 0) {
+    throw new Error('Assessment not found');
+  }
+
+  const row = rows[0];
+
+  const [linkedBadgeRows] = await query(
+    `SELECT b.BadgeID, b.BadgeName, b.IconUrl, GROUP_CONCAT(DISTINCT bm.ModuleID ORDER BY bm.ModuleID) AS LinkedModuleIDs
+       FROM BadgeLinkedModules bm
+       INNER JOIN Badges b ON b.BadgeID = bm.BadgeID AND b.IsActive = 1
+      WHERE bm.ModuleID = ?
+      GROUP BY b.BadgeID, b.BadgeName, b.IconUrl
+      ORDER BY b.BadgeID ASC`,
+    [row.ModuleID]
+  );
+
+  const linkedBadges = linkedBadgeRows.map((linkedBadge) => ({
+    id: linkedBadge.BadgeID,
+    badgeId: linkedBadge.BadgeID,
+    name: linkedBadge.BadgeName,
+    iconUrl: linkedBadge.IconUrl,
+    linkedModuleIds: String(linkedBadge.LinkedModuleIDs || '')
+      .split(',')
+      .map((item) => Number.parseInt(item.trim(), 10))
+      .filter((item) => Number.isFinite(item) && item > 0),
+  }));
+
+  return {
+    assessmentId: row.AssessmentID,
+    moduleId: row.ModuleID,
+    moduleName: row.ModuleTitle,
+    badge: row.BadgeID
+      ? {
+          id: row.BadgeID,
+          badgeId: row.BadgeID,
+          name: row.BadgeName,
+          iconUrl: row.IconUrl,
+        }
+      : linkedBadges[0] || null,
+    badges: row.BadgeID ? [{
+      id: row.BadgeID,
+      badgeId: row.BadgeID,
+      name: row.BadgeName,
+      iconUrl: row.IconUrl,
+    }, ...linkedBadges.filter((badge) => badge.badgeId !== row.BadgeID)] : linkedBadges,
+  };
 }
 
 module.exports = {
@@ -484,4 +780,7 @@ module.exports = {
   deleteAssessmentQuestion,
   getAssessmentAttempts,
   resetUserAttempt,
+  linkBadgeToAssessment,
+  unlinkBadgeFromAssessment,
+  getAssessmentBadge,
 };

@@ -9,32 +9,32 @@ const { query } = require("../config/db");
  */
 async function getModuleMaterials(userId, moduleId) {
   try {
-    const [materials] = await query(
-      `SELECT MaterialID, Chapter, Title, ContentType, ContentText
-       FROM LearningMaterials
-       WHERE ModuleID = ?
-       ORDER BY MaterialID ASC`,
+    // Return flattened list of subsections for the module with progress
+    const [rows] = await query(
+      `SELECT sc.SubsectionID, sc.Title AS SubTitle, sc.ContentType, sc.ContentText, s.SectionID, s.Title AS SectionTitle
+       FROM Sections s
+       LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
+       WHERE s.ModuleID = ?
+       ORDER BY s.Ordering ASC, sc.Ordering ASC`,
       [moduleId]
     );
 
-    if (materials.length === 0) {
-      return [];
-    }
+    if (rows.length === 0) return [];
 
-    // Get completion status for each material
     const materialsWithProgress = [];
-    for (const mat of materials) {
+    for (const r of rows) {
       const [progress] = await query(
-        "SELECT IsCompleted FROM MaterialProgress WHERE MaterialID = ? AND UserID = ? LIMIT 1",
-        [mat.MaterialID, userId]
+        "SELECT IsCompleted FROM MaterialProgress WHERE SubsectionID = ? AND UserID = ? LIMIT 1",
+        [r.SubsectionID, userId]
       );
 
       materialsWithProgress.push({
-        materialId: mat.MaterialID,
-        chapter: mat.Chapter,
-        title: mat.Title,
-        contentType: mat.ContentType,
-        content: mat.ContentText,
+        materialId: r.SubsectionID,
+        sectionId: r.SectionID,
+        sectionTitle: r.SectionTitle,
+        title: r.SubTitle,
+        contentType: r.ContentType,
+        content: r.ContentText,
         isCompleted: progress.length > 0 ? progress[0].IsCompleted === 1 : false,
       });
     }
@@ -50,39 +50,35 @@ async function getModuleMaterials(userId, moduleId) {
  */
 async function getMaterialContent(userId, materialId) {
   try {
-    const [materials] = await query(
-      "SELECT MaterialID, ModuleID, Chapter, Title, ContentType, ContentText FROM LearningMaterials WHERE MaterialID = ? LIMIT 1",
+    const [rows] = await query(
+      `SELECT sc.SubsectionID, sc.Title AS SubTitle, sc.ContentType, sc.ContentText, s.SectionID, s.ModuleID
+       FROM Subsections sc
+       JOIN Sections s ON s.SectionID = sc.SectionID
+       WHERE sc.SubsectionID = ? LIMIT 1`,
       [materialId]
     );
 
-    if (materials.length === 0) {
-      throw new Error("Material not found");
-    }
+    if (rows.length === 0) throw new Error('Material not found');
 
-    const material = materials[0];
+    const material = rows[0];
 
-    // Get or create progress record
     const [progress] = await query(
-      "SELECT IsCompleted FROM MaterialProgress WHERE MaterialID = ? AND UserID = ? LIMIT 1",
+      "SELECT IsCompleted FROM MaterialProgress WHERE SubsectionID = ? AND UserID = ? LIMIT 1",
       [materialId, userId]
     );
 
     let isCompleted = false;
     if (progress.length === 0) {
-      // Create progress record
-      await query(
-        "INSERT INTO MaterialProgress (MaterialID, UserID, IsCompleted) VALUES (?, ?, 0)",
-        [materialId, userId]
-      );
+      await query("INSERT INTO MaterialProgress (SubsectionID, UserID, IsCompleted) VALUES (?, ?, 0)", [materialId, userId]);
     } else {
       isCompleted = progress[0].IsCompleted === 1;
     }
 
     return {
-      materialId: material.MaterialID,
+      materialId: material.SubsectionID,
       moduleId: material.ModuleID,
-      chapter: material.Chapter,
-      title: material.Title,
+      sectionId: material.SectionID,
+      title: material.SubTitle,
       contentType: material.ContentType,
       content: material.ContentText,
       isCompleted,
@@ -97,20 +93,20 @@ async function getMaterialContent(userId, materialId) {
  */
 async function markMaterialComplete(userId, materialId) {
   try {
-    // First, ensure progress record exists
+    // Use SubsectionID in MaterialProgress
     const [existing] = await query(
-      "SELECT MaterialProgressID FROM MaterialProgress WHERE MaterialID = ? AND UserID = ? LIMIT 1",
+      "SELECT MaterialProgressID FROM MaterialProgress WHERE SubsectionID = ? AND UserID = ? LIMIT 1",
       [materialId, userId]
     );
 
     if (existing.length === 0) {
       await query(
-        "INSERT INTO MaterialProgress (MaterialID, UserID, IsCompleted) VALUES (?, ?, 1)",
+        "INSERT INTO MaterialProgress (SubsectionID, UserID, IsCompleted) VALUES (?, ?, 1)",
         [materialId, userId]
       );
     } else {
       await query(
-        "UPDATE MaterialProgress SET IsCompleted = 1 WHERE MaterialID = ? AND UserID = ?",
+        "UPDATE MaterialProgress SET IsCompleted = 1 WHERE SubsectionID = ? AND UserID = ?",
         [materialId, userId]
       );
     }
@@ -127,14 +123,53 @@ async function markMaterialComplete(userId, materialId) {
 async function getModuleChapters(moduleId) {
   try {
     const [chapters] = await query(
-      `SELECT DISTINCT Chapter
-       FROM LearningMaterials
-       WHERE ModuleId = ?
-       ORDER BY Chapter ASC`,
+      `SELECT s.SectionID,
+              s.Title AS SectionTitle,
+              s.Description AS SectionDescription,
+              s.Ordering AS SectionOrdering,
+              sc.SubsectionID,
+              sc.Title AS SubTitle,
+              sc.ContentText,
+              sc.Ordering AS SubOrdering
+       FROM Sections s
+       LEFT JOIN Subsections sc ON sc.SectionID = s.SectionID
+       WHERE s.ModuleID = ?
+       ORDER BY s.Ordering ASC, sc.Ordering ASC`,
       [moduleId]
     );
 
-    return chapters.map((ch) => ch.Chapter);
+    const sectionsMap = new Map();
+
+    for (const row of chapters) {
+      const sectionId = row.SectionID;
+
+      if (!sectionsMap.has(sectionId)) {
+        sectionsMap.set(sectionId, {
+          id: `section-${sectionId}`,
+          sectionId,
+          title: row.SectionTitle,
+          description: row.SectionDescription || '',
+          ordering: row.SectionOrdering,
+          subsections: [],
+        });
+      }
+
+      if (row.SubsectionID) {
+        sectionsMap.get(sectionId).subsections.push({
+          id: `subsection-${row.SubsectionID}`,
+          subsectionId: row.SubsectionID,
+          title: row.SubTitle,
+          contentHtml: row.ContentText,
+          contentText: row.ContentText,
+          ordering: row.SubOrdering,
+          parentId: `section-${sectionId}`,
+        });
+      }
+    }
+
+    return Array.from(sectionsMap.values()).sort(
+      (left, right) => (left.ordering || 0) - (right.ordering || 0)
+    );
   } catch (error) {
     throw error;
   }

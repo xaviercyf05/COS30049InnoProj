@@ -1,0 +1,13 @@
+[Unit]
+Description=Innovation Project database backup
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=xavier
+Group=xavier
+WorkingDirectory=/home/xavier/COS30049InnoProj/COS30049InnoProj
+EnvironmentFile=-/home/xavier/COS30049InnoProj/COS30049InnoProj/.env
+ExecStart=/usr/bin/env bash /home/xavier/COS30049InnoProj/COS30049InnoProj/scripts/backup_mysql.sh
+UMask=0077

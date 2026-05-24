@@ -1,0 +1,56 @@
+{
+  "expo": {
+    "name": "Training App",
+    "slug": "TrainingApp",
+    "version": "1.0.0",
+    "scheme": "trainingapp",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.innopapp.trainingapp",
+      "associatedDomains": [
+        "webcredentials:innopappserver.xyz"
+      ]
+    },
+    "android": {
+      "package": "com.innopapp.trainingapp",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "name": "Training App",
+      "shortName": "Training",
+      "description": "Digital Park Guide training platform for web and mobile.",
+      "display": "standalone",
+      "startUrl": "/",
+      "themeColor": "#386641",
+      "backgroundColor": "#F2E8CF"
+    },
+    "plugins": [
+      "expo-video",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "deploymentTarget": "15.1"
+          },
+          "android": {
+            "compileSdkVersion": 34
+          }
+        }
+      ]
+    ]
+  }
+}

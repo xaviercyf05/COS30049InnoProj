@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { requestProfileApi } from '../Profile/profileApi.js';
+import { requestProfileApi } from '../Profile/profileApi';
 import withRoleGuard from '../auth/withRoleGuard';
 
 function AnnouncementCard({ item }) {
@@ -26,6 +26,7 @@ function AnnouncementCard({ item }) {
       ]}
       onPress={() => setExpanded((previous) => !previous)}
       activeOpacity={0.9}
+      accessibilityRole="button"
     >
       <View style={[styles.leftSection, !isWeb && styles.leftSectionMobile]}>
         <View style={styles.dotIndicator} />
@@ -84,7 +85,11 @@ export function AnnouncementScreen({ navigation, useSharedChrome = false }) {
           return;
         }
 
-        const loaded = Array.isArray(response.data) ? response.data : [];
+        const loaded = Array.isArray(response?.data)
+          ? response.data
+          : Array.isArray(response?.data?.data)
+            ? response.data.data
+            : [];
 
         if (loaded.length === 0) {
           setAnnouncements([]);
@@ -120,7 +125,12 @@ export function AnnouncementScreen({ navigation, useSharedChrome = false }) {
 
     return () => {
       active = false;
-      unsubscribe();
+
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      } else if (unsubscribe && typeof unsubscribe.remove === 'function') {
+        unsubscribe.remove();
+      }
     };
   }, [navigation]);
 
@@ -144,7 +154,7 @@ export function AnnouncementScreen({ navigation, useSharedChrome = false }) {
             },
           ]}
         >
-          <TouchableOpacity style={styles.navPill} onPress={handleBack}>
+          <TouchableOpacity style={styles.navPill} onPress={handleBack} accessibilityRole="button">
             <Text style={styles.navPillText}>{'< Back'}</Text>
           </TouchableOpacity>
 

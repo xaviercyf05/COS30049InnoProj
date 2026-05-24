@@ -41,6 +41,11 @@ const mockAnnouncements = [
 describe('AnnouncementScreen - Key Functions', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    const { getItem } = require('@react-native-async-storage/async-storage');
+    getItem.mockResolvedValue('fake-token');
+    mockNavigation.canGoBack.mockReturnValue(true);
+    mockNavigation.goBack.mockImplementation(() => {});
+    mockNavigation.navigate.mockImplementation(() => {});
   });
 
   it('renders loading state', () => {
@@ -94,8 +99,11 @@ describe('AnnouncementScreen - Key Functions', () => {
     render(<AnnouncementScreen navigation={mockNavigation} />);
 
     await waitFor(() => {
-      fireEvent.press(screen.getByText('< Back'));
-      expect(mockNavigation.goBack).toHaveBeenCalled();
+      expect(screen.getByText('< Back')).toBeTruthy();
     });
+
+    fireEvent.press(screen.getByText('< Back').parent);
+
+    expect(mockNavigation.goBack).toHaveBeenCalled();
   });
 });

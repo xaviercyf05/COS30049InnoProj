@@ -357,6 +357,8 @@ export default function RichEditor({ value, onChange }) {
   const editorRef = useRef(null);
   const editorObserverRef = useRef(null);
   const editorInteractionCleanupRef = useRef(null);
+  const initialMediaSyncTimeoutRef = useRef(null);
+  const valueMediaSyncTimeoutRef = useRef(null);
   const onChangeRef = useRef(onChange);
   const isApplyingExternalValueRef = useRef(false);
   const latestValueRef = useRef(sanitizeEditorHtml(value));
@@ -386,6 +388,13 @@ export default function RichEditor({ value, onChange }) {
 
     if (onChangeRef.current) {
       onChangeRef.current(sanitized);
+    }
+  };
+
+  const clearPendingMediaSync = (timeoutRef) => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
     }
   };
 
@@ -478,10 +487,15 @@ export default function RichEditor({ value, onChange }) {
       if (initialContent) {
         isApplyingExternalValueRef.current = true;
         setEditorHtml(editor, initialContent);
+        clearPendingMediaSync(initialMediaSyncTimeoutRef);
         
         // Extract and reapply image widths and video dimensions after SunEditor renders
-        setTimeout(() => {
+        initialMediaSyncTimeoutRef.current = setTimeout(() => {
           try {
+            if (!editorRef.current || editorRef.current !== editor) {
+              return;
+            }
+
             const parser = new DOMParser();
             const doc = parser.parseFromString(initialContent, 'text/html');
             const savedImgs = Array.from(doc.querySelectorAll('img'));
@@ -534,6 +548,8 @@ export default function RichEditor({ value, onChange }) {
 
     return () => {
       isMounted = false;
+      clearPendingMediaSync(initialMediaSyncTimeoutRef);
+      clearPendingMediaSync(valueMediaSyncTimeoutRef);
 
       if (editorObserverRef.current) {
         editorObserverRef.current.disconnect();
@@ -545,9 +561,11 @@ export default function RichEditor({ value, onChange }) {
         editorInteractionCleanupRef.current = null;
       }
 
-      if (editorRef.current) {
-        editorRef.current.destroy();
-        editorRef.current = null;
+      const editor = editorRef.current;
+      editorRef.current = null;
+
+      if (editor) {
+        editor.destroy();
       }
     };
   }, []);
@@ -568,10 +586,15 @@ export default function RichEditor({ value, onChange }) {
 
     isApplyingExternalValueRef.current = true;
     setEditorHtml(editor, nextContent);
+    clearPendingMediaSync(valueMediaSyncTimeoutRef);
     
     // Reapply image widths and video dimensions after content updates
-    setTimeout(() => {
+    valueMediaSyncTimeoutRef.current = setTimeout(() => {
       try {
+        if (!editorRef.current || editorRef.current !== editor) {
+          return;
+        }
+
         const parser = new DOMParser();
         const doc = parser.parseFromString(nextContent, 'text/html');
         const savedImgs = Array.from(doc.querySelectorAll('img'));

@@ -460,14 +460,15 @@ export async function fetchAdminEvidenceAlerts() {
   }
 
   try {
+    // Request up to 100 records from each source, then filter client-side
     const [evidenceResult, sensorLogResult] = await Promise.all([
-      fetchAlertRecords('/api/v1/admin/evidence?limit=25', token, normaliseEvidenceRecord),
+      fetchAlertRecords('/api/v1/admin/evidence?limit=100', token, normaliseEvidenceRecord),
       fetchFirstAvailableAlertRecords(
         [
-          '/api/v1/admin/esp32sensorlogs?limit=25',
-          '/api/v1/admin/esp32-sensor-logs?limit=25',
-          '/api/v1/admin/sensor-logs?limit=25',
-          '/api/v1/admin/ESP32SensorLogs?limit=25',
+          '/api/v1/admin/esp32sensorlogs?limit=100',
+          '/api/v1/admin/esp32-sensor-logs?limit=100',
+          '/api/v1/admin/sensor-logs?limit=100',
+          '/api/v1/admin/ESP32SensorLogs?limit=100',
         ],
         token,
         normaliseEsp32SensorLogRecord
@@ -479,11 +480,62 @@ export async function fetchAdminEvidenceAlerts() {
       ...sensorLogResult.records,
     ]);
 
+    // Filter out alerts older than 7 days (keep alerts without a parsable date)
+    const sevenDaysMs = 7 * 24 * 60 * 60 * 1000;
+    const cutoff = Date.now() - sevenDaysMs;
+
+    function getRecordMs(item) {
+      if (!item) return null;
+
+      // Prefer createdAt when available
+      if (item.createdAt) {
+        const d = new Date(item.createdAt);
+        if (!Number.isNaN(d.getTime())) return d.getTime();
+      }
+
+      // Try the formatted timestamp string (e.g. "YYYY-MM-DD HH:MM")
+      if (item.timestamp) {
+        const text = String(item.timestamp).trim();
+        // Convert 'YYYY-MM-DD HH:MM' to ISO-like 'YYYY-MM-DDTHH:MM:00'
+        const iso = text.replace(' ', 'T') + ':00';
+        const d = new Date(iso);
+        if (!Number.isNaN(d.getTime())) return d.getTime();
+      }
+
+      // Fallback to timestampValue which may be epoch ms or YYYYMMDDHHMMSS
+      if (item.timestampValue) {
+        const v = Number(item.timestampValue);
+        if (Number.isFinite(v)) {
+          if (v > 1e12) {
+            // looks like epoch ms
+            return v;
+          }
+
+          // try parse YYYYMMDDHHMMSS
+          const s = String(item.timestampValue);
+          const m = s.match(/^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})/);
+          if (m) {
+            const iso = `${m[1]}-${m[2]}-${m[3]}T${m[4]}:${m[5]}:${m[6]}`;
+            const d = new Date(iso);
+            if (!Number.isNaN(d.getTime())) return d.getTime();
+          }
+        }
+      }
+
+      return null;
+    }
+
+    const filteredAlerts = alerts.filter((a) => {
+      const ms = getRecordMs(a);
+      if (ms === null) return true; // keep unknown-dated items
+      return ms >= cutoff;
+    });
+
     const errorMessages = [evidenceResult.error?.message, sensorLogResult.error?.message].filter(Boolean);
-    const hasAnyAlerts = alerts.length > 0;
+    const hasAnyAlerts = filteredAlerts.length > 0;
 
     return {
-      alerts,
+      alerts: filteredAlerts,
       error: hasAnyAlerts ? null : errorMessages.join(' | ') || null,
     };
   } catch (error) {

@@ -7,6 +7,7 @@ import {
   TouchableOpacity
 } from 'react-native';
 import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system';
 import { WebView } from 'react-native-webview';
 import { fetchAdminEvidenceAlerts, uploadEsp32SensorLogsCsv } from './evidenceApi.js';
 
@@ -95,7 +96,28 @@ export default function SensorAlertScreen({ navigation }) {
     try {
       setUploadMessage('');
       setUploading(true);
-      const result = await uploadEsp32SensorLogsCsv(selectedCsvFile);
+
+      // Try to auto-detect a DeviceID from the CSV contents and pass it
+      let detectedDeviceId = '';
+      try {
+        if (selectedCsvFile && selectedCsvFile.uri) {
+          const content = await FileSystem.readAsStringAsync(selectedCsvFile.uri, { encoding: FileSystem.EncodingType.UTF8 });
+          const firstLines = content.split(/\r?\n/).slice(0, 10).filter(Boolean);
+          if (firstLines.length >= 2) {
+            const headers = firstLines[0].split(',').map(h => h.trim().toLowerCase());
+            const deviceIndex = headers.findIndex(h => ['deviceid','deviceid','deviceid','device'].includes(h.replace(/[^a-z0-9]/g, '')));
+            if (deviceIndex >= 0) {
+              const firstData = firstLines[1].split(',');
+              detectedDeviceId = String(firstData[deviceIndex] || '').trim();
+            }
+          }
+        }
+      } catch (detectError) {
+        // ignore detection errors and fall back to server-side behaviour
+        detectedDeviceId = '';
+      }
+
+      const result = await uploadEsp32SensorLogsCsv(selectedCsvFile, detectedDeviceId || undefined);
       const insertedCount = Number(result?.data?.insertedCount || 0);
       const skippedCount = Number(result?.data?.skippedCount || 0);
       setUploadMessage(`CSV uploaded. Inserted ${insertedCount} row(s), skipped ${skippedCount} row(s).`);

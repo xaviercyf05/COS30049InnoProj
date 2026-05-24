@@ -7,6 +7,7 @@ export default function AlertHistory({ navigation }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [filter, setFilter] = useState('all'); // 'all', 'solved', 'unsolved'
+  const [sourceFilter, setSourceFilter] = useState('all'); // 'all', 'esp32', 'bodyworn'
   const [updatingAlertId, setUpdatingAlertId] = useState(null);
 
   const toggleSolved = async (targetAlert) => {
@@ -38,7 +39,13 @@ export default function AlertHistory({ navigation }) {
     }
   };
 
-  const filteredAlerts = alerts.filter((alert) => {
+  const baseAlerts = alerts.filter((alert) => {
+    if (sourceFilter === 'esp32') return alert.sourceType === 'esp32-sensor-log';
+    if (sourceFilter === 'bodyworn') return alert.sourceType === 'body-worn-camera';
+    return true;
+  });
+
+  const filteredAlerts = baseAlerts.filter((alert) => {
     if (filter === 'solved') return alert.resolved;
     if (filter === 'unsolved') return !alert.resolved;
     return true;
@@ -76,6 +83,29 @@ export default function AlertHistory({ navigation }) {
         <Text style={styles.subtitle}>Live evidence records pulled from the database and ESP32 sensor logs</Text>
       </View>
 
+      <View style={styles.sourceTabs}>
+        <TouchableOpacity
+          style={[styles.tab, sourceFilter === 'all' && styles.tabActive]}
+          onPress={() => setSourceFilter('all')}
+        >
+          <Text style={[styles.tabText, sourceFilter === 'all' && styles.tabTextActive]}>All</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, sourceFilter === 'esp32' && styles.tabActive]}
+          onPress={() => setSourceFilter('esp32')}
+        >
+          <Text style={[styles.tabText, sourceFilter === 'esp32' && styles.tabTextActive]}>ESP32</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.tab, sourceFilter === 'bodyworn' && styles.tabActive]}
+          onPress={() => setSourceFilter('bodyworn')}
+        >
+          <Text style={[styles.tabText, sourceFilter === 'bodyworn' && styles.tabTextActive]}>Body-worn</Text>
+        </TouchableOpacity>
+      </View>
+
       {loading ? (
         <View style={styles.loadingCard}>
           <Text style={styles.loadingTitle}>Loading evidence alerts</Text>
@@ -96,7 +126,7 @@ export default function AlertHistory({ navigation }) {
           onPress={() => setFilter('all')}
         >
           <Text style={styles.summaryLabel}>Total Alerts</Text>
-          <Text style={[styles.summaryValue, filter === 'all' && styles.summaryValueActive]}>{alerts.length}</Text>
+          <Text style={[styles.summaryValue, filter === 'all' && styles.summaryValueActive]}>{baseAlerts.length}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -104,7 +134,7 @@ export default function AlertHistory({ navigation }) {
           onPress={() => setFilter('solved')}
         >
           <Text style={styles.summaryLabel}>Solved</Text>
-          <Text style={[styles.summaryValue, styles.summarySolved, filter === 'solved' && styles.summaryValueActive]}>{alerts.filter((item) => item.resolved).length}</Text>
+          <Text style={[styles.summaryValue, styles.summarySolved, filter === 'solved' && styles.summaryValueActive]}>{baseAlerts.filter((item) => item.resolved).length}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity 
@@ -112,7 +142,7 @@ export default function AlertHistory({ navigation }) {
           onPress={() => setFilter('unsolved')}
         >
           <Text style={styles.summaryLabel}>Unsolved</Text>
-          <Text style={[styles.summaryValue, styles.summaryUnsolved, filter === 'unsolved' && styles.summaryValueActive]}>{alerts.filter((item) => !item.resolved).length}</Text>
+          <Text style={[styles.summaryValue, styles.summaryUnsolved, filter === 'unsolved' && styles.summaryValueActive]}>{baseAlerts.filter((item) => !item.resolved).length}</Text>
         </TouchableOpacity>
       </View>
 
@@ -177,6 +207,32 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 14
+  },
+  sourceTabs: {
+    flexDirection: 'row',
+    justifyContent: 'flex-start',
+    marginBottom: 12,
+  },
+  tab: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 999,
+    backgroundColor: '#F4F7F1',
+    borderWidth: 1,
+    borderColor: '#E8EDE6',
+    marginRight: 8,
+  },
+  tabActive: {
+    backgroundColor: '#EDF7EE',
+    borderColor: '#2F7D4A',
+  },
+  tabText: {
+    color: '#445244',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  tabTextActive: {
+    color: '#2F7D4A'
   },
   summaryCard: {
     width: '31.5%',

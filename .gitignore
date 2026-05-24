@@ -57,3 +57,4 @@ database/appdb (1).sql
 .env
 *.env
 frontend/package.json
+frontend/package-lock.json

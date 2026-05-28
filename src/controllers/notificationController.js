@@ -2,7 +2,7 @@ const { query } = require("../config/db");
 const notificationService = require("../services/notificationService");
 
 /**
- * Controller for user notifications, announcements, schedules, and certificates.
+ * Controller for user notifications, announcements, and certificates.
  */
 
 /**
@@ -71,41 +71,7 @@ async function getAnnouncements(req, res) {
   }
 }
 
-/**
- * Get user's schedules/events
- */
-async function getUserSchedules(req, res) {
-  try {
-    const { userId } = req.user;
-
-    const [schedules] = await query(
-      `SELECT ScheduleID, QualificationID, Title, Description, EventDate, StartTime, EndTime
-       FROM Schedules
-       WHERE UserID = ?
-       ORDER BY EventDate ASC`,
-      [userId]
-    );
-
-    return res.json({
-      success: true,
-      data: schedules.map((s) => ({
-        scheduleId: s.ScheduleID,
-        qualificationId: s.QualificationID,
-        title: s.Title,
-        description: s.Description,
-        eventDate: s.EventDate,
-        startTime: s.StartTime,
-        endTime: s.EndTime,
-      })),
-    });
-  } catch (error) {
-    console.error("Get schedules error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to fetch schedules.",
-    });
-  }
-}
+// Schedules endpoint removed — schedules functionality deprecated.
 
 /**
  * Get user certificates
@@ -196,7 +162,7 @@ async function getCertificateDetails(req, res) {
 module.exports = {
   getUserNotifications,
   getAnnouncements,
-  getUserSchedules,
+  // getUserSchedules removed
   getUserCertificates,
   getCertificateDetails,
 };

@@ -20,10 +20,7 @@ router.get("/", asyncHandler(notificationController.getUserNotifications));
  */
 router.get("/announcements", asyncHandler(notificationController.getAnnouncements));
 
-/**
- * GET /schedules - Get user's schedules/events
- */
-router.get("/schedules", asyncHandler(notificationController.getUserSchedules));
+// Schedules route removed — schedules functionality deprecated.
 
 /**
  * GET /certificates - Get user's certificates

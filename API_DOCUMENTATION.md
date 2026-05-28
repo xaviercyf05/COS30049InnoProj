@@ -436,9 +436,6 @@ Get user's notifications. **(Requires Auth)**
 ### GET `/notifications/announcements`
 Get announcements for user's role. **(Requires Auth)**
 
-### GET `/notifications/schedules`
-Get user's scheduled events. **(Requires Auth)**
-
 ### GET `/notifications/certificates`
 Get user's certificates. **(Requires Auth)**
 
@@ -489,21 +486,7 @@ Create announcement for specific role. **(Requires Admin Auth)**
 }
 ```
 
-### POST `/admin/schedules`
-Create schedule event for a user. **(Requires Admin Auth)**
-
-**Request Body:**
-```json
-{
-  "targetUserId": 2,
-  "qualificationId": 1,
-  "title": "Field Training Session",
-  "description": "Indoor training for Module 2",
-  "eventDate": "2026-05-15",
-  "startTime": "09:00",
-  "endTime": "12:00"
-}
-```
+<!-- POST /admin/schedules removed: scheduling deprecated -->
 
 ### GET `/admin/users`
 Get all users. **(Requires Admin Auth)**
@@ -555,7 +538,7 @@ All endpoints follow standard error format:
 4. **User attempts assessment** → Limited to 3 attempts with 1-hour cooldown
 5. **User passes assessment** → Unlocks next module
 6. **User completes all modules** → Certificate issued automatically
-7. **User gets notifications** → For enrollment, assessment results, certificates, schedules
+7. **User gets notifications** → For enrollment, assessment results, certificates
 
 ---
 
@@ -581,11 +564,10 @@ All endpoints follow standard error format:
 | `/assessments/:mId/history` | GET | Yes | Get attempt history |
 | `/notifications` | GET | Yes | Get notifications |
 | `/notifications/announcements` | GET | Yes | Get announcements |
-| `/notifications/schedules` | GET | Yes | Get schedules |
 | `/notifications/certificates` | GET | Yes | List certificates |
 | `/admin/qualifications` | POST | Admin | Create qualification |
 | `/admin/announcements` | POST | Admin | Create announcement |
-| `/admin/schedules` | POST | Admin | Create schedule |
+    
 | `/admin/users` | GET | Admin | List all users |
 | `/admin/users/:uid/status` | PUT | Admin | Update user status |
 | `/admin/users/:uid/enrollments` | GET | Admin | Get enrollments |

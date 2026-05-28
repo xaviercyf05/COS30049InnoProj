@@ -69,7 +69,7 @@ All 20+ endpoints return data in this envelope format.
 **Three Access Tiers:**
 1. **Public Endpoints**: Login, browse qualifications, view details
 2. **User Endpoints**: Profile, enrollments, learning, assessments, notifications
-3. **Admin Endpoints**: Qualification management, user management, announcements, schedules
+3. **Admin Endpoints**: Qualification management, user management, announcements
 
 ### 2. Learning Progression
 
@@ -115,7 +115,6 @@ All 20+ endpoints return data in this envelope format.
 **User Views Notifications Via:**
 - GET /notifications (all notifications, newest first)
 - GET /notifications/announcements (admin-posted messages)
-- GET /notifications/schedules (training sessions)
 - GET /notifications/certificates (earned certificates with details)
 
 ### 5. Admin Console
@@ -126,7 +125,7 @@ All 20+ endpoints return data in this envelope format.
 |-----------|----------|---------|
 | Create Qualification | POST /admin/qualifications | Add new certification program |
 | Create Announcement | POST /admin/announcements | Broadcast messages to users/admins |
-| Create Schedule | POST /admin/schedules | Schedule training events for users |
+| Create Schedule | POST /admin/schedules | (removed) |
 | View All Users | GET /admin/users | See all park guides on platform |
 | Update User Status | PUT /admin/users/{id}/status | Active/Inactive/Suspended |
 | View User Progress | GET /admin/users/{id}/enrollments | See user's course enrollments and completion |
@@ -169,7 +168,7 @@ All 20+ endpoints return data in this envelope format.
 | **Certificates** | User achievements | CertificateID, UserID, QualificationID, Status (Pending/Issued/Revoked) |
 | **Notifications** | System messages | NotificationID, UserID, Title, Message, NotificationType |
 | **Announcements** | Admin broadcasts | AnnouncementID, Title, TargetRole (User/Admin/All) |
-| **Schedules** | Training events | ScheduleID, UserID, QualificationID, EventDate, StartTime, EndTime |
+<!-- Schedules table removed from schema; scheduling deprecated -->
 
 ### Data Integrity
 
@@ -241,7 +240,7 @@ GET    /api/v1/assessments/:moduleId/history      Get past attempt records
 ```
 GET    /api/v1/notifications                  List all notifications
 GET    /api/v1/notifications/announcements    Get admin announcements
-GET    /api/v1/notifications/schedules        Get training events
+<!-- /api/v1/notifications/schedules removed -->
 GET    /api/v1/notifications/certificates    List earned certificates
 GET    /api/v1/notifications/certificates/:certificateId Get certificate details
 ```
@@ -251,7 +250,7 @@ GET    /api/v1/notifications/certificates/:certificateId Get certificate details
 ```
 POST   /api/v1/admin/qualifications           Create new qualification
 POST   /api/v1/admin/announcements            Post announcement to users
-POST   /api/v1/admin/schedules                Create training event
+<!-- /api/v1/admin/schedules removed -->
 GET    /api/v1/admin/users                    List all users
 PUT    /api/v1/admin/users/:id/status         Update user status
 GET    /api/v1/admin/users/:id/enrollments    View user's course progress
@@ -289,7 +288,7 @@ src/
 │   ├── qualificationController.js   Enrollment, progress, browsing
 │   ├── materialController.js        Module/material endpoints
 │   ├── assessmentController.js      Assessment delivery & grading
-│   ├── notificationController.js    Notifications, announcements, schedules
+│   ├── notificationController.js    Notifications, announcements, certificates
 │   └── adminManagementController.js Admin CRUD operations
 ├── routes/
 │   └── v1/
@@ -385,11 +384,8 @@ Documentation/
    →   Notifications auto-sent to all matching users
    ```
 
-4. **Admin schedules training**
-   ```bash
-   POST /admin/schedules            → Create event for specific user
-   →   User receives schedule notification
-   ```
+4. **Admin scheduling** (removed)
+   <!-- POST /admin/schedules deprecated -->
 
 5. **Admin views user progress**
    ```bash

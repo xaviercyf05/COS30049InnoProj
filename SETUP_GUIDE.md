@@ -325,7 +325,7 @@ npm install
 
 **Solution:**
 ```bash
-mysql -u root -p digital_park_guide -e "DROP TABLE IF EXISTS Announcements, AssessmentOptions, AssessmentQuestions, Assessments, AssessmentAttempts, Certificates, LearningMaterials, MaterialProgress, Modules, Qualifications, Notifications, ScheduleEvents, Schedules, Users, Roles;"
+mysql -u root -p digital_park_guide -e "DROP TABLE IF EXISTS Announcements, AssessmentOptions, AssessmentQuestions, Assessments, AssessmentAttempts, Certificates, LearningMaterials, MaterialProgress, Modules, Qualifications, Notifications, Users, Roles;"
 mysql -u root -p digital_park_guide < database/schema.sql
 ```
 

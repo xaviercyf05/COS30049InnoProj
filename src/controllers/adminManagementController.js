@@ -613,7 +613,7 @@ function mapAnnouncementRow(announcementRow) {
 }
 
 /**
- * Controller for admin management - qualifications, announcements, schedules, users.
+ * Controller for admin management - qualifications, announcements, users.
  */
 
 /**
@@ -863,76 +863,7 @@ async function deleteAnnouncement(req, res) {
   }
 }
 
-/**
- * Create schedule event for a user (admin only)
- */
-async function createSchedule(req, res) {
-  try {
-    const { userId } = req.user;
-    const {
-      targetUserId,
-      qualificationId,
-      title,
-      description,
-      eventDate,
-      startTime,
-      endTime,
-    } = req.body;
-
-    if (
-      !targetUserId ||
-      !qualificationId ||
-      !title ||
-      !eventDate ||
-      !startTime ||
-      !endTime
-    ) {
-      return res.status(400).json({
-        success: false,
-        message: "User ID, qualification ID, title, date, and times are required.",
-      });
-    }
-
-    const [result] = await query(
-      `INSERT INTO Schedules (UserID, QualificationID, Title, Description, EventDate, StartTime, EndTime)
-       VALUES (?, ?, ?, ?, ?, ?, ?)`,
-      [
-        targetUserId,
-        qualificationId,
-        title,
-        description || null,
-        eventDate,
-        startTime,
-        endTime,
-      ]
-    );
-
-    // Notify the user
-    await notificationService.notificationHelpers.notifyScheduleEvent(
-      targetUserId,
-      title,
-      eventDate
-    );
-
-    return res.status(201).json({
-      success: true,
-      message: "Schedule created and user notified.",
-      data: {
-        scheduleId: result.insertId,
-        title,
-        eventDate,
-        startTime,
-        endTime,
-      },
-    });
-  } catch (error) {
-    console.error("Create schedule error:", error);
-    return res.status(500).json({
-      success: false,
-      message: "Failed to create schedule.",
-    });
-  }
-}
+// Schedule creation removed — schedules are deprecated.
 
 /**
  * Get all users (admin only)
@@ -1780,7 +1711,6 @@ module.exports = {
   getAllAnnouncements,
   updateAnnouncement,
   deleteAnnouncement,
-  createSchedule,
   getAllUsers,
   updateUserStatus,
   getUserEnrollmentDetails,

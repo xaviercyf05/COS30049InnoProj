@@ -137,10 +137,9 @@ Public:
 Admin:
 - POST /api/v1/auth/login (combined login for both User and Admin)
 - GET /api/v1/admin/users
-- POST /api/v1/admin/qualifications
-- POST /api/v1/admin/announcements
-- POST /api/v1/admin/schedules
-- PUT /api/v1/admin/users/:userId/status
+-- POST /api/v1/admin/qualifications
+-- POST /api/v1/admin/announcements
+-- PUT /api/v1/admin/users/:userId/status
 - GET /api/v1/admin/users/:userId/enrollments
 
 Admin endpoints (except login) require Authorization header:

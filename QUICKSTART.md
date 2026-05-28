@@ -110,7 +110,7 @@ If all three work → API is live! 🎉
 - [x] Auto-issue certificate when all modules complete
 - [x] View progress dashboard
 - [x] View earned certificates
-- [x] View notifications (enrollments, results, announcements, schedules)
+- [x] View notifications (enrollments, results, announcements)
 - [x] Update profile & change password
 
 ### ✅ Admin Features
@@ -118,7 +118,7 @@ If all three work → API is live! 🎉
 - [x] Create/edit modules and materials
 - [x] Create assessment questions
 - [x] Broadcast announcements to users
-- [x] Schedule training events
+- [x] Training events management (deprecated)
 - [x] View all learners
 - [x] Update user status (Active/Inactive/Suspended)
 - [x] View user progress and enrollment history
@@ -166,7 +166,7 @@ POST   /assessments/submit
 GET    /assessments/:moduleId/history
 GET    /notifications
 GET    /notifications/announcements
-GET    /notifications/schedules
+<!-- /notifications/schedules removed -->
 GET    /notifications/certificates
 GET    /notifications/certificates/:id
 ```
@@ -175,7 +175,7 @@ GET    /notifications/certificates/:id
 ```
 POST   /admin/qualifications
 POST   /admin/announcements
-POST   /admin/schedules
+<!-- /admin/schedules removed -->
 GET    /admin/users
 PUT    /admin/users/:id/status
 GET    /admin/users/:id/enrollments
@@ -254,7 +254,7 @@ See **TESTING_GUIDE.md** for complete curl command examples.
 - LearningMaterials, MaterialProgress
 - Assessments, AssessmentQuestions, AssessmentOptions, AssessmentAttempts
 - Certificates, Notifications
-- Announcements, Schedules
+- Announcements
 
 **Key Constraints:**
 - Status fields limited to valid values (Active/Inactive/Suspended, etc.)

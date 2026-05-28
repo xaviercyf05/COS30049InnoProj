@@ -13,7 +13,6 @@ DROP TABLE IF EXISTS
   BadgeLinkedModules,
   Badges,
   Announcements,
-  Schedules,
   ModuleCompletions,
   Certificates,
   user_progress,
@@ -183,6 +182,7 @@ CREATE TABLE IF NOT EXISTS AssessmentOptions (
   QuestionID INT UNSIGNED NOT NULL,
   OptionText TEXT NOT NULL,
   IsCorrect TINYINT(1) NOT NULL DEFAULT 0,
+  CreatedAt TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_assessment_options_question FOREIGN KEY (QuestionID) REFERENCES AssessmentQuestions (QuestionID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
@@ -275,28 +275,18 @@ CREATE TABLE IF NOT EXISTS ModuleCompletions (
   UserID INT UNSIGNED NOT NULL,
   ModuleID INT UNSIGNED NOT NULL,
   AssessmentID INT UNSIGNED NULL,
+  CompletionStatus ENUM('completed', 'incomplete') NOT NULL DEFAULT 'completed',
   CompletedBy INT UNSIGNED NULL,
   CompletedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UpdatedByAdminID INT UNSIGNED NULL,
   UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_module_completions_user_module (UserID, ModuleID),
   CONSTRAINT fk_module_completions_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
   CONSTRAINT fk_module_completions_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE,
   CONSTRAINT fk_module_completions_assessment FOREIGN KEY (AssessmentID) REFERENCES Assessments (AssessmentID) ON DELETE SET NULL,
   CONSTRAINT fk_module_completions_completed_by FOREIGN KEY (CompletedBy) REFERENCES Users (UserID) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-CREATE TABLE IF NOT EXISTS Schedules (
-  ScheduleID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  UserID INT UNSIGNED NOT NULL,
-  QualificationID INT UNSIGNED NOT NULL,
-  Title VARCHAR(160) NOT NULL,
-  Description TEXT NULL,
-  EventDate DATE NOT NULL,
-  StartTime TIME NOT NULL,
-  EndTime TIME NOT NULL,
-  CONSTRAINT fk_schedules_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
-  CONSTRAINT fk_schedules_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+-- Schedules table removed: schedules functionality is deprecated
 
 CREATE TABLE IF NOT EXISTS Announcements (
   AnnouncementID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -338,6 +328,23 @@ CREATE TABLE IF NOT EXISTS BadgeLinkedModules (
   CONSTRAINT fk_badge_linked_modules_module FOREIGN KEY (ModuleID) REFERENCES Modules (ModuleID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+CREATE TABLE IF NOT EXISTS BadgeIssuances (
+  IssuanceID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  UserID INT UNSIGNED NOT NULL,
+  BadgeID INT UNSIGNED NOT NULL,
+  AssessmentID INT UNSIGNED NULL,
+  Status ENUM('pending', 'issued', 'rejected') NOT NULL DEFAULT 'pending',
+  IssuedBy INT UNSIGNED NULL,
+  IssuedAt DATETIME NULL,
+  Note VARCHAR(1000) NULL,
+  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  CONSTRAINT fk_issuance_badge FOREIGN KEY (BadgeID) REFERENCES Badges (BadgeID) ON DELETE CASCADE,
+  CONSTRAINT fk_issuance_issued_by FOREIGN KEY (IssuedBy) REFERENCES Users (UserID) ON DELETE SET NULL,
+  CONSTRAINT fk_issuance_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+
 CREATE TABLE IF NOT EXISTS UserBadges (
   UserBadgeID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   UserID INT UNSIGNED NOT NULL,
@@ -346,7 +353,6 @@ CREATE TABLE IF NOT EXISTS UserBadges (
   AssessmentID INT UNSIGNED NULL,
   ModuleID INT UNSIGNED NULL,
   IssuedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_user_badge (UserID, BadgeID),
   CONSTRAINT fk_userbadges_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
   CONSTRAINT fk_userbadges_badge FOREIGN KEY (BadgeID) REFERENCES Badges (BadgeID) ON DELETE CASCADE,
   CONSTRAINT fk_userbadges_issued_by FOREIGN KEY (IssuedBy) REFERENCES Users (UserID) ON DELETE SET NULL
@@ -386,21 +392,22 @@ CREATE INDEX idx_email_verification_tokens_user_type ON EmailVerificationTokens 
 CREATE INDEX idx_email_verification_tokens_expires ON EmailVerificationTokens (ExpiresAt);
 
 CREATE TABLE IF NOT EXISTS PasskeyCredentials (
-  CredentialID VARCHAR(255) NOT NULL PRIMARY KEY,
+  PasskeyCredentialID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  CredentialID VARCHAR(255) NOT NULL UNIQUE,
   UserID INT UNSIGNED NOT NULL,
   PublicKey LONGTEXT CHARACTER SET utf8mb4 COLLATE utf8mb4_bin NOT NULL,
   Counter INT UNSIGNED NOT NULL DEFAULT 0,
-  Transports TEXT NULL,
-  DeviceName VARCHAR(255) NULL,
+  Transports JSON NULL,
+  DeviceName VARCHAR(120) NULL,
   AAGUID VARCHAR(64) NULL,
   BackupEligible TINYINT(1) NOT NULL DEFAULT 0,
-  IsDiscoverable TINYINT(1) NOT NULL DEFAULT 0,
+  IsDiscoverable TINYINT(1) NOT NULL DEFAULT 1,
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
   LastUsedAt TIMESTAMP NULL DEFAULT NULL,
   CONSTRAINT fk_passkey_credentials_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
 CREATE INDEX idx_passkey_credentials_user ON PasskeyCredentials (UserID, CreatedAt);
+CREATE INDEX idx_passkey_credentials_credential ON PasskeyCredentials (CredentialID);
 
 CREATE TABLE IF NOT EXISTS MFARecoveryCodes (
   RecoveryCodeID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
@@ -491,35 +498,29 @@ CREATE TABLE IF NOT EXISTS Park (
   Latitude DECIMAL(10, 7) NOT NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
-INSERT INTO Park (ParkName, Longitude, Latitude) VALUES
-  ('Bako National Park', 110.467, 1.717),
-  ('Similajau National Park', 113.233, 3.424),
-  ('Kubah National Park', 110.194, 1.598),
-  ('Gunung Mulu National Park', 114.813, 4.043),
-  ('Maludam National Park', 111.092, 1.549);
-
-CREATE TABLE IF NOT EXISTS RichContents (
-  ContentID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  CreatedByUserID INT UNSIGNED NOT NULL,
-  Title VARCHAR(200) NOT NULL,
-  ContentHtml LONGTEXT NOT NULL,
-  ContentPlainText LONGTEXT NULL,
+CREATE TABLE IF NOT EXISTS ESP32SensorLogs (
+  LogID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+  DeviceID VARCHAR(100) NOT NULL,
+  Location VARCHAR(100) NULL,
+  Temperature DECIMAL(6,2) NULL,
+  Humidity DECIMAL(6,2) NULL,
+  Distance DECIMAL(8,3) NULL,
+  Sound INT NULL,
+  Rain INT NULL,
+  Soil DECIMAL(6,2) NULL,
+  SoilRaw INT NULL,
+  DistanceStatus VARCHAR(50) NULL,
+  SoundStatus VARCHAR(50) NULL,
+  TempStatus VARCHAR(50) NULL,
+  HumStatus VARCHAR(50) NULL,
+  RainStatus VARCHAR(50) NULL,
+  RainLevel TINYINT NULL,
+  SoilStatus VARCHAR(50) NULL,
+  Severity VARCHAR(10) NULL DEFAULT 'LOW',
+  Timestamp TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
   CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UpdatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-  CONSTRAINT fk_rich_contents_user FOREIGN KEY (CreatedByUserID) REFERENCES Users (UserID) ON DELETE CASCADE
+  INDEX idx_device (DeviceID),
+  INDEX idx_timestamp (Timestamp),
+  INDEX idx_severity (Severity),
+  Status BOOLEAN NOT NULL DEFAULT 0
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS RichContentAttachments (
-  AttachmentID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  ContentID INT UNSIGNED NOT NULL,
-  OriginalFileName VARCHAR(255) NOT NULL,
-  StoredFileName VARCHAR(255) NOT NULL,
-  MimeType VARCHAR(120) NOT NULL,
-  FileSizeBytes BIGINT UNSIGNED NOT NULL,
-  RelativePath VARCHAR(500) NOT NULL,
-  CreatedAt TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  CONSTRAINT fk_rich_attachments_content FOREIGN KEY (ContentID) REFERENCES RichContents (ContentID) ON DELETE CASCADE
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE INDEX idx_rich_contents_created_by ON RichContents (CreatedByUserID);
-CREATE INDEX idx_rich_attachments_content ON RichContentAttachments (ContentID);

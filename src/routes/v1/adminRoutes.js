@@ -118,39 +118,7 @@ router.delete(
   asyncHandler(adminController.deleteAnnouncement)
 );
 
-/**
- * POST /admin/schedules - Create schedule event for a user
- * Body: { targetUserId, qualificationId, title, description?, eventDate, startTime, endTime }
- */
-router.post(
-  "/schedules",
-  [
-    body("targetUserId")
-      .isInt()
-      .withMessage("Valid target user ID is required."),
-    body("qualificationId")
-      .isInt()
-      .withMessage("Valid qualification ID is required."),
-    body("title")
-      .trim()
-      .isLength({ min: 3, max: 160 })
-      .withMessage("Title must be between 3 and 160 characters."),
-    body("description")
-      .optional()
-      .trim(),
-    body("eventDate")
-      .isISO8601()
-      .withMessage("Valid event date is required."),
-    body("startTime")
-      .matches(/^\d{2}:\d{2}(:\d{2})?$/)
-      .withMessage("Start time must be in HH:MM or HH:MM:SS format."),
-    body("endTime")
-      .matches(/^\d{2}:\d{2}(:\d{2})?$/)
-      .withMessage("End time must be in HH:MM or HH:MM:SS format."),
-  ],
-  validate,
-  asyncHandler(adminController.createSchedule)
-);
+// Schedules routes removed — schedules functionality deprecated.
 
 /**
  * GET /admin/users - Get all users

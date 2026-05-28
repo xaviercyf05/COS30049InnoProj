@@ -614,7 +614,7 @@ curl http://localhost:5000/api/v1/notifications/announcements \
     {
       "announcementId": 1,
       "title": "New Training Schedule Released",
-      "message": "Check your schedules for upcoming training sessions.",
+      "message": "Check your notifications for upcoming training sessions.",
       "targetRole": "User",
       "createdAt": "2024-01-10T09:00:00Z",
       "expiryDate": null
@@ -624,32 +624,7 @@ curl http://localhost:5000/api/v1/notifications/announcements \
 }
 ```
 
-#### 7.3 Get User Schedules
-
-**Request:**
-```bash
-curl http://localhost:5000/api/v1/notifications/schedules \
-  -H "Authorization: Bearer $TOKEN"
-```
-
-**Expected Response (200):**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "scheduleId": 1,
-      "qualificationName": "Sarawak National Park Guide Certification",
-      "title": "Module 1 Theory Session",
-      "description": "Interactive classroom session covering conservation basics",
-      "eventDate": "2024-01-22",
-      "startTime": "09:00",
-      "endTime": "11:30"
-    }
-  ],
-  "message": "Schedules retrieved successfully"
-}
-```
+<!-- Schedules endpoints removed: User schedules retrieval is deprecated -->
 
 ---
 
@@ -859,37 +834,7 @@ curl -X POST http://localhost:5000/api/v1/admin/announcements \
 
 Valid targetRoles: `User`, `Admin`, `All`
 
-#### 9.6 Create Schedule Event (Admin Only)
-
-**Request:**
-```bash
-curl -X POST http://localhost:5000/api/v1/admin/schedules \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer $ADMIN_TOKEN" \
-  -d '{
-    "userId": 3,
-    "qualificationId": 1,
-    "title": "One-on-One Mentoring Session",
-    "description": "Personalized guidance on Module 2 content",
-    "eventDate": "2024-01-25",
-    "startTime": "14:00:00",
-    "endTime": "15:30:00"
-  }'
-```
-
-**Expected Response (201):**
-```json
-{
-  "success": true,
-  "data": {
-    "scheduleId": 10,
-    "title": "One-on-One Mentoring Session",
-    "eventDate": "2024-01-25",
-    "createdAt": "2024-01-15T15:45:00Z"
-  },
-  "message": "Schedule created successfully"
-}
-```
+<!-- Admin schedule creation removed: scheduling deprecated -->
 
 #### 9.7 Get User Enrollment Details (Admin Only)
 
@@ -1001,11 +946,11 @@ All endpoints return error responses in the standard format:
    - Status changes to "Issued"
    - User receives certificate notification
 9. **View Progress** → anytime check completion percentage
-10. **View Schedules** → admin-scheduled events for this user
+10. **View Notifications** → admin events and announcements for this user
 11. **View Announcements** → role-targeted messages from admin
 
 **Admin Operations:**
-- Create qualifications, announcements, schedules
+- Create qualifications, announcements
 - View all users and their progress
 - Update user status (Active/Inactive/Suspended)
 - Export enrollment details

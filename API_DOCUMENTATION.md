@@ -1,573 +1,472 @@
 # Digital Park Guide Training Platform - API Documentation
 
-## Base URL
+This document reflects the implemented backend routes in `src/routes`, `feature_modules/rich-content`, and the health routes defined in `src/app.js`.
+
+## Base URLs
+
+Development:
 ```
 http://localhost:3000/api/v1
 ```
 
-Production base URL:
+Production:
 ```
 https://api.innopappserver.xyz/api/v1
 ```
 
-Important:
-- `/auth/login` is a `POST` endpoint only.
-- Opening `https://api.innopappserver.xyz/api/v1/auth/login` in a browser sends a `GET` request and will return `{"success":false,"message":"Endpoint not found."}`.
-
 ## Authentication
-Most endpoints require a Bearer token obtained from login. Include token in headers:
+
+Most protected endpoints require a Bearer token:
 ```
 Authorization: Bearer <token>
 ```
 
----
+Admin endpoints require an admin JWT. User endpoints accept user or admin JWTs where the middleware allows it.
 
-## 1. AUTHENTICATION ENDPOINTS
+## Standard Response Pattern
+
+Most JSON responses use one of these shapes:
+```
+{ "success": true, "data": ... }
+```
+```
+{ "success": true, "message": "..." }
+```
+```
+{ "success": false, "message": "..." }
+```
+
+## Health and Root Routes
+
+### GET `/health`
+Checks database connectivity.
+
+### GET `/api/health`
+Alias for `/health`.
+
+### GET `/`
+Returns the frontend entry page when a build is available, otherwise serves `public/index.html`.
+
+### GET `/icons/:icon`
+Serves icon assets from the built frontend or `public/icons` when available.
+
+## Public API
+
+### POST `/public/register`
+Submit a registration request with a resume upload.
+
+Multipart form fields:
+- `resume` - PDF resume file
+
+## Authentication API
+
+### GET `/auth/login`
+Returns `405 Method Not Allowed`. Use `POST /auth/login`.
 
 ### POST `/auth/login`
-Login a user (park guide or admin).
+Login with username or user ID.
 
-Full production endpoint:
-```
-POST https://api.innopappserver.xyz/api/v1/auth/login
-```
+### POST `/auth/login/methods`
+Check which login methods are enabled for an account.
 
-**Request Body:**
-```json
-{
-  "username": "john_guide",
-  "password": "SecurePass123"
-}
-```
+### POST `/auth/login/recovery-code`
+Login using an MFA recovery code.
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "token": "eyJhbGciOiJIUzI1NiIs...",
-    "tokenType": "Bearer",
-    "expiresIn": "12h",
-    "user": {
-      "userId": 1,
-      "username": "john_guide",
-      "role": "User"
-    }
-  }
-}
-```
+### POST `/auth/passkey/login/options`
+Generate passkey authentication options.
 
----
+### POST `/auth/passkey/login/verify`
+Verify a passkey authentication response.
 
-## 2. USER PROFILE ENDPOINTS
+### POST `/auth/login/email-code/request`
+Request a passwordless email sign-in code.
+
+### POST `/auth/login/email-code/verify`
+Verify a passwordless email sign-in code.
+
+### POST `/auth/forgot-password`
+Request a password reset email.
+
+### POST `/auth/refresh`
+Refresh a valid JWT token.
+
+### GET `/auth/reset-password`
+Render the password reset form.
+
+### POST `/auth/reset-password`
+Complete a password reset.
+
+### GET `/auth/verify-email`
+Verify email and activate the user account.
+
+### POST `/auth/mfa/verify-token`
+Verify an MFA token or recovery code during login.
+
+### POST `/auth/mfa/complete-login`
+Complete login after MFA verification.
+
+## User API
+
+All routes in this section require a valid user or admin token.
 
 ### GET `/user/profile`
-Get logged-in user's profile. **(Requires Auth)**
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "userId": 1,
-    "username": "john_guide",
-    "fullName": "John Guide",
-    "email": "john@example.com",
-    "role": "User",
-    "status": "Active",
-    "isActive": true,
-    "progress": 0,
-    "createdAt": "2026-04-10T12:00:00Z"
-  }
-}
-```
+Get the current user profile.
 
 ### PUT `/user/profile`
-Update user profile information. **(Requires Auth)**
+Update the current user profile.
 
-**Request Body:**
-```json
-{
-  "fullName": "John Updated",
-  "email": "john.new@example.com"
-}
-```
+### PUT `/user/profile/image`
+Update the current user profile image.
 
 ### POST `/user/change-password`
-Change user password. **(Requires Auth)**
+Change the current user password.
 
-**Request Body:**
-```json
-{
-  "currentPassword": "SecurePass123",
-  "newPassword": "NewSecurePass456"
-}
-```
+### POST `/user/mfa/setup/initiate`
+Initiate MFA setup and return setup data.
 
----
+### POST `/user/mfa/setup/confirm`
+Confirm MFA setup with a verification token.
 
-## 3. QUALIFICATIONS ENDPOINTS
+### GET `/user/mfa/status`
+Get MFA status for the current user.
+
+### POST `/user/mfa/disable`
+Disable MFA for the current user.
+
+### POST `/user/mfa/recovery-codes/regenerate`
+Regenerate MFA recovery codes.
+
+### GET `/user/passkeys`
+List registered passkeys for the current user.
+
+### POST `/user/passkeys/setup/initiate`
+Begin passkey registration.
+
+### POST `/user/passkeys/setup/confirm`
+Finish passkey registration.
+
+### DELETE `/user/passkeys/:credentialId`
+Remove a registered passkey.
+
+## Qualifications API
 
 ### GET `/qualifications`
-Get all available qualifications. **(Public)**
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "qualificationId": 1,
-      "name": "Sarawak National Park Guide",
-      "status": "Active"
-    },
-    {
-      "qualificationId": 2,
-      "name": "Nature Reserve Conservation",
-      "status": "Active"
-    }
-  ]
-}
-```
+List all qualifications. Public.
 
 ### GET `/qualifications/:qualificationId`
-Get qualification details including modules. **(Public)**
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "qualificationId": 1,
-    "name": "Sarawak National Park Guide",
-    "status": "Active",
-    "modules": [
-      {
-        "moduleId": 1,
-        "title": "Module 1: Conservation Fundamentals"
-      },
-      {
-        "moduleId": 2,
-        "title": "Module 2: Biodiversity Deep Dive"
-      },
-      {
-        "moduleId": 3,
-        "title": "Module 3: Advanced Park Management"
-      }
-    ]
-  }
-}
-```
-
-### POST `/qualifications/enroll`
-Enroll user in a qualification. **(Requires Auth)**
-
-**Request Body:**
-```json
-{
-  "qualificationId": 1
-}
-```
-
-**Response (201 Created):**
-```json
-{
-  "success": true,
-  "message": "Successfully enrolled in qualification.",
-  "data": {
-    "certificateId": 5,
-    "qualificationId": 1,
-    "status": "Pending"
-  }
-}
-```
+Get qualification details. Public.
 
 ### GET `/qualifications/user/my-qualifications`
-Get user's enrolled qualifications. **(Requires Auth)**
+Get the authenticated user’s enrolled qualifications.
+
+### POST `/qualifications/enroll`
+Enroll the authenticated user in a qualification.
 
 ### GET `/qualifications/:qualificationId/progress`
-Get user's progress in a qualification including module status. **(Requires Auth)**
+Get the authenticated user’s progress in a qualification.
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "qualificationId": 1,
-    "moduleProgress": [
-      {
-        "moduleId": 1,
-        "moduleTitle": "Module 1: Conservation Fundamentals",
-        "materialsCompleted": 3,
-        "materialTotal": 5,
-        "assessmentPassed": false,
-        "canAttemptAssessment": true,
-        "isUnlocked": true
-      },
-      {
-        "moduleId": 2,
-        "moduleTitle": "Module 2: Biodiversity Deep Dive",
-        "materialsCompleted": 0,
-        "materialTotal": 5,
-        "assessmentPassed": false,
-        "canAttemptAssessment": false,
-        "isUnlocked": false
-      }
-    ],
-    "overallStatus": "In Progress",
-    "completionPercentage": 33
-  }
-}
-```
+## Modules API
 
----
+All routes in this section require a valid user or admin token.
 
-## 4. MODULES & MATERIALS ENDPOINTS
+### GET `/modules/dashboard`
+Get modules and progress summary for dashboard cards.
 
 ### GET `/modules/:qualificationId/all`
-Get all modules for a qualification. **(Requires Auth)**
+Get all modules for a qualification.
 
 ### GET `/modules/:moduleId/details`
-Get module details with learning materials list. **(Requires Auth)**
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "moduleId": 1,
-    "qualificationId": 1,
-    "title": "Module 1: Conservation Fundamentals",
-    "chapters": [
-      "Conservation Basics",
-      "Biodiversity",
-      "Eco-tourism",
-      "Legislation",
-      "Safety"
-    ],
-    "materials": [
-      {
-        "materialId": 1,
-        "chapter": "Conservation Basics",
-        "title": "Introduction to Conservation",
-        "contentType": "text",
-        "isCompleted": true
-      },
-      {
-        "materialId": 2,
-        "chapter": "Conservation Basics",
-        "title": "Sustainable Practices",
-        "contentType": "text",
-        "isCompleted": false
-      }
-    ]
-  }
-}
-```
+Get module details with learning materials.
 
 ### GET `/modules/material/:materialId/content`
-Get full learning material content. **(Requires Auth)**
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "materialId": 1,
-    "moduleId": 1,
-    "chapter": "Conservation Basics",
-    "title": "Introduction to Conservation",
-    "contentType": "text",
-    "content": "Long content text here...",
-    "isCompleted": false
-  }
-}
-```
+Get full learning material content.
 
 ### POST `/modules/material/complete`
-Mark a learning material as completed. **(Requires Auth)**
+Mark a learning material as completed.
 
-**Request Body:**
-```json
-{
-  "materialId": 1
-}
-```
+### GET `/modules/:moduleId/progress`
+Get the authenticated user’s progress for a module.
 
----
+### POST `/modules/:moduleId/progress`
+Save the authenticated user’s progress for a module.
 
-## 5. ASSESSMENTS ENDPOINTS
+### GET `/modules/:moduleId/payment-status`
+Get the authenticated user’s payment or evidence status for a module.
+
+## Assessments API
+
+All routes in this section require a valid user or admin token, except the dev-only submission helper.
 
 ### GET `/assessments/:moduleId/questions`
-Get assessment questions for a module with options. **(Requires Auth)**
+Get assessment questions for a module.
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "assessmentId": 1,
-    "moduleId": 1,
-    "title": "Module 1 Assessment",
-    "passingScore": 70,
-    "totalQuestions": 10,
-    "questions": [
-      {
-        "questionId": 1,
-        "questionText": "What is conservation?",
-        "questionType": "multiple_choice",
-        "options": [
-          {
-            "optionId": 1,
-            "text": "Preserving natural resources"
-          },
-          {
-            "optionId": 2,
-            "text": "Destroying habitats"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
+### GET `/assessments/:assessmentId`
+Get assessment details.
 
 ### GET `/assessments/:assessmentId/eligibility`
-Check if user can attempt assessment (remaining attempts, cooldown). **(Requires Auth)**
+Check whether the authenticated user can attempt an assessment.
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": {
-    "canAttempt": true,
-    "remainingAttempts": 2
-  }
-```
-
-Or if on cooldown:
-```json
-{
-  "success": true,
-  "data": {
-    "canAttempt": false,
-    "reason": "Must wait 45 more minutes before next attempt",
-    "remainingAttempts": 1,
-    "cooldownEndsAt": "2026-04-10T13:45:00Z"
-  }
-}
-```
+### POST `/assessments/submit-test`
+Dev-only helper to simulate an assessment submission without authentication.
 
 ### POST `/assessments/submit`
-Submit assessment attempt with answers. **(Requires Auth)**
-
-**Request Body:**
-```json
-{
-  "assessmentId": 1,
-  "answers": [
-    { "optionId": 1 },
-    { "optionId": 4 },
-    { "optionId": 2 }
-  ]
-}
-```
-
-**Response (201 Created):**
-```json
-{
-  "success": true,
-  "message": "Assessment attempt submitted successfully.",
-  "data": {
-    "attemptId": 10,
-    "assessmentId": 1,
-    "score": 80,
-    "totalQuestions": 10,
-    "correctCount": 8,
-    "passingScore": 70,
-    "status": "Passed",
-    "passed": true
-  }
-}
-```
+Submit an authenticated assessment attempt.
 
 ### GET `/assessments/:moduleId/history`
-Get user's assessment attempt history. **(Requires Auth)**
+Get the authenticated user’s assessment attempt history.
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "attemptId": 10,
-      "assessmentId": 1,
-      "score": 80,
-      "status": "Passed",
-      "submittedAt": "2026-04-10T13:00:00Z",
-      "isPassed": true,
-      "passingScore": 70
-    }
-  ]
-}
-```
+## Notifications API
 
----
-
-## 6. NOTIFICATIONS & CERTIFICATES ENDPOINTS
+All routes in this section require a valid user or admin token.
 
 ### GET `/notifications`
-Get user's notifications. **(Requires Auth)**
-
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "notificationId": 1,
-      "title": "Assessment Passed! 🎉",
-      "message": "Congratulations! You passed the Module 1 assessment..."
-    }
-  ]
-}
-```
+Get the current user’s notifications.
 
 ### GET `/notifications/announcements`
-Get announcements for user's role. **(Requires Auth)**
+Get announcements relevant to the current user’s role.
 
-### GET `/notifications/certificates`
-Get user's certificates. **(Requires Auth)**
+## Badge API
 
-**Response (200 OK):**
-```json
-{
-  "success": true,
-  "data": [
-    {
-      "certificateId": 5,
-      "qualificationId": 1,
-      "qualificationName": "Sarawak National Park Guide",
-      "status": "Issued",
-      "isIssued": true
-    }
-  ]
-}
-```
+### GET `/badges`
+Get the badge list for the current authenticated user.
 
-### GET `/notifications/certificates/:certificateId`
-Get certificate details. **(Requires Auth)**
+## Sensor API
 
----
+These routes are mounted at `/api/v1/sensors`.
 
-## 7. ADMIN MANAGEMENT ENDPOINTS
+### POST `/sensors/log`
+Submit sensor data from a device.
+
+### GET `/sensors/device/:deviceID`
+Get the latest sensor data for a device.
+
+### GET `/sensors/stats/:deviceID`
+Get sensor statistics for a device.
+
+### GET `/sensors/alerts/:deviceID`
+Get sensor alerts for a device.
+
+## Evidence API
+
+These routes are mounted at `/api/v1/evidence`.
+
+### POST `/evidence/log`
+Submit an evidence clip from a device.
+
+## Rich Content API
+
+These routes are mounted at `/api/v1/rich-content` and require a valid user or admin token.
+
+### GET `/rich-content`
+List rich content entries.
+
+### GET `/rich-content/:contentId`
+Get a single rich content entry including attachment URLs.
+
+### POST `/rich-content`
+Create a rich content entry with optional file attachments.
+
+Multipart form fields:
+- `title` - content title
+- `contentHtml` - HTML content
+- `files` - up to 10 attachments
+
+## Admin API
+
+All routes in this section require an admin token.
+
+### Qualifications
 
 ### POST `/admin/qualifications`
-Create new qualification. **(Requires Admin Auth)**
+Create a qualification.
 
-**Request Body:**
-```json
-{
-  "name": "New Park Guide Program",
-  "status": "Active"
-}
-```
+### Announcements
 
 ### POST `/admin/announcements`
-Create announcement for specific role. **(Requires Admin Auth)**
+Create an announcement.
 
-**Request Body:**
-```json
-{
-  "title": "Important Maintenance Notice",
-  "content": "The park will be closed for maintenance...",
-  "targetRole": "User",
-  "expiryDate": "2026-05-01"
-}
-```
+### GET `/admin/announcements`
+List announcements.
 
-<!-- POST /admin/schedules removed: scheduling deprecated -->
+### PUT `/admin/announcements/:announcementId`
+Update an announcement.
+
+### DELETE `/admin/announcements/:announcementId`
+Delete an announcement.
+
+### Users
 
 ### GET `/admin/users`
-Get all users. **(Requires Admin Auth)**
+List users.
 
 ### PUT `/admin/users/:userId/status`
-Update user account status. **(Requires Admin Auth)**
-
-**Request Body:**
-```json
-{
-  "targetUserId": 2,
-  "status": "Suspended"
-}
-```
+Update a user status.
 
 ### GET `/admin/users/:userId/enrollments`
-Get user's enrollment and qualification progress. **(Requires Admin Auth)**
+Get a user’s enrollment details.
 
----
+### Evidence and Sensor Alerts
 
-## ERROR RESPONSES
+### GET `/admin/evidence`
+List evidence alerts.
 
-All endpoints follow standard error format:
+### GET `/admin/evidence/:evidenceId/video`
+Stream an evidence video.
 
-```json
-{
-  "success": false,
-  "message": "Error description"
-}
-```
+### PUT `/admin/evidence/:evidenceId/status`
+Update solved status for an evidence item.
 
-**Common HTTP Status Codes:**
-- `200` - Success
-- `201` - Created
-- `400` - Bad Request (validation error)
-- `401` - Unauthorized (missing/invalid token)
-- `403` - Forbidden (insufficient permissions)
-- `404` - Not Found
-- `409` - Conflict (duplicate entry)
-- `500` - Internal Server Error
+### GET `/admin/esp32sensorlogs`
+List ESP32 sensor alerts.
 
----
+### GET `/admin/esp32-sensor-logs`
+Alias for ESP32 sensor alerts.
 
-## LEARNING FLOW SUMMARY
+### GET `/admin/sensor-logs`
+Alias for ESP32 sensor alerts.
 
-1. **User enrolls in qualification** → Gets access to Module 1
-2. **User reads learning materials** → Can be in any order
-3. **User completes materials** (optional for assessment, but recommended)
-4. **User attempts assessment** → Limited to 3 attempts with 1-hour cooldown
-5. **User passes assessment** → Unlocks next module
-6. **User completes all modules** → Certificate issued automatically
-7. **User gets notifications** → For enrollment, assessment results, certificates
+### POST `/admin/esp32sensorlogs/upload`
+Upload ESP32 sensor logs from CSV.
 
----
+### POST `/admin/esp32-sensor-logs/upload`
+Alias for CSV upload.
 
-## RESPONSE CODES QUICK REFERENCE
+### POST `/admin/sensor-logs/upload`
+Alias for CSV upload.
 
-| Endpoint | Method | Auth Required | Purpose |
-|----------|--------|---------------|---------|
-| `/auth/login` | POST | No | Authenticate user |
-| `/user/profile` | GET | Yes | Get own profile |
-| `/user/profile` | PUT | Yes | Update own profile |
-| `/user/change-password` | POST | Yes | Change password |
-| `/qualifications` | GET | No | List all qualifications |
-| `/qualifications/:id` | GET | No | Get qualification details |
-| `/qualifications/enroll` | POST | Yes | Enroll in qualification |
-| `/qualifications/:id/progress` | GET | Yes | Get progress |
-| `/modules/:qId/all` | GET | Yes | List modules |
-| `/modules/:mId/details` | GET | Yes | Get module details |
-| `/modules/material/:mId/content` | GET | Yes | Get material content |
-| `/modules/material/complete` | POST | Yes | Mark material done |
-| `/assessments/:mId/questions` | GET | Yes | Get assessment |
-| `/assessments/:aId/eligibility` | GET | Yes | Check attempt eligibility |
-| `/assessments/submit` | POST | Yes | Submit attempt |
-| `/assessments/:mId/history` | GET | Yes | Get attempt history |
-| `/notifications` | GET | Yes | Get notifications |
-| `/notifications/announcements` | GET | Yes | Get announcements |
-| `/notifications/certificates` | GET | Yes | List certificates |
-| `/admin/qualifications` | POST | Admin | Create qualification |
-| `/admin/announcements` | POST | Admin | Create announcement |
-    
-| `/admin/users` | GET | Admin | List all users |
-| `/admin/users/:uid/status` | PUT | Admin | Update user status |
-| `/admin/users/:uid/enrollments` | GET | Admin | Get enrollments |
+### PUT `/admin/esp32sensorlogs/:logId/status`
+Update solved status for an ESP32 sensor log.
+
+### PUT `/admin/esp32-sensor-logs/:logId/status`
+Alias for sensor log status updates.
+
+### PUT `/admin/sensor-logs/:logId/status`
+Alias for sensor log status updates.
+
+### Payments
+
+### GET `/admin/payments`
+List payment evidence submissions.
+
+### PUT `/admin/payments/:paymentId/status`
+Approve or reject a payment evidence submission.
+
+### Analytics
+
+### GET `/admin/analytics/dashboard`
+Get aggregated analytics dashboard data.
+
+### Registrations
+
+### GET `/admin/registrations`
+List registration requests.
+
+### PUT `/admin/registrations/:registrationId/status`
+Approve or reject a registration request.
+
+### POST `/admin/registrations/:registrationId/resend-token`
+Resend the registration verification token email.
+
+### GET `/admin/registrations/:registrationId/resume`
+Stream an applicant resume.
+
+### Modules
+
+### GET `/admin/modules/types`
+List available module types.
+
+### GET `/admin/modules`
+List modules for admin management.
+
+### GET `/admin/modules/:moduleId`
+Get module details for editing.
+
+### POST `/admin/modules/cover-image`
+Upload a module cover image.
+
+### POST `/admin/modules`
+Create a module.
+
+### PUT `/admin/modules/:moduleId`
+Update a module.
+
+### PATCH `/admin/modules/:moduleId/link-tpa`
+Link or unlink a module to a TPA module.
+
+### DELETE `/admin/modules/:moduleId`
+Delete a module.
+
+### Badges
+
+### GET `/admin/badges`
+List badges.
+
+### POST `/admin/badges`
+Create a badge.
+
+### PUT `/admin/badges/:badgeId`
+Update a badge.
+
+### DELETE `/admin/badges/:badgeId`
+Delete a badge.
+
+### GET `/admin/modules/:moduleId/badges`
+Get badges linked to a module.
+
+### GET `/admin/badges/issuance-status`
+Get a badge issuance record by user, assessment, and badge.
+
+### POST `/admin/badges/issue`
+Issue a badge to a user.
+
+### Assessments
+
+### GET `/admin/assessments`
+List assessments.
+
+### POST `/admin/assessments`
+Create an assessment.
+
+### PUT `/admin/assessments/:assessmentId/settings`
+Update assessment settings.
+
+### DELETE `/admin/assessments/:assessmentId`
+Delete an assessment.
+
+### GET `/admin/assessments/:assessmentId/questions`
+Get assessment questions.
+
+### POST `/admin/assessments/:assessmentId/questions`
+Add an assessment question.
+
+### PUT `/admin/assessments/questions/:questionId`
+Update an assessment question.
+
+### DELETE `/admin/assessments/questions/:questionId`
+Delete an assessment question.
+
+### GET `/admin/assessments/:assessmentId/attempts`
+List assessment attempts.
+
+### POST `/admin/assessments/:assessmentId/attempts/:attemptId/reset`
+Reset a user attempt.
+
+### PUT `/admin/assessments/:assessmentId/badge/:badgeId`
+Link a badge to an assessment.
+
+### DELETE `/admin/assessments/:assessmentId/badge`
+Unlink a badge from an assessment.
+
+### GET `/admin/assessments/:assessmentId/badge`
+Get the badge linked to an assessment.
+
+### Users and Completion Management
+
+### POST `/admin/users/:userId/badges`
+Issue a badge to a user.
+
+### GET `/admin/qualifications/on-site-completions`
+Read persisted on-site completion rows.
+
+### POST `/admin/users/:userId/modules/:moduleId/complete`
+Manually mark a module as completed.

@@ -55,22 +55,7 @@ async function getDashboardModules(req, res) {
     let qualificationId = Number(userRows[0].QualificationID || 0);
 
     if (!qualificationId) {
-      const [certificateRows] = await query(
-        `SELECT QualificationID
-           FROM Certificates
-          WHERE UserID = ?
-          ORDER BY CertificateID DESC
-          LIMIT 1`,
-        [userId]
-      );
-
-      if (certificateRows.length > 0 && certificateRows[0].QualificationID) {
-        qualificationId = Number(certificateRows[0].QualificationID);
-        await query(
-          "UPDATE Users SET QualificationID = ? WHERE UserID = ?",
-          [qualificationId, userId]
-        ).catch(() => {});
-      }
+      qualificationId = 0;
     }
 
     let rows = [];
@@ -96,38 +81,6 @@ async function getDashboardModules(req, res) {
       );
 
       rows = qualificationRows;
-    }
-
-    if (rows.length === 0) {
-      const [certificateModuleRows] = await query(
-        `SELECT m.ModuleID,
-                m.QualificationID,
-                m.ModuleTitle,
-                m.ModuleTypeID,
-          m.ModulePrice,
-                mt.TypeName,
-                 meta.CoverImageUrl,
-                 meta.Summary,
-                 m.LinkedTpaModuleID,
-                 m.LinkedOnsiteModuleID
-           FROM Certificates c
-           INNER JOIN Modules m ON m.QualificationID = c.QualificationID
-           LEFT JOIN ModuleUiMeta meta ON meta.ModuleID = m.ModuleID
-           LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-          WHERE c.UserID = ?
-          ORDER BY c.CertificateID DESC, m.ModuleTypeID ASC, m.ModuleID ASC`,
-        [userId]
-      );
-
-      rows = certificateModuleRows;
-
-      if (!qualificationId && rows.length > 0 && rows[0].QualificationID) {
-        qualificationId = Number(rows[0].QualificationID);
-        await query(
-          "UPDATE Users SET QualificationID = ? WHERE UserID = ?",
-          [qualificationId, userId]
-        ).catch(() => {});
-      }
     }
 
     if (rows.length === 0) {

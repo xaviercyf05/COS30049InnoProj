@@ -77,17 +77,6 @@ const notificationHelpers = {
   },
 
   /**
-   * Notify user upon certificate issuance
-   */
-  async notifyCertificateIssued(userId, qualificationName) {
-    return createNotification(
-      userId,
-      "Certificate Issued! 📜",
-      `Congratulations! You have successfully completed the ${qualificationName} program and earned your certificate.`
-    );
-  },
-
-  /**
    * Notify user of schedule/event
    */
   async notifyScheduleEvent(userId, eventTitle, eventDate) {

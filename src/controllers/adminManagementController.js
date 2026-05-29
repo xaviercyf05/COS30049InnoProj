@@ -962,18 +962,18 @@ async function getUserEnrollmentDetails(req, res) {
 
     // Get enrollments
     const [enrollments] = await query(
-      `SELECT c.CertificateID,
-              c.QualificationID,
-              c.QualificationName,
-              c.Status,
+      `SELECT u.QualificationID,
+              q.QualificationName,
+              q.Status AS QualificationStatus,
               m.ModuleID,
               m.ModuleTitle,
               m.ModulePrice,
               mt.TypeName
-       FROM Certificates c
-       LEFT JOIN Modules m ON m.QualificationID = c.QualificationID
+       FROM Users u
+       LEFT JOIN Qualifications q ON q.QualificationID = u.QualificationID
+       LEFT JOIN Modules m ON m.QualificationID = u.QualificationID
        LEFT JOIN ModuleTypes mt ON mt.ModuleTypeID = m.ModuleTypeID
-       WHERE c.UserID = ?`,
+       WHERE u.UserID = ?`,
       [userId]
     );
 
@@ -985,10 +985,9 @@ async function getUserEnrollmentDetails(req, res) {
         fullName: user.FullName,
         email: user.Email,
         enrollments: enrollments.map((e) => ({
-          certificateId: e.CertificateID,
           qualificationId: e.QualificationID,
           qualificationName: e.QualificationName,
-          status: e.Status,
+          status: e.QualificationStatus || 'Enrolled',
           moduleId: e.ModuleID || null,
           moduleTitle: e.ModuleTitle || null,
           moduleType: e.TypeName || null,
@@ -1363,19 +1362,11 @@ async function getAnalyticsDashboard(req, res) {
         ORDER BY u.UserID ASC`
     );
 
-    const [enrollmentRows] = await query(
-      `SELECT COUNT(DISTINCT c.UserID) AS EnrolledUsers
-         FROM Certificates c
-         INNER JOIN Users u ON u.UserID = c.UserID
-         INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'`
-    );
-
     const [issuedRows] = await query(
-      `SELECT COUNT(DISTINCT c.UserID) AS IssuedUsers
-         FROM Certificates c
-         INNER JOIN Users u ON u.UserID = c.UserID
+      `SELECT COUNT(DISTINCT u.UserID) AS IssuedUsers
+         FROM Users u
          INNER JOIN Roles r ON r.RoleID = u.RoleID AND r.RoleTitle = 'User'
-        WHERE c.Status = 'Issued'`
+        WHERE u.QualificationID IS NOT NULL`
     );
 
     const [userBadgeRows] = await query(

@@ -14,7 +14,6 @@ DROP TABLE IF EXISTS
   Badges,
   Announcements,
   ModuleCompletions,
-  Certificates,
   user_progress,
   MaterialProgress,
   Subsections,
@@ -256,18 +255,6 @@ CREATE TABLE IF NOT EXISTS user_progress (
   INDEX idx_moduleId (moduleId),
   INDEX idx_user_module (userId, moduleId),
   INDEX idx_updated_at (updatedAt)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
-
-CREATE TABLE IF NOT EXISTS Certificates (
-  CertificateID INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-  UserID INT UNSIGNED NOT NULL,
-  QualificationID INT UNSIGNED NOT NULL,
-  QualificationName VARCHAR(150) NOT NULL,
-  Status VARCHAR(50) NOT NULL DEFAULT 'Pending',
-  UNIQUE KEY uq_certificates_user_qualification (UserID, QualificationID),
-  CONSTRAINT fk_certificates_user FOREIGN KEY (UserID) REFERENCES Users (UserID) ON DELETE CASCADE,
-  CONSTRAINT fk_certificates_qualification FOREIGN KEY (QualificationID) REFERENCES Qualifications (QualificationID) ON DELETE CASCADE,
-  CONSTRAINT chk_certificates_status CHECK (Status IN ('Pending', 'Issued', 'Revoked'))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS ModuleCompletions (

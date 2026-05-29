@@ -58,7 +58,7 @@ async function ensureManualCompletionSchema() {
 }
 
 /**
- * Enroll a user in a qualification. Creates Certificates entry and provides access to Module 1.
+ * Enroll a user in a qualification by assigning the qualification on the Users row.
  */
 async function enrollUserInQualification(userId, qualificationId) {
   try {
@@ -72,13 +72,16 @@ async function enrollUserInQualification(userId, qualificationId) {
       throw new Error("Qualification not found");
     }
 
-    // Check if user already enrolled
-    const [existingEnroll] = await query(
-      "SELECT CertificateID FROM Certificates WHERE UserID = ? AND QualificationID = ? LIMIT 1",
-      [userId, qualificationId]
+    const [existingUsers] = await query(
+      "SELECT QualificationID FROM Users WHERE UserID = ? LIMIT 1",
+      [userId]
     );
 
-    if (existingEnroll.length > 0) {
+    if (existingUsers.length === 0) {
+      throw new Error("User not found");
+    }
+
+    if (Number(existingUsers[0].QualificationID || 0) === Number(qualificationId)) {
       throw new Error("User already enrolled in this qualification");
     }
 
@@ -90,21 +93,16 @@ async function enrollUserInQualification(userId, qualificationId) {
 
     const qualName = qualData[0].QualificationName;
 
-    // Create certificate entry with 'Pending' status
-    const [result] = await query(
-      "INSERT INTO Certificates (UserID, QualificationID, QualificationName, Status) VALUES (?, ?, ?, 'Pending')",
-      [userId, qualificationId, qualName]
-    );
-
     await query(
       "UPDATE Users SET QualificationID = ? WHERE UserID = ?",
       [qualificationId, userId]
     );
 
     return {
-      certificateId: result.insertId,
+      userId,
       qualificationId,
-      status: "Pending",
+      qualificationName: qualName,
+      status: "Enrolled",
     };
   } catch (error) {
     throw error;
@@ -221,20 +219,27 @@ async function getQualificationProgress(userId, qualificationId) {
  */
 async function getUserQualifications(userId) {
   try {
-    const [certs] = await query(
-      `SELECT c.CertificateID, c.QualificationID, c.QualificationName, c.Status
-       FROM Certificates c
-       WHERE c.UserID = ?
-       ORDER BY c.QualificationID ASC`,
+    const [rows] = await query(
+      `SELECT u.QualificationID,
+              q.QualificationName,
+              q.Status AS QualificationStatus
+         FROM Users u
+         LEFT JOIN Qualifications q ON q.QualificationID = u.QualificationID
+        WHERE u.UserID = ?
+        LIMIT 1`,
       [userId]
     );
 
-    return certs.map((cert) => ({
-      certificateId: cert.CertificateID,
-      qualificationId: cert.QualificationID,
-      qualificationName: cert.QualificationName,
-      status: cert.Status,
-    }));
+    if (rows.length === 0 || !rows[0].QualificationID) {
+      return [];
+    }
+
+    return [{
+      qualificationId: rows[0].QualificationID,
+      qualificationName: rows[0].QualificationName || null,
+      status: "Enrolled",
+      qualificationStatus: rows[0].QualificationStatus || null,
+    }];
   } catch (error) {
     throw error;
   }

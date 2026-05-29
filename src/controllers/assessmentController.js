@@ -175,57 +175,6 @@ async function submitAssessmentAttempt(req, res) {
             true,
             attempt.score
           );
-
-          // Check if all modules passed, then issue certificate
-          const [certs] = await query(
-            `SELECT c.CertificateID, c.QualificationID, c.QualificationName
-             FROM Certificates c
-             LEFT JOIN Modules m ON m.QualificationID = c.QualificationID
-             WHERE c.UserID = ?
-             LIMIT 1`,
-            [userId]
-          );
-
-          if (
-            certs.length > 0 &&
-            certs[0].QualificationID
-          ) {
-            // Check if all modules for qualification are passed
-            const [allModules] = await query(
-              `SELECT m.ModuleID FROM Modules m WHERE m.QualificationID = ?`,
-              [certs[0].QualificationID]
-            );
-
-            let allPassed = true;
-            for (const mod of allModules) {
-              const [passed] = await query(
-                `SELECT 1 FROM AssessmentAttempts
-                 WHERE UserID = ? AND Status = 'Passed'
-                 AND AssessmentID IN (SELECT AssessmentID FROM Assessments WHERE ModuleID = ?)
-                 LIMIT 1`,
-                [userId, mod.ModuleID]
-              );
-
-              if (passed.length === 0) {
-                allPassed = false;
-                break;
-              }
-            }
-
-            if (allPassed) {
-              // Update certificate to Issued
-              await query(
-                "UPDATE Certificates SET Status = 'Issued' WHERE CertificateID = ?",
-                [certs[0].CertificateID]
-              );
-
-              // Send certificate notification
-              await notificationService.notificationHelpers.notifyCertificateIssued(
-                userId,
-                certs[0].QualificationName
-              );
-            }
-          }
         }
       }
     } else {

@@ -37,7 +37,7 @@ if not defined BACKUP (
 )
 :backup_found
 
-if not defined DB set "DB=appdb_test"
+if not defined DB set "DB=appdb"
 if not defined HOST set "HOST=127.0.0.1"
 if not defined PORT set "PORT=13306"
 if not defined USER set "USER=innogroup"
@@ -62,12 +62,11 @@ if errorlevel 1 (
   exit /b 2
 )
 
-echo Creating database %DB% if missing...
-mysql -h %HOST% -P %PORT% -u %USER% -e "CREATE DATABASE IF NOT EXISTS %DB%;"
-if errorlevel 1 (
-  echo CREATE DATABASE failed
-  exit /b 1
-)
+call :confirm_restore
+if errorlevel 1 exit /b 1
+
+call :recreate_database
+if errorlevel 1 exit /b 1
 
 echo Restoring "%BACKUP%" into %DB%...
 gzip -dc "%BACKUP%" | mysql -h %HOST% -P %PORT% -u %USER% %DB%
@@ -89,6 +88,9 @@ if errorlevel 1 (
   exit /b 2
 )
 
+call :confirm_restore
+if errorlevel 1 exit /b 1
+
 set "RESTORE_TEMP=%TEMP%\innoproj-restore-%RANDOM%%RANDOM%"
 mkdir "%RESTORE_TEMP%" >nul 2>nul
 if errorlevel 1 (
@@ -109,10 +111,8 @@ if not exist "%RESTORE_TEMP%\database.sql" (
   exit /b 1
 )
 
-echo Creating database %DB% if missing...
-mysql -h %HOST% -P %PORT% -u %USER% -e "CREATE DATABASE IF NOT EXISTS %DB%;"
+call :recreate_database
 if errorlevel 1 (
-  echo CREATE DATABASE failed
   rmdir /s /q "%RESTORE_TEMP%"
   exit /b 1
 )
@@ -144,6 +144,32 @@ exit /b 0
 rmdir /s /q "%RESTORE_TEMP%"
 set "MYSQL_PWD="
 exit /b 1
+
+:confirm_restore
+echo WARNING: This will delete the current database %DB% and overwrite any restored storage folders.
+echo Backup source: %BACKUP%
+set /p "CONFIRM=Type yes to continue: "
+if /i not "%CONFIRM%"=="yes" (
+  echo Restore cancelled.
+  exit /b 1
+)
+exit /b 0
+
+:recreate_database
+echo Dropping existing database %DB% if it exists...
+mysql -h %HOST% -P %PORT% -u %USER% -e "DROP DATABASE IF EXISTS %DB%;"
+if errorlevel 1 (
+  echo DROP DATABASE failed
+  exit /b 1
+)
+
+echo Creating database %DB%...
+mysql -h %HOST% -P %PORT% -u %USER% -e "CREATE DATABASE %DB%;"
+if errorlevel 1 (
+  echo CREATE DATABASE failed
+  exit /b 1
+)
+exit /b 0
 
 :restore_dir
 set "SOURCE=%~1"

@@ -27,7 +27,7 @@ if [ -f "$ENV_FILE" ]; then
 fi
 
 BACKUP_FILE="${1:-}"
-TARGET_DB="${2:-appdb_test}"
+TARGET_DB="${2:-appdb}"
 DB_HOST="${3:-127.0.0.1}"
 DB_PORT="${4:-3306}"
 DB_USER="${5:-innogroup}"
@@ -54,6 +54,25 @@ if [ -z "$BACKUP_FILE" ] || [ ! -f "$BACKUP_FILE" ]; then
   exit 1
 fi
 
+confirm_restore() {
+  echo "WARNING: This will delete the current '$TARGET_DB' database and overwrite any restored storage folders."
+  echo "Backup source: $BACKUP_FILE"
+  read -r -p "Type 'yes' to continue: " confirmation
+
+  if [ "$confirmation" != "yes" ]; then
+    echo "Restore cancelled."
+    exit 1
+  fi
+}
+
+recreate_database() {
+  echo "Dropping existing database '$TARGET_DB' if it exists..."
+  mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -e "DROP DATABASE IF EXISTS \`$TARGET_DB\`;"
+
+  echo "Creating database '$TARGET_DB'..."
+  mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -e "CREATE DATABASE \`$TARGET_DB\`;"
+}
+
 if [ -z "$DB_PASSWORD" ]; then
   read -r -s -p "Enter MySQL password for $DB_USER: " DB_PASSWORD
   echo
@@ -79,6 +98,8 @@ restore_bundle() {
     exit 2
   fi
 
+  confirm_restore
+
   RESTORE_TEMP_DIR="$(mktemp -d)"
   trap 'rm -rf "$RESTORE_TEMP_DIR"; unset MYSQL_PWD' EXIT
 
@@ -89,8 +110,7 @@ restore_bundle() {
     exit 1
   fi
 
-  echo "Creating database '$TARGET_DB' if missing..."
-  mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -e "CREATE DATABASE IF NOT EXISTS \`$TARGET_DB\`;"
+  recreate_database
 
   echo "Restoring database payload into '$TARGET_DB'..."
   mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$TARGET_DB" < "$RESTORE_TEMP_DIR/database.sql"
@@ -123,8 +143,9 @@ if ! command -v gzip >/dev/null 2>&1; then
   exit 2
 fi
 
-echo "Creating database '$TARGET_DB' if missing..."
-mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" -e "CREATE DATABASE IF NOT EXISTS \`$TARGET_DB\`;"
+confirm_restore
+
+recreate_database
 
 echo "Restoring '$BACKUP_FILE' into '$TARGET_DB'..."
 gzip -dc "$BACKUP_FILE" | mysql -h "$DB_HOST" -P "$DB_PORT" -u "$DB_USER" "$TARGET_DB"

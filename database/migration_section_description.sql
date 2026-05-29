@@ -1,2 +1,0 @@
-ALTER TABLE Sections
-  ADD COLUMN Description TEXT NULL AFTER Title;

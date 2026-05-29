@@ -7,4 +7,3 @@ CREATE DATABASE IF NOT EXISTS appdb
 USE appdb;
 
 SOURCE database/schema.sql;
-SOURCE database/auth_refresh_tokens_schema.sql;

@@ -6,10 +6,10 @@
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "mobile:start": "npm --prefix mobile run start",
-    "mobile:android": "npm --prefix mobile run android",
-    "mobile:ios": "npm --prefix mobile run ios",
-    "mobile:web": "npm --prefix mobile run web",
+    "mobile:start": "npm --prefix frontend run start",
+    "mobile:android": "npm --prefix frontend run android",
+    "mobile:ios": "npm --prefix frontend run ios",
+    "mobile:web": "npm --prefix frontend run web",
     "test": "node --test"
   },
   "repository": {

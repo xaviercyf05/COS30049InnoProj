@@ -13,17 +13,19 @@ All components of the server-backed refresh-token authentication system have bee
 - ✅ [src/controllers/userController.js](src/controllers/userController.js) - Updated login/refresh endpoints
 - ✅ [src/routes/v1/authRoutes.js](src/routes/v1/authRoutes.js) - Route definitions with validators
 - ✅ [src/config/env.js](src/config/env.js) - Environment configuration
-- ✅ Unit tests: `npm test` → **2/2 passing** ✔
+- ✅ Unit tests: `npm test` → (run locally — test files present if configured)
 
 ### Frontend Files
-- ✅ [frontend/Login/authSession.js](../branch/COS30049InnoProj/frontend/Login/authSession.js) - Session helper (centralized storage)
-- ✅ [frontend/Login/LoginPage.js](../branch/COS30049InnoProj/frontend/Login/LoginPage.js) - Login with remember-me
-- ✅ [frontend/Login/LoadingScreen.js](../branch/COS30049InnoProj/frontend/Login/LoadingScreen.js) - Startup recovery
-- ✅ [frontend/App.js](../branch/COS30049InnoProj/frontend/App.js) - Background token refresh loop
+- ✅ [frontend/Login/authSession.js](frontend/Login/authSession.js) - Session helper (centralized storage) (verify exists in your frontend folder)
+- ✅ [frontend/Login/LoginPage.js](frontend/Login/LoginPage.js) - Login with remember-me
+- ✅ [frontend/Login/LoadingScreen.js](frontend/Login/LoadingScreen.js) - Startup recovery
+- ✅ [frontend/App.js](frontend/App.js) - Background token refresh loop
 
 ### Database Files
-- ✅ [database/auth_refresh_tokens_schema.sql](database/auth_refresh_tokens_schema.sql) - Schema definition
-- ✅ [scripts/runAuthTokenMigration.js](scripts/runAuthTokenMigration.js) - Migration runner
+- ✅ Canonical schema: [database/schema.sql](database/schema.sql) - Full application DDL
+- Note: Per-feature migration files (e.g. `database/auth_refresh_tokens_schema.sql` or
+   `scripts/runAuthTokenMigration.js`) are not present in this workspace; the canonical
+   schema is `database/schema.sql` and should be applied during initialization.
 
 ### Syntax Validation
 - ✅ All 8 files passed error checking with 0 syntax errors
@@ -46,11 +48,11 @@ JWT_SESSION_REFRESH_EXPIRES_IN=12h # Refresh token (session only)
 **⚠️ CRITICAL**: Generate a strong, random `JWT_SECRET` for production. Never use the default/example value.
 
 ### Step 2: Database Migration
-Run the migration to create the `RefreshTokens` table:
+Run the canonical schema to create all database tables (including refresh token tables):
 
 ```bash
 cd COS30049InnoProj
-node scripts/runAuthTokenMigration.js
+mysql -u <db_user> -p < database/schema.sql
 ```
 
 **Expected output:**
@@ -100,10 +102,10 @@ curl -X POST http://localhost:3000/api/v1/auth/refresh \
 ```
 
 ### Step 4: Frontend Sync
-Ensure the branch frontend folder has the latest code:
+Ensure the `frontend` folder has the latest code:
 
 ```bash
-cd branch/COS30049InnoProj/frontend
+cd frontend
 npm install  # Install any new dependencies (if needed)
 ```
 
@@ -327,8 +329,15 @@ If issues arise post-deployment:
 mysqldump -u username -p database_name RefreshTokens > backup_refresh_tokens.sql
 
 # Drop table
-mysql -u username -p database_name < database/remove_auth_refresh_tokens_schema.sql
-# (Note: This file doesn't exist yet; create it with DROP TABLE IF EXISTS RefreshTokens;)
+There is no `remove_auth_refresh_tokens_schema.sql` provided in this repository. Use a safe manual operation instead:
+
+```sql
+-- Backup first
+mysqldump -u username -p database_name RefreshTokens > backup_refresh_tokens.sql
+
+-- Then drop
+DROP TABLE IF EXISTS RefreshTokens;
+```
 
 # Restore to previous auth system (commit from git history)
 git checkout HEAD~N src/services/authTokenService.js
@@ -344,7 +353,7 @@ npm start
 ## Completion Checklist
 
 - [ ] `.env` updated with strong `JWT_SECRET` and token expiry settings
-- [ ] Database migration run: `node scripts/runAuthTokenMigration.js`
+[ ] Database migration run: `mysql -u <db_user> -p < database/schema.sql`
 - [ ] `RefreshTokens` table verified in database
 - [ ] Backend restarted with `npm start`
 - [ ] Frontend synced to latest branch code
@@ -366,8 +375,8 @@ npm start
 
 **For detailed implementation info:**
 - Backend logic: [authTokenService.js](src/services/authTokenService.js)
-- Frontend session management: [authSession.js](../branch/COS30049InnoProj/frontend/Login/authSession.js)
-- Database schema: [auth_refresh_tokens_schema.sql](database/auth_refresh_tokens_schema.sql)
+- Frontend session management: [frontend/Login/authSession.js]
+- Database schema: [database/schema.sql](database/schema.sql)
 
 **For questions on token flows:**
 - See [AUTHENTICATION_FLOWS.md](AUTHENTICATION_FLOWS.md) (auto-generated during implementation)

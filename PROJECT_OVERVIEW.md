@@ -307,7 +307,7 @@ database/
 └── create_database.sql              Database creation script
 
 scripts/
-├── seedAdmin.js                     Create initial admin user
+├── scripts/                         Backup & restore helpers (no seed script provided)
 
 Documentation/
 ├── SETUP_GUIDE.md                   Environment setup & troubleshooting

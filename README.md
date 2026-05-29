@@ -11,7 +11,7 @@ It includes:
 - MariaDB integration using mysql2
 - Apache2 reverse proxy support
 - Cloudflare Tunnel deployment support for environments without public IPv4
-- React Native frontend scaffold in mobile/
+- React Native frontend scaffold in frontend/
 - Optional web demo in public/
 
 ## Tech Stack
@@ -29,11 +29,11 @@ It includes:
 - src/routes/: API route definitions
 - src/controllers/: API handler logic
 - src/middleware/: auth, validation, error handlers
-- mobile/: React Native (Expo) frontend client
+- frontend/: React Native (Expo) frontend client
 - public/: responsive frontend demo
 - database/schema.sql: roles, users, and posts tables
 - database/create_database.sql: create database + load schema
-- scripts/seedAdmin.js: create/update first admin account
+ - scripts/: backup and restore helpers (no seed script provided)
 
 ## Quick Start
 
@@ -74,8 +74,14 @@ SOURCE schema.sql;
 
 5. Seed first admin account:
 
-~~~bash
-npm run seed:admin -- admin Password123!
+There is no automatic seed script included. Create the first admin by inserting a user
+row directly into the database or via an admin creation endpoint if available.
+
+Example SQL (adjust column names to match your schema):
+
+~~~sql
+INSERT INTO Users (Username, PasswordHash, RoleID, Status)
+VALUES ('admin', '<bcrypt-hash>', 1, 'Active');
 ~~~
 
 6. Start server:
@@ -126,45 +132,25 @@ pm2 restart innopapp-api
 https://innopappserver.xyz/api/health
 ~~~
 
-7. Build and run the React Native app from mobile/ (see section below).
+7. Build and run the React Native app from frontend/ (see section below).
 
-## API Endpoints
+## React Native Frontend (frontend/)
 
-Public:
-- GET /api/health
-- GET /api/v1/qualifications
+This repository now includes an Expo-based React Native client at frontend/.
 
-Admin:
-- POST /api/v1/auth/login (combined login for both User and Admin)
-- GET /api/v1/admin/users
--- POST /api/v1/admin/qualifications
--- POST /api/v1/admin/announcements
--- PUT /api/v1/admin/users/:userId/status
-- GET /api/v1/admin/users/:userId/enrollments
-
-Admin endpoints (except login) require Authorization header:
-
-~~~text
-Authorization: Bearer <token>
-~~~
-
-## React Native Frontend (mobile/)
-
-This repository now includes an Expo-based React Native client at mobile/.
-
-1. Prepare mobile env:
+1. Prepare frontend env:
 
 ~~~bash
-cd mobile
+cd frontend
 ~~~
 
-Create a file named .env in mobile/ with:
+Create a file named .env in frontend/ with:
 
 ~~~text
 EXPO_PUBLIC_API_BASE_URL=https://api.innopappserver.xyz
 ~~~
 
-2. Set API base URL in mobile/.env:
+2. Set API base URL in frontend/.env:
 - EXPO_PUBLIC_API_BASE_URL=https://api.innopappserver.xyz
 
 3. Install and run mobile app:

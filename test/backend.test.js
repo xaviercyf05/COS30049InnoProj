@@ -1,0 +1,9 @@
+require("./backend/env.test");
+require("./backend/middleware.test");
+require("./backend/authMiddleware.test");
+require("./backend/sensorAuth.test");
+require("./backend/richContentStorage.test");
+require("./backend/richContentService.test");
+require("./backend/richContentController.test");
+require("./backend/app.test");
+require("../src/services/authTokenService.test");

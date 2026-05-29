@@ -48,6 +48,20 @@ function createFakeQuery() {
     }
 
     if (normalizedSql.startsWith('UPDATE RefreshTokens') && normalizedSql.includes('COALESCE(RevokedAt, NOW())')) {
+      if (normalizedSql.includes('WHERE UserID = ?')) {
+        const [userId] = params;
+        let affectedRows = 0;
+
+        for (const row of rows) {
+          if (row.UserID === userId && row.RevokedAt === null) {
+            row.RevokedAt = new Date();
+            affectedRows += 1;
+          }
+        }
+
+        return [{ affectedRows }];
+      }
+
       const tokenID = params[0];
       const row = rows.find((item) => item.TokenID === tokenID);
       if (row) {
@@ -128,4 +142,94 @@ test('rotateRefreshToken revokes the old token and issues a new pair', async () 
   assert.equal(typeof originalRow.ReplacedByTokenID, 'number');
   assert.ok(rotatedRow);
   assert.equal(rotatedRow.RevokedAt, null);
+});
+
+test('helper methods expose the configured token timings and record lookups', async () => {
+  const fakeDb = createFakeQuery();
+  const service = createAuthTokenService({
+    queryImpl: fakeDb.queryImpl,
+    envConfig,
+    jwtLib: jwt,
+  });
+
+  assert.equal(service.hashToken('abc'), hashToken('abc'));
+  assert.equal(service.calculateExpiresAt('15m', new Date('2026-01-01T00:00:00.000Z')).toISOString(), '2026-01-01T00:15:00.000Z');
+  assert.equal(service.getAccessTokenExpiresIn(envConfig), '15m');
+  assert.equal(service.getRefreshTokenExpiresIn(true, envConfig), '7d');
+  assert.equal(service.getRefreshTokenExpiresIn(false, envConfig), '12h');
+
+  const pair = await service.issueTokenPair({
+    user: { UserID: 1003, Username: 'guide03', RoleTitle: 'User' },
+    remember: false,
+  });
+
+  const record = await service.findRefreshTokenRecord(pair.refreshToken);
+
+  assert.equal(record.UserID, 1003);
+  assert.equal(record.TokenHash, hashToken(pair.refreshToken));
+
+  await service.revokeRefreshTokensForUser(1003);
+  assert.equal(fakeDb.rows.every((row) => row.UserID !== 1003 || row.RevokedAt instanceof Date), true);
+});
+
+test('rotateRefreshToken rejects invalid or stale refresh tokens', async () => {
+  const fakeDb = createFakeQuery();
+  const service = createAuthTokenService({
+    queryImpl: fakeDb.queryImpl,
+    envConfig,
+    jwtLib: jwt,
+  });
+
+  await assert.rejects(
+    () => service.rotateRefreshToken({ refreshToken: 'definitely-not-a-token' }),
+    (error) => error.statusCode === 401 && error.message === 'Invalid or expired refresh token.'
+  );
+
+  const tokenPair = await service.issueTokenPair({
+    user: { UserID: 1004, Username: 'guide04', RoleTitle: 'User' },
+    remember: false,
+  });
+
+  await assert.rejects(
+    () => service.rotateRefreshToken({ refreshToken: tokenPair.accessToken }),
+    (error) => error.statusCode === 401 && error.message === 'Invalid refresh token.'
+  );
+
+  fakeDb.rows[0].RevokedAt = new Date();
+  await assert.rejects(
+    () => service.rotateRefreshToken({ refreshToken: tokenPair.refreshToken }),
+    (error) => error.statusCode === 401 && error.message === 'Refresh token already used or revoked.'
+  );
+
+  const expiredPair = await service.issueTokenPair({
+    user: { UserID: 1005, Username: 'guide05', RoleTitle: 'User' },
+    remember: false,
+  });
+  fakeDb.rows[1].ExpiresAt = new Date(Date.now() - 1000);
+
+  await assert.rejects(
+    () => service.rotateRefreshToken({ refreshToken: expiredPair.refreshToken }),
+    (error) => error.statusCode === 401 && error.message === 'Refresh token expired.'
+  );
+
+  const orphanRefreshToken = jwt.sign(
+    {
+      sub: 9999,
+      username: 'ghost',
+      role: 'User',
+      remember: false,
+      tokenType: 'refresh',
+      tokenFamily: 'orphan-family',
+    },
+    envConfig.jwtSecret,
+    {
+      expiresIn: '15m',
+      jwtid: 'orphan-jti',
+    }
+  );
+
+  await assert.rejects(
+    () => service.rotateRefreshToken({ refreshToken: orphanRefreshToken }),
+    (error) => error.statusCode === 401 && error.message === 'Refresh token not recognized.'
+  );
 });

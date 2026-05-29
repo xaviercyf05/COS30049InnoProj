@@ -10,7 +10,7 @@
     "mobile:android": "npm --prefix frontend run android",
     "mobile:ios": "npm --prefix frontend run ios",
     "mobile:web": "npm --prefix frontend run web",
-    "test": "node --test"
+    "test": "node --test test/backend.test.js"
   },
   "repository": {
     "type": "git",

@@ -2,605 +2,135 @@
 
 ## Executive Summary
 
-The Digital Park Guide Training Platform (DGPTP) is a Learning Management System (LMS) designed to train and certify park guides and rangers across Sarawak's national parks and nature reserves. The system provides sequential module progression through learning materials, mandatory assessments with auto-grading, and automatic certificate issuance upon completion.
+The Digital Park Guide Training Platform is a role-based learning and operations system for park guide training, assessment, and administrative management. The current codebase centers on a Node.js + Express API with a MariaDB backend, a React Native frontend, and a separate rich-content feature module for authenticated content publishing with file attachments.
 
-**Key Statistics:**
-- **3 Test Qualifications** (certifications available)
-- **3 Modules per Qualification** (sequential progression required)
-- **5 Chapters per Module** (Conservation, Biodiversity, Eco-tourism, Legislation, Safety)
-- **15+ Learning Materials** (total across all modules)
-- **10 Assessment Questions** per module
-- **3 Maximum Attempts** per assessment with 1-hour cooldown between failed attempts
-- **70% Passing Score** requirement
-- **15+ Database Tables** supporting full learning lifecycle
+The platform supports public qualification browsing, authenticated learning workflows, assessment submission and grading, JWT-based login flows, MFA and passkey support, notifications, badge management, sensor log ingestion, evidence uploads, and admin management screens.
 
----
-
-## System Architecture
-
-### Technology Stack
+## Current Stack
 
 | Layer | Technology |
-|-------|-----------|
-| **Backend** | Node.js + Express.js v5.x |
-| **Database** | MySQL 5.7+ with utf8mb4 encoding |
-| **Authentication** | JWT bearer tokens (12-hour expiry) |
-| **Password Security** | bcryptjs (12-salt hash) |
-| **Input Validation** | express-validator |
-| **Security** | Helmet.js headers, CORS enabled |
-| **Logging** | Morgan HTTP request logger |
-| **Async Error Handling** | custom asyncHandler wrapper |
+|-------|------------|
+| Backend | Node.js, Express.js 5 |
+| Database | MariaDB / MySQL via mysql2 |
+| Authentication | JWT, bcryptjs |
+| Validation | express-validator |
+| Security | helmet, cors |
+| Logging | morgan |
+| File Uploads | multer |
+| Rich Content Sanitization | sanitize-html |
+| Email | nodemailer |
+| MFA / Passkeys | speakeasy, @simplewebauthn/server, qrcode |
+| Frontend | Expo / React Native |
 
-### Architecture Pattern: MVC with Services
+## Architecture
 
-```
-Request → Route → Controller → Service → Database
-                                    ↓
-                            Notification Events
-```
+The backend follows a route → controller → service → database structure:
 
-**Response Format (Standardized):**
-```json
-{
-  "success": true|false,
-  "data": {...},
-  "message": "string"
-}
-```
+Request → Route → Validation / Middleware → Controller → Service → Database
 
-All 20+ endpoints return data in this envelope format.
+The main application entry points are:
+- [src/app.js](src/app.js) for middleware, static assets, route registration, and health checks
+- [src/server.js](src/server.js) for server startup and graceful shutdown
 
----
+## Core Backend Capabilities
 
-## Core Features
+### Authentication and Account Access
 
-### 1. Authentication & Authorization
+The backend supports login with username/password, recovery-code login, passwordless email login, passkey authentication, password reset, email verification, JWT refresh, MFA setup and verification, and role-aware route protection for `User` and `Admin` accounts.
 
-**JWT-Based Authentication:**
-- Login endpoint returns signed JWT token
-- Token expires after 12 hours
-- All protected endpoints require `Authorization: Bearer <token>` header
+### Learning and Progression
 
-**Role-Based Access Control:**
-- **User**: Park guides/rangers (can enroll in qualifications, take assessments)
-- **Admin**: Platform administrators (can create qualifications, manage users, post announcements)
-- **Public**: Browse available qualifications, view details (no auth required)
+Users can browse qualifications, enroll, view module details, read learning materials, mark materials complete, track module progress, and submit assessments. The learning flow is driven by the qualification, module, material, and assessment services.
 
-**Three Access Tiers:**
-1. **Public Endpoints**: Login, browse qualifications, view details
-2. **User Endpoints**: Profile, enrollments, learning, assessments, notifications
-3. **Admin Endpoints**: Qualification management, user management, announcements
+### Notifications and Badges
 
-### 2. Learning Progression
+Notification routes expose the authenticated user’s notifications and announcement feed. Badge routes expose the current user’s earned badges, while the admin side can create, update, delete, and issue badges, and link them to modules or assessments.
 
-**Sequential Module Unlocking:**
-- User enrolls in qualification → Module 1 unlocked
-- Module 1: Read 5 materials (Conservation, Biodiversity, Eco-tourism, Legislation, Safety)
-- Module 1: Pass assessment (≥70%) → Module 2 unlocked, Certificate progress updates
-- Repeat for Modules 2 and 3
-- All modules complete → Certificate auto-issued with status "Issued"
+### Rich Content Module
 
-**Progress Tracking:**
-- Module-level completion calculated automatically
-- Qualifications show: materials completed / total materials, assessment pass/fail status
-- Overall completion percentage: modules completed / total modules
-- Real-time progress updates available via GET /qualifications/{id}/progress
+The `feature_modules/rich-content` package adds authenticated content creation with attachment uploads, HTML sanitization, content retrieval, and list views. This is a separate feature module rather than a standard route file under `src/routes`.
 
-### 3. Assessment System
+### Sensor and Evidence Handling
 
-**Attempt Management:**
-- Maximum 3 attempts per module assessment
-- If failed: 1-hour cooldown before retry allowed
-- If passed: assessment locked, next module unlocked immediately
-- Attempts are auto-graded:
-  - Questions scored by marking correct options
-  - Score = (correct answers / total questions) × 100
-  - Compared against 70% passing threshold
+The codebase includes public device ingestion routes for ESP32 sensor logs and evidence clips, plus admin dashboards and status management for sensor alerts and evidence review.
 
-**Auto-Triggered Actions:**
-- **Pass**: User notified, next module unlocked, certificate progress updated
-- **Fail**: User notified with encouragement, cooldown timer set, retries remaining shown
-- **All modules passed**: Certificate auto-issued, formal notification sent
+### Admin Management
 
-### 4. Notification System
+Admin routes cover qualifications, announcements, users, enrollments, evidence, sensor logs, payments, registrations, modules, badges, and assessments. The admin controller and related feature controllers also support operational workflows such as CSV uploads, module cover uploads, and dashboard summaries.
 
-**Event-Triggered Notifications (Automatic):**
-1. **Enrollment**: "Welcome to [Qualification]"
-2. **Assessment Pass**: "Congratulations! You scored X% on [Module]"
-3. **Assessment Fail**: "Score: X%. Passing score is 70%. Try again!"
-4. **Certificate Issued**: "You have earned the [Qualification] certificate"
-5. **Admin Announcement**: Role-targeted messages to all matching users
-6. **Scheduled Event**: Reminders for training sessions/field trips
+## API Surface
 
-**User Views Notifications Via:**
-- GET /notifications (all notifications, newest first)
-- GET /notifications/announcements (admin-posted messages)
-- GET /notifications/certificates (earned certificates with details)
+The API is mounted under `/api/v1` and is documented in [API_DOCUMENTATION.md](API_DOCUMENTATION.md).
 
-### 5. Admin Console
+Major route groups:
+- `/auth`
+- `/user`
+- `/qualifications`
+- `/modules`
+- `/assessments`
+- `/notifications`
+- `/badges`
+- `/sensors`
+- `/evidence`
+- `/rich-content`
+- `/admin`
 
-**Admin-Only Operations:**
+Health checks are available at `/health` and `/api/health`.
 
-| Operation | Endpoint | Purpose |
-|-----------|----------|---------|
-| Create Qualification | POST /admin/qualifications | Add new certification program |
-| Create Announcement | POST /admin/announcements | Broadcast messages to users/admins |
-| Create Schedule | POST /admin/schedules | (removed) |
-| View All Users | GET /admin/users | See all park guides on platform |
-| Update User Status | PUT /admin/users/{id}/status | Active/Inactive/Suspended |
-| View User Progress | GET /admin/users/{id}/enrollments | See user's course enrollments and completion |
+## Testing
 
-**Status Values:**
-- **Active**: User can access platform
-- **Inactive**: User cannot access (temporary pause)
-- **Suspended**: User account locked (violation/other)
+The repository now includes a backend-focused automated test suite using Node’s built-in test runner.
 
-### 6. User Profile Management
+- Root backend tests: `npm test`
+- Frontend tests: `npm --prefix frontend test`
 
-**User Can:**
-- View own profile (username, email, role, join date)
-- Update full name and email
-- Change password (requires current password verification)
+The backend suite covers configuration parsing, middleware behavior, authentication middleware, sensor key validation, rich-content storage and service logic, route-level health behavior, and JWT refresh-token flows.
 
-**Data Immutable:**
-- Username (cannot be changed)
-- Role (set at account creation)
-- User ID (cannot be changed)
+## Deployment Notes
 
----
+The project supports multiple deployment modes:
+- Local API development with `npm run dev`
+- API-only mode for mobile deployments using `SERVE_STATIC_CLIENT=0`
+- Apache2 reverse proxy deployments
+- Cloudflare Tunnel deployments for environments without public IPv4
 
-## Database Structure
+The current documentation set also includes [DEPLOYMENT_CHECKLIST.md](DEPLOYMENT_CHECKLIST.md) and [TECHNICAL_REFERENCE.md](TECHNICAL_REFERENCE.md).
 
-### Core Tables (15+)
+## Project Structure
 
-| Table | Purpose | Key Fields |
-|-------|---------|-----------|
-| **Roles** | User role definitions | RoleID, RoleTitle (Admin/User) |
-| **Users** | Park guides, admins, system users | UserID, Username, PasswordHash, RoleID, Status |
-| **Qualifications** | Training programs/certifications | QualificationID, QualificationName, Status |
-| **Modules** | Sections of a qualification | ModuleID, QualificationID, ModuleTitle |
-| **LearningMaterials** | Study content (text, video links) | MaterialID, ModuleID, Chapter, ContentText |
-| **MaterialProgress** | Tracks user completion of materials | UserID, MaterialID, IsCompleted, CompletedAt |
-| **Assessments** | Exams for modules | AssessmentID, ModuleID, PassingScore (70), AttemptLimit (3) |
-| **AssessmentQuestions** | Test questions | QuestionID, AssessmentID, QuestionText |
-| **AssessmentOptions** | Answer choices | OptionID, QuestionID, OptionText, IsCorrect (hidden) |
-| **AssessmentAttempts** | User test attempts | AttemptID, UserID, AssessmentID, Score, Status |
-| **Certificates** | User achievements | CertificateID, UserID, QualificationID, Status (Pending/Issued/Revoked) |
-| **Notifications** | System messages | NotificationID, UserID, Title, Message, NotificationType |
-| **Announcements** | Admin broadcasts | AnnouncementID, Title, TargetRole (User/Admin/All) |
-<!-- Schedules table removed from schema; scheduling deprecated -->
-
-### Data Integrity
-
-**Constraints Enforced:**
-- CHECK constraints on all status fields (limited allowed values)
-- Foreign key relationships with cascade deletes on user deletion
-- Unique constraints on usernames
-- Required fields enforced at database schema level
-
-**CamelCase Naming Convention:**
-- All identifiers use CamelCase: UserID, QualificationID, MaterialID
-- Consistent across schema and all application code
-
----
-
-## API Endpoints (20+)
-
-### Public Endpoints (No Auth Required)
-
-```
-GET    /api/v1/qualifications                 List all available qualifications
-GET    /api/v1/qualifications/:id             Get qualification with modules
-```
-
-### Authentication
-
-```
-POST   /api/v1/auth/login                     Login with username/password → JWT token
-```
-
-### User Endpoints (Auth Required)
-
-```
-GET    /api/v1/user/profile                   Get own profile
-PUT    /api/v1/user/profile                   Update full name, email
-POST   /api/v1/user/change-password           Change password
-```
-
-### Qualification Endpoints (Mixed Auth)
-
-```
-GET    /api/v1/qualifications                 (public) List all qualifications
-GET    /api/v1/qualifications/:id             (public) Get details
-POST   /api/v1/qualifications/enroll          (auth) Enroll in qualification
-GET    /api/v1/qualifications/user/my-qualifications (auth) List enrollments
-GET    /api/v1/qualifications/:id/progress    (auth) Get completion status
-```
-
-### Module & Material Endpoints (Auth Required)
-
-```
-GET    /api/v1/modules/:qualificationId/all   List all modules
-GET    /api/v1/modules/:moduleId/details      Get module with materials
-GET    /api/v1/modules/material/:materialId/content Get learning content
-POST   /api/v1/modules/material/complete      Mark material as completed
-```
-
-### Assessment Endpoints (Auth Required)
-
-```
-GET    /api/v1/assessments/:moduleId/questions    Get exam questions & options
-GET    /api/v1/assessments/:assessmentId/eligibility Check if user can attempt
-POST   /api/v1/assessments/submit                 Submit answers → auto-grade
-GET    /api/v1/assessments/:moduleId/history      Get past attempt records
-```
-
-### Notification Endpoints (Auth Required)
-
-```
-GET    /api/v1/notifications                  List all notifications
-GET    /api/v1/notifications/announcements    Get admin announcements
-<!-- /api/v1/notifications/schedules removed -->
-GET    /api/v1/notifications/certificates    List earned certificates
-GET    /api/v1/notifications/certificates/:certificateId Get certificate details
-```
-
-### Admin Endpoints (Admin Auth Required)
-
-```
-POST   /api/v1/admin/qualifications           Create new qualification
-POST   /api/v1/admin/announcements            Post announcement to users
-<!-- /api/v1/admin/schedules removed -->
-GET    /api/v1/admin/users                    List all users
-PUT    /api/v1/admin/users/:id/status         Update user status
-GET    /api/v1/admin/users/:id/enrollments    View user's course progress
-```
-
-### Health Check (No Auth)
-
-```
-GET    /health                                 Server status check
-```
-
----
-
-## File Structure
-
-```
+```text
 src/
-├── app.js                           Main Express app & route integration
-├── server.js                        Server startup entry point
+├── app.js
+├── server.js
 ├── config/
-│   ├── db.js                        MySQL connection pool
-│   └── env.js                       Environment variable loader
-├── middleware/
-│   ├── auth.js                      Admin-only authentication
-│   ├── authUser.js                  Dual-role authentication (User/Admin)
-│   ├── errorHandler.js              Global error handling middleware
-│   └── validate.js                  Input validation middleware
-├── services/
-│   ├── qualificationService.js      Enrollment, progress calculation
-│   ├── assessmentService.js         Grading, attempt limiting, cooldown
-│   ├── materialService.js           Content delivery, completion tracking
-│   └── notificationService.js       Event-triggered notifications
 ├── controllers/
-│   ├── userController.js            Login, profile, password
-│   ├── qualificationController.js   Enrollment, progress, browsing
-│   ├── materialController.js        Module/material endpoints
-│   ├── assessmentController.js      Assessment delivery & grading
-│   ├── notificationController.js    Notifications, announcements, certificates
-│   └── adminManagementController.js Admin CRUD operations
+├── middleware/
 ├── routes/
-│   └── v1/
-│       ├── authRoutes.js            /auth/login
-│       ├── userRoutes.js            /user/* endpoints
-│       ├── qualificationRoutes.js   /qualifications/* endpoints
-│       ├── moduleRoutes.js          /modules/* endpoints
-│       ├── assessmentRoutes.js      /assessments/* endpoints
-│       ├── notificationRoutes.js    /notifications/* endpoints
-│       └── adminRoutes.js           /admin/* endpoints
+├── services/
 └── utils/
-    └── asyncHandler.js              Async try-catch wrapper
+
+feature_modules/
+└── rich-content/
+
+frontend/
+├── App.js
+├── index.js
+├── Admin/
+├── auth/
+└── ...
 
 database/
-├── schema.sql                       Complete database schema
-└── create_database.sql              Database creation script
+├── schema.sql
+└── create_database.sql
 
 scripts/
-├── scripts/                         Backup & restore helpers (no seed script provided)
+└── backup / restore helpers
 
-Documentation/
-├── SETUP_GUIDE.md                   Environment setup & troubleshooting
-├── TESTING_GUIDE.md                 API endpoint testing with curl examples
-├── API_DOCUMENTATION.md             Comprehensive API specification
-└── PROJECT_OVERVIEW.md              This file
+systemd/
+└── service and timer units
 ```
 
----
+## Notes
 
-## Workflow Examples
-
-### User Journey: Complete Qualification
-
-1. **User browses platform** (public)
-   ```bash
-   GET /qualifications              → See 3 available certifications
-   GET /qualifications/1            → View details, see 3 modules required
-   ```
-
-2. **User enrolls** (auth required)
-   ```bash
-   POST /qualifications/enroll      → Creates certificate record, triggers enrollment notification
-   GET /qualifications/1/progress   → Shows Module 1 unlocked, 2-3 locked
-   ```
-
-3. **User learns Module 1** (auth required)
-   ```bash
-   GET /modules/1/details           → See 5 materials to study
-   GET /modules/material/1/content  → Read Conservation chapter
-   POST /modules/material/complete  → Mark as done (repeat for all 5)
-   ```
-
-4. **User takes Module 1 assessment** (auth required)
-   ```bash
-   GET /assessments/1/eligibility   → Confirms 3 attempts available
-   GET /assessments/1/questions     → Get 10 questions with options
-   POST /assessments/submit         → Submit answers
-   →  Auto-graded: 75% PASSED
-   →  Module 2 automatically unlocked
-   →  Notification sent: "Congratulations!"
-   →  Certificate progress: 33% (1 of 3 modules)
-   ```
-
-5. **User completes Module 2 & 3** (same pattern)
-   - Read materials
-   - Pass assessment
-   - Module 3 unlocked
-   - Progress: 66%
-   - Then repeat for Module 3
-   - After Module 3 passed: Certificate auto-issued
-
-6. **User views certificate** (auth required)
-   ```bash
-   GET /notifications/certificates  → Status "Issued", completion 100%
-   GET /notifications/certificates/1 → Full certificate details
-   ```
-
-### Admin Journey: Create Qualification
-
-1. **Admin logs in**
-   ```bash
-   POST /auth/login                 → Create JWT token with role: Admin
-   ```
-
-2. **Admin creates new program**
-   ```bash
-   POST /admin/qualifications       → New certification with modules/materials
-   ```
-
-3. **Admin creates announcement**
-   ```bash
-   POST /admin/announcements        → Message broadcast to all Users
-   →   Notifications auto-sent to all matching users
-   ```
-
-4. **Admin scheduling** (removed)
-   <!-- POST /admin/schedules deprecated -->
-
-5. **Admin views user progress**
-   ```bash
-   GET /admin/users                 → List all guides
-   GET /admin/users/3/enrollments   → See specific user's progress (modules completed, certificates)
-   ```
-
----
-
-## Testing & Validation
-
-### Pre-Launch Checklist
-
-- [ ] Database connects successfully (`npm run dev` starts without errors)
-- [ ] Test users exist or create appropriate test accounts for validation
-- [ ] Public endpoints accessible (login, browse qualifications)
-- [ ] Auth endpoints return JWT tokens
-- [ ] Protected endpoints reject requests without valid token
-- [ ] Enrollment creates certificate record
-- [ ] Material completion tracks correctly
-- [ ] Assessment auto-grades and unlocks next module (on 70%+ pass)
-- [ ] Failed assessment shows cooldown timer
-- [ ] 3rd failed attempt blocks further retries
-- [ ] Certificate auto-issued after all modules complete
-- [ ] Notifications generated automatically for all events
-- [ ] Admin endpoints restricted to Admin role only
-- [ ] User password changes work and require old password
-- [ ] Profile updates don't allow changing username/role
-
-### Manual Testing
-
-See **TESTING_GUIDE.md** for detailed curl command examples covering:
-- Complete user enrollment flow
-- Full assessment attempt (pass and fail scenarios)
-- Certificate issuance verification
-- Admin operations
-- Error handling validation
-
-### Database Validation
-
-```sql
--- Check users created
-SELECT COUNT(*) FROM Users;                        → Should be 4+ (1 admin + 3 test users)
-
--- Check qualifications loaded
-SELECT * FROM Qualifications;                      → Should be 3
-
--- Check modules created
-SELECT * FROM Modules;                             → Should be 9 (3 per qualification)
-
--- Check assessments
-SELECT * FROM Assessments;                         → Should be 3 (1 per module)
-
--- Verify constraint enforcement
-INSERT INTO Users (Username, Status) VALUES ('test', 'Invalid');  → Should fail
-```
-
----
-
-## Security Features
-
-### Implemented
-
-- ✅ **Password Hashing**: bcryptjs with 12-salt rounds (plaintext never stored)
-- ✅ **JWT Tokens**: 12-hour expiry, cryptographically signed
-- ✅ **SQL Injection Prevention**: Parameterized queries (mysql2/promise)
-- ✅ **Input Validation**: All user inputs validated with express-validator
-- ✅ **Role-Based Access Control**: Endpoint-level authorization checks
-- ✅ **CORS Protection**: Configured to prevent cross-origin attacks
-- ✅ **Security Headers**: Helmet.js middleware sets standard headers
-- ✅ **Cooldown Enforcement**: Database-level timestamp checks prevent assessment exploit
-
-### Recommended for Production
-
-- [ ] Use HTTPS/SSL certificates
-- [ ] Implement rate limiting (prevent brute-force login attempts)
-- [ ] Add API key authentication for admin operations
-- [ ] Set up database encryption at rest
-- [ ] Enable database audit logging
-- [ ] Implement comprehensive error logging without exposing stack traces
-- [ ] Add user activity logging
-- [ ] Set up automated database backups
-- [ ] Use environment-specific secrets management (AWS Secrets Manager, HashiCorp Vault)
-- [ ] Perform regular security audits and penetration testing
-
----
-
-## Performance Considerations
-
-### Current Optimizations
-
-- Connection pooling (mysql2/promise default: 10 connections)
-- Indexes on foreign keys and frequently queried columns
-- Response-level error handling prevents cascading failures
-- Async/await patterns prevent callback hell
-
-### Scalability Improvements (Future)
-
-1. **Caching Layer**: Redis for frequently accessed data (qualifications, materials)
-2. **Database Optimization**: Add indexes on assessment attempts, material progress
-3. **Load Balancing**: Run multiple Node.js instances behind nginx
-4. **CDN**: Serve static learning materials via content delivery network
-5. **Event Queue**: Move notifications to async job queue (Bull, RabbitMQ)
-6. **Database Replication**: Master-slave or multi-master setup for high availability
-
----
-
-## Troubleshooting Quick Reference
-
-| Problem | Solution |
-|---------|----------|
-| "Cannot find module" | Run `npm install` |
-| "ECONNREFUSED" (MySQL) | Ensure MySQL service is running |
-| "Access denied" (DB) | Check .env file has correct password |
-| "Port 5000 in use" | Change PORT in .env or kill existing process |
-| "Table doesn't exist" | Re-run `mysql -u root -p digital_park_guide < database/schema.sql` |
-| "Invalid token" | Ensure Authorization header format is `Bearer <token>` |
-| "User already enrolled" | Get endpoint returns 409 Conflict |
-| "Too many attempts" | Wait 1 hour or check assessment/attempt eligibility |
-| "No token provided" | Add Authorization header to protected endpoint |
-
-For detailed troubleshooting, see **SETUP_GUIDE.md**.
-
----
-
-## Next Steps & Future Enhancements
-
-### Phase 2: Enhancements
-
-1. **File Upload Support**
-   - Store learning materials as PDF/video files
-   - Streaming support for large video files
-
-2. **Real-Time Features**
-   - WebSocket notifications for instant updates
-   - Live instructor chat during sessions
-
-3. **Advanced Analytics**
-   - Learner progress dashboard for admins
-   - Common mistake analysis
-   - Time-spent tracking per material
-
-4. **Mobile Optimization**
-   - React Native/Flutter mobile apps
-   - Offline content access
-   - Camera integration for selfies with park landmarks
-
-5. **Accessibility**
-   - Multi-language support (Malay, English, Iban)
-   - Screen reader compatibility
-   - Subtitle support for videos
-
-### Phase 3: Platform Extensions
-
-1. **Peer Learning**
-   - Discussion forums per module
-   - Peer review of field trip reports
-
-2. **Gamification**
-   - Badges for completing modules
-   - Leaderboards for top performers
-   - Achievement system
-
-3. **Competency Tracking**
-   - Map assessment questions to Park Service competencies
-   - Generate skill gap reports
-
-4. **Field Operations Integration**
-   - Mobile app for guides to report observations
-   - Integration with park management systems
-
----
-
-## Support & Documentation
-
-- **Setup Issues**: See SETUP_GUIDE.md
-- **API Testing**: See TESTING_GUIDE.md
-- **Endpoint Reference**: See API_DOCUMENTATION.md
-- **Code Questions**: Inline comments explain key business logic
-
----
-
-## Project Statistics
-
-| Metric | Count |
-|--------|-------|
-| Total Files Created | 26+ |
-| API Endpoints | 20+ |
-| Database Tables | 15+ |
-| Test User Accounts | 3 |
-| Sample Qualifications | 3 |
-| Modules per Qualification | 3 |
-| Materials per Module | 5 |
-| Assessment Questions | 10 per module |
-| Lines of Code (Backend) | 3,000+ |
-| Setup Time | ~15 minutes |
-
----
-
-## License & Attribution
-
-This project is built using:
-- **Express.js** - Web framework
-- **MySQL** - Database
-- **bcryptjs** - Password hashing
-- **jsonwebtoken** - Authentication
-- **express-validator** - Input validation
-- **Helmet.js** - Security headers
-
-See package.json for full dependency list.
-
----
-
-## Conclusion
-
-The Digital Park Guide Training Platform is a complete, production-ready LMS built with modern Node.js best practices. All core features are implemented and tested. The system enforces sequential learning progression, implements robust assessment mechanics with attempt limiting, and automates the entire notification and certificate issuance workflow.
-
-**Ready to deploy!** Follow SETUP_GUIDE.md to get started.
+- The current codebase no longer uses the older posts-centric demo described in earlier documentation.
+- The backend now focuses on training, assessments, rich content, notifications, badges, and operational admin workflows.
